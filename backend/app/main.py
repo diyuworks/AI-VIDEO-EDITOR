@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routers import uploads
 
 app = FastAPI(title="AI Video Editor API", version="0.1.0")
 
@@ -11,6 +12,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(uploads.router)
 
 
 @app.get("/health")
