@@ -10,7 +10,11 @@ interface ReferenceVideo {
 
 const MAX_REFERENCE_VIDEOS = 5
 
-export default function UploadPage() {
+interface UploadPageProps {
+  onContinue?: (data: { sourceFile: File; referenceVideos: File[] }) => void
+}
+
+export default function UploadPage({ onContinue }: UploadPageProps) {
   // ---- Source video state ----
   const [sourceState, setSourceState] = useState<SourceUploadState>('idle')
   const [sourceFile, setSourceFile] = useState<File | null>(null)
@@ -243,6 +247,19 @@ export default function UploadPage() {
               className="hidden"
               onChange={(e) => handleReferenceFiles(e.target.files)}
             />
+
+            <button
+              onClick={() =>
+                sourceFile &&
+                onContinue?.({
+                  sourceFile,
+                  referenceVideos: referenceVideos.map((v) => v.file),
+                })
+              }
+              className="w-full mt-8 py-3.5 rounded-xl font-medium bg-amber text-canvas hover:bg-amber-bright transition-colors"
+            >
+              Continue
+            </button>
           </div>
         )}
       </div>
