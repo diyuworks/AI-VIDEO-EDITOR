@@ -1,6 +1,9 @@
 import uuid
 from io import BytesIO
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from typing import List
+from sqlmodel import Session, select
+from app.database import get_session, VideoRecord
 from minio import Minio
 from minio.error import S3Error
 from app.config import (
@@ -25,7 +28,7 @@ MAX_FILE_SIZE_MB = 500
 
 
 @router.post("/upload")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
     ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
@@ -49,9 +52,35 @@ async def upload_video(file: UploadFile = File(...)):
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
+    record = VideoRecord(
+        object_name=object_name,
+        original_filename=file.filename,
+        url=file_url,
+    )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+
     return {
         "success": True,
+        "id": record.id,
         "filename": file.filename,
         "object_name": object_name,
         "url": file_url,
     }
+
+
+@router.get("/videos")
+def list_videos(session: Session = Depends(get_session)):
+    videos = session.exec(select(VideoRecord)).all()
+    return videos
+
+
+@router.get("/videos/{object_name}")
+def get_video(object_name: str, session: Session = Depends(get_session)):
+    video = session.exec(
+        select(VideoRecord).where(VideoRecord.object_name == object_name)
+    ).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return video

@@ -6,3 +6,6 @@ pg8000
 pydantic==2.9.2
 python-multipart
 minio
+ffmpeg-python
+sqlmodel
+faster-whisper

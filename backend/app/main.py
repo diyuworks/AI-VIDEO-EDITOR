@@ -1,28 +1,32 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import uploads
+from app.routers import uploads, metadata, captions
+from app.database import init_db
 
-app = FastAPI(title="AI Video Editor API", version="0.1.0")
+app = FastAPI(title="AI Video Editor API")
 
-# Allow the frontend dev server to call this API during local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(uploads.router)
+app.include_router(metadata.router)
+app.include_router(captions.router)
 
 
-@app.get("/health")
-def health_check():
-    """Basic liveness check. Used to confirm the API is reachable
-    from the frontend and from Docker Compose."""
-    return {"status": "ok", "service": "ai-video-editor-api"}
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 @app.get("/")
 def root():
-    return {"message": "AI Video Editor API is running"}
+    return {"status": "AI Video Editor backend is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

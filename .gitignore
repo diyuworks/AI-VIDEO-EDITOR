@@ -26,3 +26,7 @@ Thumbs.db
 *.mov
 *.avi
 uploads/
+
+# Database
+*.db
+*.sqlite3
