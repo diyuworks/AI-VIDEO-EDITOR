@@ -1,4 +1,4 @@
-fastapi==0.115.0
+﻿fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-dotenv==1.0.1
 sqlalchemy==2.0.35
@@ -9,4 +9,4 @@ minio
 ffmpeg-python
 sqlmodel
 faster-whisper
-google-genai
+groq
