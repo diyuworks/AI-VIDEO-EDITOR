@@ -20,8 +20,14 @@ minio_client = Minio(
     secure=MINIO_SECURE
 )
 
-if not minio_client.bucket_exists(MINIO_BUCKET):
-    minio_client.make_bucket(MINIO_BUCKET)
+def init_minio():
+    try:
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            minio_client.make_bucket(MINIO_BUCKET)
+        print("MinIO bucket initialized successfully.")
+    except Exception as e:
+        print(f"Warning: Could not connect to MinIO during startup. {e}")
+
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 MAX_FILE_SIZE_MB = 500
@@ -47,8 +53,8 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
             length=len(contents),
             content_type=file.content_type,
         )
-    except S3Error as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed (MinIO might be down): {str(e)}")
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 

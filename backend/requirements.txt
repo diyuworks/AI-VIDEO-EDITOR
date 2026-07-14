@@ -9,3 +9,4 @@ minio
 ffmpeg-python
 sqlmodel
 faster-whisper
+google-genai
