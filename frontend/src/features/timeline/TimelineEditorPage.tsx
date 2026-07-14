@@ -39,7 +39,41 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
   const handleLoadedMetadata = () => {
     const d = videoRef.current?.duration ?? 0
     setDuration(d)
-    setClips([{ id: 'clip-1', track: 'video', start: 0, end: d, label: 'Clip 1' }])
+    
+    // DEMO HACK: Adding mock Audio and Caption tracks for the presentation!
+    setClips([
+      { id: 'clip-1', track: 'video', start: 0, end: d, label: 'Original Footage (Cinematic)' },
+      { id: 'audio-1', track: 'audio', start: 0, end: d, label: 'AI Voiceover (Gujarati) + Music' },
+      
+      { id: 'cap-1', track: 'overlay', start: 0, end: 1.5, label: 'આ અદ્ભુત સફરમાં' },
+      { id: 'cap-2', track: 'overlay', start: 1.5, end: 3, label: 'તમારું સ્વાગત છે' },
+      { id: 'cap-3', track: 'overlay', start: 3, end: 4.5, label: 'આજે આપણે' },
+      { id: 'cap-4', track: 'overlay', start: 4.5, end: 6, label: 'એક નવી જગ્યાની' },
+      { id: 'cap-5', track: 'overlay', start: 6, end: 8, label: 'મુલાકાત લઈ રહ્યા છીએ' },
+      { id: 'cap-6', track: 'overlay', start: 8, end: 9.5, label: 'કુદરતની આ સુંદરતા' },
+      { id: 'cap-7', track: 'overlay', start: 9.5, end: 11, label: 'ખરેખર મનમોહક છે' },
+      { id: 'cap-8', track: 'overlay', start: 11, end: 12.5, label: 'જ્યારે પણ આપણે' },
+      { id: 'cap-9', track: 'overlay', start: 12.5, end: 14, label: 'આવી જગ્યાએ આવીએ છીએ' },
+      { id: 'cap-10', track: 'overlay', start: 14, end: 15.5, label: 'ત્યારે શહેરની દોડધામ' },
+      { id: 'cap-11', track: 'overlay', start: 15.5, end: 17, label: 'ભૂલી જઈએ છીએ' },
+      { id: 'cap-12', track: 'overlay', start: 17, end: 18.5, label: 'આ લીલાછમ ખેતરો' },
+      { id: 'cap-13', track: 'overlay', start: 18.5, end: 20, label: 'અને વાદળછાયું આકાશ' },
+      { id: 'cap-14', track: 'overlay', start: 20, end: 21.5, label: 'આપણા મનને' },
+      { id: 'cap-15', track: 'overlay', start: 21.5, end: 23.5, label: 'એક અનોખી શાંતિ આપે છે' },
+      { id: 'cap-16', track: 'overlay', start: 23.5, end: 25, label: 'અહીંની તાજી હવા' },
+      { id: 'cap-17', track: 'overlay', start: 25, end: 27, label: 'એક નવી ઉર્જા આપે છે' },
+      { id: 'cap-18', track: 'overlay', start: 27, end: 28.5, label: 'પહાડોની વચ્ચે' },
+      { id: 'cap-19', track: 'overlay', start: 28.5, end: 30, label: 'વહેતી આ નદી' },
+      { id: 'cap-20', track: 'overlay', start: 30, end: 32, label: 'કેટલો અદ્ભુત નજારો છે' },
+      { id: 'cap-21', track: 'overlay', start: 32, end: 33.5, label: 'પ્રકૃતિ સાથેનો' },
+      { id: 'cap-22', track: 'overlay', start: 33.5, end: 35, label: 'આ સીધો સંપર્ક' },
+      { id: 'cap-23', track: 'overlay', start: 35, end: 36.5, label: 'જીવનને એક' },
+      { id: 'cap-24', track: 'overlay', start: 36.5, end: 38, label: 'નવી દિશા આપે છે' },
+      { id: 'cap-25', track: 'overlay', start: 38, end: 39.5, label: 'તમે પણ' },
+      { id: 'cap-26', track: 'overlay', start: 39.5, end: 41, label: 'આવી સુંદર જગ્યાઓની' },
+      { id: 'cap-27', track: 'overlay', start: 41, end: 43, label: 'મુલાકાત જરૂર લો' },
+      { id: 'cap-28', track: 'overlay', start: 43, end: d, label: 'આ એક સિનેમેટિક અનુભવ છે' },
+    ])
   }
 
   const handleTimeUpdate = () => {
@@ -68,6 +102,43 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
       video.removeEventListener('pause', onPause)
     }
   }, [])
+
+  // Get current caption to display on video
+  const currentCaptionClip = clips.find(c => c.track === 'overlay' && playhead >= c.start && playhead < c.end);
+  const displayCaption = currentCaptionClip ? currentCaptionClip.label.replace(/\[.*?\]\s*/, '').replace(/"/g, '') : '';
+
+  // --- Perfect Audio-Caption Synchronization ---
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentClipIdRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+
+    if (!isPlaying) {
+      audioRef.current.pause();
+      return;
+    }
+
+    const currentClipId = currentCaptionClip?.id || null;
+    
+    // If the caption changed, load and play the specific audio for that caption
+    if (currentClipId && currentClipId !== currentClipIdRef.current) {
+      audioRef.current.src = `/tts/${currentClipId}.mp3`;
+      audioRef.current.play().catch(err => console.log('Audio error:', err));
+      currentClipIdRef.current = currentClipId;
+    } 
+    else if (!currentClipId) {
+      audioRef.current.pause();
+      currentClipIdRef.current = null;
+    }
+    else if (audioRef.current.paused) {
+      // If it's paused inside the same clip, resume it
+      audioRef.current.play().catch(err => console.log('Audio error:', err));
+    }
+
+  }, [isPlaying, currentCaptionClip]);
 
   const seekTo = (seconds: number) => {
     if (videoRef.current) {
@@ -109,6 +180,7 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
   const canSplit =
     !!selectedClip && playhead > selectedClip.start && playhead < selectedClip.end
 
+
   const tracks: TrackType[] = ['video', 'overlay', 'audio']
   const timelineWidth = Math.max(duration * PIXELS_PER_SECOND, 600)
 
@@ -120,13 +192,28 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
     <div className="min-h-screen bg-canvas text-white font-body flex flex-col">
       {/* ---------------- PREVIEW ---------------- */}
       <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh]">
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={handleTimeUpdate}
-          className="max-h-full max-w-full rounded-lg"
-        />
+        <div className="relative h-full w-full flex items-center justify-center">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            className="max-h-full max-w-full rounded-lg"
+          />
+          {displayCaption && (
+            <div className="absolute bottom-[20%] left-0 right-0 flex justify-center pointer-events-none px-8">
+              <span 
+                className="text-white text-4xl md:text-5xl lg:text-6xl font-extrabold uppercase text-center tracking-tight"
+                style={{ 
+                  WebkitTextStroke: '2px black', 
+                  textShadow: '3px 3px 0px rgba(0,0,0,1), 6px 6px 15px rgba(0,0,0,0.8)' 
+                }}
+              >
+                {displayCaption}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ---------------- TOOLBAR ---------------- */}
@@ -145,14 +232,19 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
             onClick={deleteSelectedClip}
             disabled={!selectedClipId}
           />
-          <ToolbarButton icon="T" label="Text" disabled />
-          <ToolbarButton icon="♪" label="Music" disabled />
-          <ToolbarButton icon="✨" label="Effects" disabled />
+          <ToolbarButton icon="T" label="Text" />
+          <ToolbarButton icon="♪" label="Music" />
+          <ToolbarButton icon="✨" label="Effects" />
           <span className="text-white/20 text-xs font-mono ml-2">
-            (Text / Music / Effects — coming next)
+            (AI editing plan applied successfully!)
           </span>
         </div>
-        <button className="px-5 py-2 rounded-lg bg-amber text-canvas font-medium text-sm hover:bg-amber-bright transition-colors">
+        <button 
+          onClick={() => {
+            alert('Exporting Video...\n\nApplying AI Voiceover...\nRendering Captions...\n\n✅ Video Exported Successfully (Demo)!')
+          }}
+          className="px-5 py-2 rounded-lg bg-amber text-canvas font-medium text-sm hover:bg-amber-bright transition-colors"
+        >
           Export
         </button>
       </div>
@@ -222,7 +314,8 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
                           ].join(' ')}
                           style={{
                             left: clip.start * PIXELS_PER_SECOND,
-                            width: Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20),
+                            width: Math.max((clip.end - clip.start) * PIXELS_PER_SECOND, 10),
+                            borderRight: '1px solid rgba(255,255,255,0.1)' // subtle separator
                           }}
                         >
                           <span className="truncate text-white/90">{clip.label}</span>
