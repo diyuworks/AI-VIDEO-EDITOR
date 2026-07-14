@@ -25,7 +25,7 @@ services:
       - minio_data:/data
 
   api:
-    build: ../../apps/api
+    build: ../../backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -38,7 +38,7 @@ services:
       - postgres
       - minio
     volumes:
-      - ../../apps/api:/app
+      - ../../backend:/app
 
 volumes:
   postgres_data:

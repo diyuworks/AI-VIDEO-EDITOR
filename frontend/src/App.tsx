@@ -13,6 +13,7 @@ function App() {
     return (
       <UploadPage
         onContinue={(data) => {
+          console.log('Backend upload result:', data.uploadResult)
           setVideoUrl(URL.createObjectURL(data.sourceFile))
           setScreen('prompt')
         }}

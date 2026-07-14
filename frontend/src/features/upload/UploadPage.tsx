@@ -9,9 +9,21 @@ interface ReferenceVideo {
 }
 
 const MAX_REFERENCE_VIDEOS = 5
+const UPLOAD_ENDPOINT = 'http://localhost:8000/upload'
+
+interface UploadResult {
+  success: boolean
+  filename: string
+  object_name: string
+  url: string
+}
 
 interface UploadPageProps {
-  onContinue?: (data: { sourceFile: File; referenceVideos: File[] }) => void
+  onContinue?: (data: {
+    sourceFile: File
+    referenceVideos: File[]
+    uploadResult: UploadResult | null
+  }) => void
 }
 
 export default function UploadPage({ onContinue }: UploadPageProps) {
@@ -21,6 +33,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
 
   // ---- Reference video state ----
   const [referenceVideos, setReferenceVideos] = useState<ReferenceVideo[]>([])
@@ -44,21 +57,53 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     setSourcePreviewUrl(URL.createObjectURL(file))
     setSourceState('uploading')
     setUploadProgress(0)
+    setUploadResult(null)
 
-    // Real upload wiring: replace this simulated progress with an actual
-    // POST to the backend /upload endpoint once it exists (multipart/form-data).
-    // Left as a simulated progress bar for now since the backend endpoint
-    // is still being built.
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
+    // Real upload to the backend's /upload endpoint (multipart/form-data,
+    // field name "file"). Using XMLHttpRequest instead of fetch because
+    // fetch has no built-in upload progress event.
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', UPLOAD_ENDPOINT)
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        setUploadProgress(Math.round((event.loaded / event.total) * 100))
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const result: UploadResult = JSON.parse(xhr.responseText)
+          setUploadResult(result)
+          setUploadProgress(100)
           setSourceState('done')
-          return 100
+        } catch {
+          setErrorMessage('Upload succeeded but the response was unexpected.')
+          setSourceState('error')
         }
-        return prev + 10
-      })
-    }, 150)
+      } else {
+        let detail = `Upload failed (${xhr.status}).`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          if (body?.detail) detail = body.detail
+        } catch {
+          // ignore parse failure, use default message
+        }
+        setErrorMessage(detail)
+        setSourceState('error')
+      }
+    }
+
+    xhr.onerror = () => {
+      setErrorMessage('Could not reach the backend. Is it running on localhost:8000?')
+      setSourceState('error')
+    }
+
+    xhr.send(formData)
   }, [])
 
   const handleDrop = useCallback(
@@ -86,6 +131,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     setSourcePreviewUrl(null)
     setUploadProgress(0)
     setErrorMessage(null)
+    setUploadResult(null)
   }
 
   // ---- Reference video handlers ----
@@ -182,7 +228,9 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
             <div className="flex items-center justify-between px-5 py-4">
               <div>
                 <p className="font-mono text-sm text-white/80">{sourceFile?.name}</p>
-                <p className="text-teal text-xs mt-0.5">Uploaded</p>
+                <p className="text-teal text-xs mt-0.5">
+                  {uploadResult ? `Uploaded — stored as ${uploadResult.object_name}` : 'Uploaded'}
+                </p>
               </div>
               <button
                 onClick={handleReset}
@@ -254,6 +302,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                 onContinue?.({
                   sourceFile,
                   referenceVideos: referenceVideos.map((v) => v.file),
+                  uploadResult,
                 })
               }
               className="w-full mt-8 py-3.5 rounded-xl font-medium bg-amber text-canvas hover:bg-amber-bright transition-colors"
