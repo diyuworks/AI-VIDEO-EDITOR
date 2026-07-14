@@ -6,10 +6,13 @@ interface ReferenceVideo {
   id: string
   file: File
   previewUrl: string
+  uploadStatus?: 'uploading' | 'done' | 'error'
+  uploadResult?: UploadResult
 }
 
 const MAX_REFERENCE_VIDEOS = 5
 const UPLOAD_ENDPOINT = 'http://localhost:8000/upload'
+const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:8000/upload-reference'
 
 interface UploadResult {
   success: boolean
@@ -23,6 +26,7 @@ interface UploadPageProps {
     sourceFile: File
     referenceVideos: File[]
     uploadResult: UploadResult | null
+    referenceUploadResults?: UploadResult[]
   }) => void
 }
 
@@ -139,14 +143,42 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
   const handleReferenceFiles = (files: FileList | null) => {
     if (!files) return
     const incoming = Array.from(files).filter(isVideoFile)
-    setReferenceVideos((prev) => {
-      const room = MAX_REFERENCE_VIDEOS - prev.length
-      const toAdd = incoming.slice(0, room).map((file) => ({
-        id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }))
-      return [...prev, ...toAdd]
+    
+    incoming.forEach((file) => {
+      setReferenceVideos((prev) => {
+        if (prev.length >= MAX_REFERENCE_VIDEOS) return prev
+        const id = `${file.name}-${file.size}-${Date.now()}-${Math.random()}`
+        const newRef: ReferenceVideo = {
+          id,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          uploadStatus: 'uploading'
+        }
+
+        const formData = new FormData()
+        formData.append('file', file)
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', UPLOAD_REFERENCE_ENDPOINT)
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const result = JSON.parse(xhr.responseText)
+              setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'done', uploadResult: result } : v))
+            } catch {
+              setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+            }
+          } else {
+            setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+          }
+        }
+        xhr.onerror = () => {
+          setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+        }
+        xhr.send(formData)
+
+        return [...prev, newRef]
+      })
     })
   }
 
@@ -271,7 +303,13 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                     ×
                   </button>
                   <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-amber text-canvas flex items-center justify-center">
-                    <CheckIcon />
+                    {ref.uploadStatus === 'uploading' ? (
+                      <div className="w-3 h-3 rounded-full border border-canvas border-t-transparent animate-spin" />
+                    ) : ref.uploadStatus === 'error' ? (
+                      <span className="text-xs leading-none">!</span>
+                    ) : (
+                      <CheckIcon />
+                    )}
                   </div>
                 </div>
               ))}
@@ -303,6 +341,9 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                   sourceFile,
                   referenceVideos: referenceVideos.map((v) => v.file),
                   uploadResult,
+                  referenceUploadResults: referenceVideos
+                    .filter((v) => v.uploadStatus === 'done' && v.uploadResult)
+                    .map((v) => v.uploadResult!),
                 })
               }
               className="w-full mt-8 py-3.5 rounded-xl font-medium bg-amber text-canvas hover:bg-amber-bright transition-colors"

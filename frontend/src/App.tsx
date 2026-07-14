@@ -8,6 +8,7 @@ type Screen = 'upload' | 'prompt' | 'timeline'
 function App() {
   const [screen, setScreen] = useState<Screen>('upload')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [referenceResults, setReferenceResults] = useState<any[]>([])
 
   if (screen === 'upload') {
     return (
@@ -15,6 +16,7 @@ function App() {
         onContinue={(data) => {
           console.log('Backend upload result:', data.uploadResult)
           setVideoUrl(URL.createObjectURL(data.sourceFile))
+          setReferenceResults(data.referenceUploadResults || [])
           setScreen('prompt')
         }}
       />
@@ -36,7 +38,7 @@ function App() {
   }
 
   if (screen === 'timeline' && videoUrl) {
-    return <TimelineEditorPage videoUrl={videoUrl} />
+    return <TimelineEditorPage videoUrl={videoUrl} referenceResults={referenceResults} />
   }
 
   return null
