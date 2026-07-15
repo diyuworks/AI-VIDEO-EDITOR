@@ -8,6 +8,7 @@ interface Clip {
   start: number // seconds
   end: number // seconds
   label: string
+  playbackRate?: number
 }
 
 const PIXELS_PER_SECOND = 70
@@ -21,9 +22,12 @@ const TRACK_META: Record<TrackType, { label: string; color: string; border: stri
 
 interface TimelineEditorPageProps {
   videoUrl: string
+  objectName: string
+  referenceObjectName?: string | null
+  promptData: { presets: string[]; prompt: string }
 }
 
-export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, objectName, referenceObjectName, promptData }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -32,49 +36,208 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadingMsg, setLoadingMsg] = useState('Initializing...')
 
-  // Once we know the video's real duration, seed the timeline with one
-  // full-length clip on the video track. Real scene-detected clips will
-  // replace this once the backend's scene detection endpoint exists.
   const handleLoadedMetadata = () => {
     const d = videoRef.current?.duration ?? 0
     setDuration(d)
     
-    // DEMO HACK: Adding mock Audio and Caption tracks for the presentation!
-    setClips([
-      { id: 'clip-1', track: 'video', start: 0, end: d, label: 'Original Footage (Cinematic)' },
-      { id: 'audio-1', track: 'audio', start: 0, end: d, label: 'AI Voiceover (Gujarati) + Music' },
+    // Update all clips to match true video duration
+    setClips(prev => {
+      if (prev.length === 0) return prev
       
-      { id: 'cap-1', track: 'overlay', start: 0, end: 1.5, label: 'આ અદ્ભુત સફરમાં' },
-      { id: 'cap-2', track: 'overlay', start: 1.5, end: 3, label: 'તમારું સ્વાગત છે' },
-      { id: 'cap-3', track: 'overlay', start: 3, end: 4.5, label: 'આજે આપણે' },
-      { id: 'cap-4', track: 'overlay', start: 4.5, end: 6, label: 'એક નવી જગ્યાની' },
-      { id: 'cap-5', track: 'overlay', start: 6, end: 8, label: 'મુલાકાત લઈ રહ્યા છીએ' },
-      { id: 'cap-6', track: 'overlay', start: 8, end: 9.5, label: 'કુદરતની આ સુંદરતા' },
-      { id: 'cap-7', track: 'overlay', start: 9.5, end: 11, label: 'ખરેખર મનમોહક છે' },
-      { id: 'cap-8', track: 'overlay', start: 11, end: 12.5, label: 'જ્યારે પણ આપણે' },
-      { id: 'cap-9', track: 'overlay', start: 12.5, end: 14, label: 'આવી જગ્યાએ આવીએ છીએ' },
-      { id: 'cap-10', track: 'overlay', start: 14, end: 15.5, label: 'ત્યારે શહેરની દોડધામ' },
-      { id: 'cap-11', track: 'overlay', start: 15.5, end: 17, label: 'ભૂલી જઈએ છીએ' },
-      { id: 'cap-12', track: 'overlay', start: 17, end: 18.5, label: 'આ લીલાછમ ખેતરો' },
-      { id: 'cap-13', track: 'overlay', start: 18.5, end: 20, label: 'અને વાદળછાયું આકાશ' },
-      { id: 'cap-14', track: 'overlay', start: 20, end: 21.5, label: 'આપણા મનને' },
-      { id: 'cap-15', track: 'overlay', start: 21.5, end: 23.5, label: 'એક અનોખી શાંતિ આપે છે' },
-      { id: 'cap-16', track: 'overlay', start: 23.5, end: 25, label: 'અહીંની તાજી હવા' },
-      { id: 'cap-17', track: 'overlay', start: 25, end: 27, label: 'એક નવી ઉર્જા આપે છે' },
-      { id: 'cap-18', track: 'overlay', start: 27, end: 28.5, label: 'પહાડોની વચ્ચે' },
-      { id: 'cap-19', track: 'overlay', start: 28.5, end: 30, label: 'વહેતી આ નદી' },
-      { id: 'cap-20', track: 'overlay', start: 30, end: 32, label: 'કેટલો અદ્ભુત નજારો છે' },
-      { id: 'cap-21', track: 'overlay', start: 32, end: 33.5, label: 'પ્રકૃતિ સાથેનો' },
-      { id: 'cap-22', track: 'overlay', start: 33.5, end: 35, label: 'આ સીધો સંપર્ક' },
-      { id: 'cap-23', track: 'overlay', start: 35, end: 36.5, label: 'જીવનને એક' },
-      { id: 'cap-24', track: 'overlay', start: 36.5, end: 38, label: 'નવી દિશા આપે છે' },
-      { id: 'cap-25', track: 'overlay', start: 38, end: 39.5, label: 'તમે પણ' },
-      { id: 'cap-26', track: 'overlay', start: 39.5, end: 41, label: 'આવી સુંદર જગ્યાઓની' },
-      { id: 'cap-27', track: 'overlay', start: 41, end: 43, label: 'મુલાકાત જરૂર લો' },
-      { id: 'cap-28', track: 'overlay', start: 43, end: d, label: 'આ એક સિનેમેટિક અનુભવ છે' },
-    ])
+      // Deep copy to prevent React state mutation bugs!
+      const updated = prev.map(c => ({ ...c }))
+      
+      updated.forEach(c => {
+        if (c.track === 'video' || c.track === 'audio') {
+          c.end = d
+        }
+      })
+      
+      // Fix dynamic overlay chunks to stretch across full video duration
+      const genOverlays = updated.filter(c => c.id.startsWith('cap-gen-'))
+      if (genOverlays.length > 0) {
+        const timePerChunk = d / genOverlays.length
+        genOverlays.forEach((c, i) => {
+          c.start = i * timePerChunk
+          c.end = (i + 1) * timePerChunk
+        })
+      }
+      return updated
+    })
   }
+  
+  // Watch for duration changes in case metadata loads after clips are generated
+  useEffect(() => {
+     if (duration > 0 && clips.length > 0) {
+        // Just trigger the same logic
+        handleLoadedMetadata()
+     }
+  }, [duration])
+
+  // Fetch AI Plan & Captions
+  useEffect(() => {
+    let isMounted = true
+    
+    const generatePlan = async () => {
+      try {
+        setIsLoading(true)
+        
+        // 1. Generate Captions (from reference video if available, else main video)
+        const targetObjectForCaptions = referenceObjectName || objectName
+        setLoadingMsg(`Analyzing audio & generating script (Whisper AI) from ${referenceObjectName ? 'reference' : 'video'}...`)
+        const capRes = await fetch(`http://localhost:8000/captions/${targetObjectForCaptions}`, { method: 'POST' })
+        if (!capRes.ok) throw new Error('Failed to generate captions')
+        const capData = await capRes.json()
+        
+        if (!isMounted) return
+        
+        // 2. Generate Editing Plan
+        setLoadingMsg('Structuring editing plan (Groq AI)...')
+        const planRes = await fetch('http://localhost:8000/editing-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            object_name: objectName,
+            reference_object_name: referenceObjectName || null, // Optional
+            prompt: promptData.prompt,
+            structured_options: { presets: promptData.presets },
+            reference_captions: capData.captions // Pass the extracted script so Groq knows what to adapt
+          })
+        })
+        if (!planRes.ok) throw new Error('Failed to generate editing plan')
+        const planData = await planRes.json()
+        
+        if (!isMounted) return
+
+        // 3. Generate TTS from the generated script
+        let ttsAudioId = 'audio-main'
+        let ttsAudioUrl = ''
+        if (planData.editing_plan.generated_script) {
+          setLoadingMsg('Generating AI Voiceover (Edge TTS)...')
+          try {
+            const ttsRes = await fetch('http://localhost:8000/generate-tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: planData.editing_plan.generated_script })
+            })
+            if (ttsRes.ok) {
+              const ttsData = await ttsRes.json()
+              ttsAudioId = ttsData.audio_id
+              ttsAudioUrl = ttsData.audio_url
+            }
+          } catch (e) {
+            console.error('Failed to generate TTS', e)
+          }
+        }
+        
+        if (!isMounted) return
+
+        // Determine true duration to prevent React closure bugs
+        const currentDuration = videoRef.current?.duration || duration || 10;
+
+        let actualAudioDuration = currentDuration;
+        let speedRatio = 1.0;
+        if (ttsAudioId !== 'audio-main' && ttsAudioUrl) {
+          // Fetch true duration of the generated audio for perfect caption sync
+          const audioDur = await new Promise<number>((resolve) => {
+            const tempAudio = new Audio(ttsAudioUrl);
+            tempAudio.addEventListener('loadedmetadata', () => resolve(tempAudio.duration));
+            tempAudio.addEventListener('error', () => resolve(currentDuration));
+          });
+          if (audioDur > 0) {
+            speedRatio = audioDur / currentDuration;
+          }
+        }
+
+        // 4. Assemble clips
+        const newClips: Clip[] = []
+        
+        // Base video clip
+        newClips.push({
+          id: 'video-main',
+          track: 'video',
+          start: 0,
+          end: currentDuration, 
+          label: 'Original Footage'
+        })
+        
+        // Dynamic Captions clips (from generated script)
+        if (planData.editing_plan.generated_script) {
+          // Break the script into smaller chunks (3 words each for punchy, dynamic captions)
+          const words = planData.editing_plan.generated_script.split(/\s+/);
+          const chunks = [];
+          let currentChunk = [];
+          for (let i = 0; i < words.length; i++) {
+            currentChunk.push(words[i]);
+            if (currentChunk.length >= 3 || i === words.length - 1) {
+              chunks.push(currentChunk.join(' '));
+              currentChunk = [];
+            }
+          }
+
+          // Character-weighted proportional timing for PERFECT voice sync!
+          // This ensures long words stay on screen longer, matching exactly how the AI speaks.
+          const totalChars = chunks.reduce((acc, text) => acc + text.length, 0);
+          let currentTime = 0;
+          
+          chunks.forEach((text, i) => {
+            // Add a baseline weight (5) to ensure even short words get enough readable time
+            const weight = text.length + 5; 
+            const totalWeight = totalChars + (chunks.length * 5);
+            const chunkDuration = (weight / totalWeight) * actualAudioDuration;
+            
+            newClips.push({
+              id: `cap-gen-${i}`,
+              track: 'overlay',
+              start: currentTime,
+              end: currentTime + chunkDuration,
+              label: text
+            });
+            currentTime += chunkDuration;
+          });
+        } else if (capData.captions && capData.captions.length > 0) {
+          // Fallback to reference captions
+          capData.captions.forEach((c: any, i: number) => {
+            newClips.push({
+              id: `cap-${i}`,
+              track: 'overlay',
+              start: c.start,
+              end: c.end,
+              label: c.text
+            })
+          })
+        }
+        
+        // Audio clip (AI Voiceover)
+        newClips.push({
+          id: ttsAudioId,
+          track: 'audio',
+          start: 0,
+          end: currentDuration, // Force it to span EXACTLY the video duration
+          label: 'AI Voiceover (Generated)',
+          playbackRate: speedRatio
+        })
+        
+        setClips(newClips)
+        setIsLoading(false)
+        
+      } catch (err: any) {
+        console.error(err)
+        if (isMounted) {
+          setLoadingMsg(`Error: ${err.message || 'Failed to generate plan'}. Check console/backend logs.`)
+          // Don't auto-hide the error immediately so they can read it
+          setTimeout(() => setIsLoading(false), 5000)
+        }
+      }
+    }
+    
+    generatePlan()
+    
+    return () => { isMounted = false }
+  }, [objectName, promptData])
 
   const handleTimeUpdate = () => {
     if (videoRef.current) setPlayhead(videoRef.current.currentTime)
@@ -107,9 +270,9 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
   const currentCaptionClip = clips.find(c => c.track === 'overlay' && playhead >= c.start && playhead < c.end);
   const displayCaption = currentCaptionClip ? currentCaptionClip.label.replace(/\[.*?\]\s*/, '').replace(/"/g, '') : '';
 
-  // --- Perfect Audio-Caption Synchronization ---
+  // --- Perfect Audio Synchronization for TTS ---
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentClipIdRef = useRef<string | null>(null);
+  const currentAudioClipIdRef = useRef<string | null>(null);
   
   useEffect(() => {
     if (!audioRef.current) {
@@ -121,24 +284,37 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
       return;
     }
 
-    const currentClipId = currentCaptionClip?.id || null;
+    // Find the audio clip in the timeline that the playhead is currently inside
+    const audioClip = clips.find(c => c.track === 'audio' && playhead >= c.start && playhead < c.end);
+    const audioClipId = audioClip?.id || null;
     
-    // If the caption changed, load and play the specific audio for that caption
-    if (currentClipId && currentClipId !== currentClipIdRef.current) {
-      audioRef.current.src = `/tts/${currentClipId}.mp3`;
+    // If we have an AI voiceover clip that should be playing right now!
+    if (audioClipId && audioClipId !== 'audio-main' && audioClipId !== currentAudioClipIdRef.current) {
+      audioRef.current.src = `http://localhost:8000/tts-file/${audioClipId}.mp3`;
+      
+      const rate = audioClip?.playbackRate || 1.0;
+      audioRef.current.playbackRate = rate;
+      
+      // Sync it to the current playhead (scaled by playbackRate to match original audio time)
+      audioRef.current.currentTime = playhead * rate;
       audioRef.current.play().catch(err => console.log('Audio error:', err));
-      currentClipIdRef.current = currentClipId;
+      currentAudioClipIdRef.current = audioClipId;
     } 
-    else if (!currentClipId) {
+    else if (!audioClipId || audioClipId === 'audio-main') {
       audioRef.current.pause();
-      currentClipIdRef.current = null;
+      currentAudioClipIdRef.current = null;
     }
     else if (audioRef.current.paused) {
-      // If it's paused inside the same clip, resume it
+      const rate = audioClip?.playbackRate || 1.0;
+      audioRef.current.playbackRate = rate;
+      // Sync it to the current playhead before resuming
+      if (Math.abs(audioRef.current.currentTime - (playhead * rate)) > 0.5) {
+        audioRef.current.currentTime = playhead * rate;
+      }
       audioRef.current.play().catch(err => console.log('Audio error:', err));
     }
 
-  }, [isPlaying, currentCaptionClip]);
+  }, [isPlaying, clips, playhead]);
 
   const seekTo = (seconds: number) => {
     if (videoRef.current) {
@@ -190,6 +366,12 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
 
   return (
     <div className="min-h-screen bg-canvas text-white font-body flex flex-col">
+      {isLoading && (
+        <div className="absolute inset-0 z-50 bg-canvas/90 backdrop-blur flex flex-col items-center justify-center">
+          <div className="w-14 h-14 mb-4 rounded-full border-2 border-teal/30 border-t-teal animate-spin" />
+          <p className="font-mono text-teal tracking-wide">{loadingMsg}</p>
+        </div>
+      )}
       {/* ---------------- PREVIEW ---------------- */}
       <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh]">
         <div className="relative h-full w-full flex items-center justify-center">
@@ -200,17 +382,15 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
             onTimeUpdate={handleTimeUpdate}
             className="max-h-full max-w-full rounded-lg"
           />
+          {/* Caption Overlay */}
           {displayCaption && (
-            <div className="absolute bottom-[20%] left-0 right-0 flex justify-center pointer-events-none px-8">
-              <span 
-                className="text-white text-4xl md:text-5xl lg:text-6xl font-extrabold uppercase text-center tracking-tight"
-                style={{ 
-                  WebkitTextStroke: '2px black', 
-                  textShadow: '3px 3px 0px rgba(0,0,0,1), 6px 6px 15px rgba(0,0,0,0.8)' 
-                }}
-              >
+            <div className="absolute bottom-10 left-0 w-full flex justify-center px-4 z-10 pointer-events-none">
+              <p className="text-white text-3xl md:text-4xl font-black text-center px-4 py-2 max-w-[90%] break-words leading-tight" style={{
+                textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 4px 15px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.5)',
+                fontFamily: '"Hind Vadodara", "Mukta Vaani", sans-serif'
+              }}>
                 {displayCaption}
-              </span>
+              </p>
             </div>
           )}
         </div>

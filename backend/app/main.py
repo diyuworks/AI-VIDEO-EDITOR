@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import uploads, metadata, captions, reference, editing_plan
+from app.routers import uploads, metadata, captions, reference, editing_plan, tts
 from app.database import init_db
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(title="AI Video Editor API", version="0.1.0")
 
@@ -19,6 +23,7 @@ app.include_router(metadata.router)
 app.include_router(captions.router)
 app.include_router(reference.router)
 app.include_router(editing_plan.router)
+app.include_router(tts.router)
 
 @app.get("/test_source")
 def test_source():

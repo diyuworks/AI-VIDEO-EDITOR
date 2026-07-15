@@ -7,7 +7,7 @@ from app.config import MINIO_BUCKET
 
 router = APIRouter()
 
-model = WhisperModel("base", device="cpu", compute_type="int8")
+model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
 
 @router.post("/captions/{object_name}")
@@ -30,6 +30,14 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
     try:
         segments, info = model.transcribe(video_url, beam_size=5)
     except Exception as e:
+        if "tuple index out of range" in str(e):
+            # This happens when the video has no audio track
+            return {
+                "object_name": object_name,
+                "language": "en",
+                "captions": [],
+                "note": "No audio track found in video."
+            }
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
     # Purane captions (agar pehle se hain) hata do, taaki duplicate na ho

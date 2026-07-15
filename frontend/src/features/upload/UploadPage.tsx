@@ -23,6 +23,7 @@ interface UploadPageProps {
     sourceFile: File
     referenceVideos: File[]
     uploadResult: UploadResult | null
+    referenceUploadResult: UploadResult | null
   }) => void
 }
 
@@ -134,11 +135,15 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     setUploadResult(null)
   }
 
-  // ---- Reference video handlers ----
+  const [referenceUploadResult, setReferenceUploadResult] = useState<UploadResult | null>(null)
+  const [isUploadingRefs, setIsUploadingRefs] = useState(false)
 
-  const handleReferenceFiles = (files: FileList | null) => {
+  const handleReferenceFiles = async (files: FileList | null) => {
     if (!files) return
     const incoming = Array.from(files).filter(isVideoFile)
+    if (incoming.length === 0) return
+
+    setIsUploadingRefs(true)
     setReferenceVideos((prev) => {
       const room = MAX_REFERENCE_VIDEOS - prev.length
       const toAdd = incoming.slice(0, room).map((file) => ({
@@ -148,10 +153,31 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
       }))
       return [...prev, ...toAdd]
     })
+
+    // Upload the first reference video to backend
+    const refFile = incoming[0]
+    const formData = new FormData()
+    formData.append('file', refFile)
+
+    try {
+      const res = await fetch(UPLOAD_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+      })
+      if (res.ok) {
+        const result = await res.json()
+        setReferenceUploadResult(result)
+      }
+    } catch (e) {
+      console.error('Failed to upload reference video', e)
+    } finally {
+      setIsUploadingRefs(false)
+    }
   }
 
   const removeReferenceVideo = (id: string) => {
     setReferenceVideos((prev) => prev.filter((v) => v.id !== id))
+    // Simplification: if we remove, we don't bother deleting from backend for now
   }
 
   return (
@@ -303,6 +329,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                   sourceFile,
                   referenceVideos: referenceVideos.map((v) => v.file),
                   uploadResult,
+                  referenceUploadResult,
                 })
               }
               className="w-full mt-8 py-3.5 rounded-xl font-medium bg-amber text-canvas hover:bg-amber-bright transition-colors"

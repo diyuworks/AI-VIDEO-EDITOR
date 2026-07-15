@@ -14,6 +14,8 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 class EditingPlanRequest(BaseModel):
     object_name: str
+    reference_object_name: Optional[str] = None
+    reference_captions: Optional[List[dict]] = None
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None  # e.g. {"style": "fast-paced", "music": "upbeat"}
 
@@ -27,21 +29,45 @@ def generate_editing_plan(request: EditingPlanRequest, session: Session = Depend
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # 2. Captions fetch karo (agar available hain)
-    captions = session.exec(
-        select(Caption).where(Caption.object_name == request.object_name)
-    ).all()
-    captions_text = "\n".join([f"[{c.start}-{c.end}] {c.text}" for c in captions]) or "No captions available"
+    # 2. Reference script processing
+    reference_text = ""
+    if request.reference_captions:
+        reference_text = "\n".join([c.get("text", "") for c in request.reference_captions])
 
     # 3. Context build karo Groq ke liye
+    duration = video.duration_seconds if video.duration_seconds else 45
+    word_count = int(duration * 2.5)
     context = f"""
-You are an AI video editing assistant. Based on the video information below, generate a structured editing plan in JSON format.
+You are an AI video editing assistant and scriptwriter. Based on the information below, generate a structured editing plan and a Voiceover Script in JSON format.
 
-Video duration: {video.duration_seconds} seconds
-Resolution: {video.width}x{video.height}
-Captions/Transcript:
-{captions_text}
+Main Video duration: {duration} seconds
+Main Video Resolution: {video.width}x{video.height}
+"""
+    duration_str = f"CRITICAL REQUIREMENT: The video is EXACTLY {duration} seconds long. You MUST write a script that is EXACTLY 160 to 175 words long. Count the words carefully. This is CRITICAL because the voiceover MUST be spoken very FAST and energetically like a modern social media reel. If you write a short script, it will play in slow-motion and ruin the video. Write a long, continuous, detailed voiceover paragraph consisting of at least 14 to 16 full sentences. Do NOT fail this."
 
+    if reference_text:
+        context += f"""
+Reference Video Script/Voiceover:
+"{reference_text}"
+
+Task: {duration_str}
+You MUST write a NEW voiceover script for the Main Video that perfectly matches the STYLE, TONE, and ENERGY of the Reference Video.
+The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો). 
+CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
+CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media. 
+DO NOT use English characters for the script.
+DO NOT translate word-for-word. Adapt the message to fit the silent drone/scenic footage of the Main Video.
+"""
+    else:
+        context += f"""
+Task: {duration_str}
+Write a highly engaging, professional voiceover script for the Main Video. 
+The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો).
+CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
+CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media.
+"""
+
+    context += f"""
 User's prompt: {request.prompt or "No specific prompt given"}
 Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
 
@@ -51,6 +77,7 @@ Generate a JSON editing plan with this exact structure:
   "caption_style": {{"font": "...", "position": "...", "animation": "..."}},
   "effects": ["effect1", "effect2"],
   "music_suggestion": "description of music style",
+  "generated_script": "The full voiceover script text that will be converted to TTS",
   "summary": "brief explanation of the editing approach"
 }}
 
