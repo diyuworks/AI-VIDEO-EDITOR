@@ -38,6 +38,11 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMsg, setLoadingMsg] = useState('Initializing...')
+  
+  // Export State
+  const [exportAudioId, setExportAudioId] = useState<string | null>(null)
+  const [exportScript, setExportScript] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleLoadedMetadata = () => {
     const d = videoRef.current?.duration ?? 0
@@ -127,10 +132,12 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
               const ttsData = await ttsRes.json()
               ttsAudioId = ttsData.audio_id
               ttsAudioUrl = ttsData.audio_url
+              setExportAudioId(ttsData.audio_id)
             }
           } catch (e) {
             console.error('Failed to generate TTS', e)
           }
+          setExportScript(planData.editing_plan.generated_script)
         }
         
         if (!isMounted) return
@@ -381,6 +388,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             className="max-h-full max-w-full rounded-lg"
+            muted
           />
           {/* Caption Overlay */}
           {displayCaption && (
@@ -420,12 +428,57 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
           </span>
         </div>
         <button 
-          onClick={() => {
-            alert('Exporting Video...\n\nApplying AI Voiceover...\nRendering Captions...\n\n✅ Video Exported Successfully (Demo)!')
+          onClick={async () => {
+            if (!exportAudioId || !exportScript) {
+              alert('Wait for AI plan to finish generating before exporting!');
+              return;
+            }
+            try {
+              setIsExporting(true);
+              const res = await fetch('http://localhost:8000/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  object_name: objectName,
+                  audio_id: exportAudioId,
+                  generated_script: exportScript
+                })
+              });
+              
+              if (!res.ok) {
+                throw new Error('Export failed on backend');
+              }
+              
+              // Trigger download of the returned blob
+              const blob = await res.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.style.display = 'none';
+              a.href = url;
+              a.download = 'AI_Edited_Video.mp4';
+              document.body.appendChild(a);
+              a.click();
+              window.URL.revokeObjectURL(url);
+              document.body.removeChild(a);
+              
+            } catch (err) {
+              console.error(err);
+              alert('Failed to export video.');
+            } finally {
+              setIsExporting(false);
+            }
           }}
-          className="px-5 py-2 rounded-lg bg-amber text-canvas font-medium text-sm hover:bg-amber-bright transition-colors"
+          disabled={isExporting}
+          className="px-5 py-2 rounded-lg bg-amber text-canvas font-medium text-sm hover:bg-amber-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          Export
+          {isExporting ? (
+            <>
+              <div className="w-4 h-4 rounded-full border-2 border-canvas border-t-transparent animate-spin" />
+              Exporting...
+            </>
+          ) : (
+            'Export'
+          )}
         </button>
       </div>
 

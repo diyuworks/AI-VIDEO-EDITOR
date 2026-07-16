@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import uploads, metadata, captions, reference, editing_plan, tts
+from app.routers import uploads, metadata, captions, reference, editing_plan, tts, export
 from app.database import init_db
 from dotenv import load_dotenv
 
@@ -24,6 +24,7 @@ app.include_router(captions.router)
 app.include_router(reference.router)
 app.include_router(editing_plan.router)
 app.include_router(tts.router)
+app.include_router(export.router)
 
 @app.get("/test_source")
 def test_source():

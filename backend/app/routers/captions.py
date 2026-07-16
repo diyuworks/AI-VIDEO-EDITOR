@@ -28,7 +28,7 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
 
     try:
-        segments, info = model.transcribe(video_url, beam_size=5)
+        segments, info = model.transcribe(video_url, beam_size=5, condition_on_previous_text=False)
     except Exception as e:
         if "tuple index out of range" in str(e):
             # This happens when the video has no audio track
