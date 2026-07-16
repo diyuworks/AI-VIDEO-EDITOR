@@ -16,3 +16,4 @@ segment-anything
 torch
 torchvision
 opencv-python-headless
+edge-tts==7.2.8
