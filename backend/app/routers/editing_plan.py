@@ -62,8 +62,12 @@ Examples of a GOOD start:
 - "આજે અમે તમારા માટે લાવ્યા છીએ એક એવી શાનદાર જમીન, જે તમારું મન મોહી લેશે..."
 Make the start sound EXACTLY like this—natural, welcoming, and directly speaking to a buyer or investor.
 
-CRITICAL LOCATION FORMATTING: Whenever you mention the location of the land, you MUST format it in this exact professional sequence: "ગામ [Village], તાલુકો [Taluka], જિલ્લો [District]" (For example: "ગામ શેખપુર, તાલુકો વડનગર, જિલ્લો મહેસાણા"). Do not write the location randomly.
+CRITICAL LOCATION FORMATTING: You MUST ALWAYS include the exact location in this specific sequence: "ગામ શેખપુર, તાલુકો વડનગર, જિલ્લો મહેસાણા". Do NOT use any other village, taluka, or district name.
 
+CRITICAL PRICING & TENURE INFO: You MUST include the exact price and condition: "ભાવ પ્રતિ વીઘા ચાલીસ લાખ છે" (Price is 40 Lakh per bigha). You MUST explicitly mention the word "શરત" (Sharat / Tenure), for example "નવી શરતની જમીન" (New Tenure Land). Do not skip this!
+
+CRITICAL CONTENT RULE (No Plus/Minus): Do NOT add extra unnecessary words (no 'plus') and do NOT skip important details from the reference video (no 'minus'). You MUST retain EVERY SINGLE technical real estate word from the reference (like શરત, વીઘા, ભાવ, etc.). Keep the script highly realistic, exact, and to the point.
+DO NOT write headers like "Title:", "ટાઇટલ:", "શીર્ષક:", or "Script:" inside the generated_script. The script should ONLY contain the exact words to be spoken.
 CRITICAL PUNCTUATION RULE: You MUST use proper punctuation (commas ',', full stops '.', question marks '?'). Write short, punchy sentences. This is required so the AI voice pauses naturally and breathes like a normal human in the video.
 
 CRITICAL PURE GUJARATI RULE: Do NOT use any Hindi words (e.g. 'lekin', 'zaroor', 'dost'). Do NOT use English words or transliterated English words (e.g. do NOT write 'ટાઇટલ' for Title, 'વિડિયો' for Video, or 'લોકેશન' for Location). Use ONLY pure, authentic Gujarati words (e.g. 'શીર્ષક', 'દ્રશ્ય', 'જગ્યા'). It must sound exactly like a local Gujarati person.
@@ -123,8 +127,11 @@ Return ONLY valid JSON, no extra text or markdown formatting.
             "ભાવો": "ભાવ",
             "ટાઇટલ:": "",
             "ટાઈટલ:": "",
-            "ટાઇટલ": "જમીન",
-            "ટાઈટલ": "જમીન"
+            "ટાઇટલ": "",
+            "ટાઈટલ": "",
+            "Title:": "",
+            "title:": "",
+            "શીર્ષક:": ""
         }
         for wrong, right in corrections.items():
             raw_text = raw_text.replace(wrong, right)

@@ -38,6 +38,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMsg, setLoadingMsg] = useState('Initializing...')
+  const [wordBoundaries, setWordBoundaries] = useState<any[]>([])
   
   // Export State
   const [exportAudioId, setExportAudioId] = useState<string | null>(null)
@@ -133,6 +134,9 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
               ttsAudioId = ttsData.audio_id
               ttsAudioUrl = ttsData.audio_url
               setExportAudioId(ttsData.audio_id)
+              if (ttsData.word_boundaries) {
+                setWordBoundaries(ttsData.word_boundaries)
+              }
             }
           } catch (e) {
             console.error('Failed to generate TTS', e)
@@ -172,7 +176,48 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
         })
         
         // Dynamic Captions clips (from generated script)
-        if (planData.editing_plan.generated_script) {
+        if (wordBoundaries && wordBoundaries.length > 0) {
+          // PERFECT SYNC: Group exact word boundaries from TTS into natural chunks
+          let currentChunk = [];
+          let chunkIndex = 0;
+          for (let i = 0; i < wordBoundaries.length; i++) {
+            currentChunk.push(wordBoundaries[i]);
+            
+            const isSentenceEnd = /[.!?।]/.test(wordBoundaries[i].text);
+            const isComma = /,/.test(wordBoundaries[i].text);
+            
+            // Group up to 6 words to allow full addresses to stay together
+            // Break immediately on Full Stops (.) so new sentences always get a fresh caption!
+            // Break on commas only if we already have 4+ words.
+            if (currentChunk.length >= 6 || isSentenceEnd || (isComma && currentChunk.length >= 4) || i === wordBoundaries.length - 1) {
+              
+              let start = currentChunk[0].start;
+              let end = currentChunk[currentChunk.length - 1].end;
+              
+              // Prevent "aage piche" flickering! Extend end time to bridge short silences between words
+              if (i + 1 < wordBoundaries.length) {
+                 const nextWordStart = wordBoundaries[i + 1].start;
+                 const gap = nextWordStart - end;
+                 if (gap > 0 && gap < 1.0) { 
+                    end = nextWordStart; // Fill the gap perfectly
+                 } else if (gap >= 1.0) {
+                    end += 0.3; // Small padding for large gaps
+                 }
+              } else {
+                 end += 0.5; // Final word padding
+              }
+              
+              newClips.push({
+                id: `cap-gen-${chunkIndex++}`,
+                track: 'overlay',
+                start: start,
+                end: end,
+                label: currentChunk.map(w => w.text).join(' ')
+              });
+              currentChunk = [];
+            }
+          }
+        } else if (planData.editing_plan.generated_script) {
           // Break the script into smaller chunks (3 words each for punchy, dynamic captions)
           const words = planData.editing_plan.generated_script.split(/\s+/);
           const chunks = [];
@@ -441,7 +486,8 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
                 body: JSON.stringify({
                   object_name: objectName,
                   audio_id: exportAudioId,
-                  generated_script: exportScript
+                  generated_script: exportScript,
+                  word_boundaries: wordBoundaries
                 })
               });
               

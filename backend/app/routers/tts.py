@@ -28,14 +28,29 @@ async def generate_tts(request: TTSRequest):
         # User explicitly requested the Male Voice which was Edge-TTS Niranjan
         # Restored to completely normal speed to guarantee exact original tone
         communicate = edge_tts.Communicate(request.text, "gu-IN-NiranjanNeural")
-        await communicate.save(filepath)
+        
+        word_boundaries = []
+        with open(filepath, "wb") as f:
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    f.write(chunk["data"])
+                elif chunk["type"] == "WordBoundary":
+                    start_sec = chunk["offset"] / 10000000.0
+                    duration_sec = chunk["duration"] / 10000000.0
+                    word_boundaries.append({
+                        "text": chunk["text"],
+                        "start": round(start_sec, 3),
+                        "end": round(start_sec + duration_sec, 3)
+                    })
+                    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS Generation failed: {str(e)}")
 
     return {
         "success": True,
         "audio_id": file_id,
-        "audio_url": f"http://localhost:8000/tts-file/{filename}"
+        "audio_url": f"http://localhost:8000/tts-file/{filename}",
+        "word_boundaries": word_boundaries
     }
 
 @router.get("/tts-file/{filename}")

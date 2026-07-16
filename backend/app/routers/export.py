@@ -14,12 +14,57 @@ class ExportRequest(BaseModel):
     object_name: str
     audio_id: str
     generated_script: str
+    word_boundaries: list[dict] = None
 
 TMP_DIR = "tmp_exports"
 os.makedirs(TMP_DIR, exist_ok=True)
 
-def generate_srt(script_text: str, duration_sec: float, filepath: str):
-    # Smart chunking: respect punctuation and group 2-3 words for natural reading
+def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boundaries: list = None):
+    def format_time(seconds):
+        ms = int((seconds % 1) * 1000)
+        s = int(seconds)
+        m = s // 60
+        h = m // 60
+        s = s % 60
+        m = m % 60
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    if word_boundaries and len(word_boundaries) > 0:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            chunk_idx = 1
+            current_chunk = []
+            for i, wb in enumerate(word_boundaries):
+                current_chunk.append(wb)
+                
+                is_sentence_end = any(p in wb["text"] for p in ['.', '!', '?', '।'])
+                is_comma = ',' in wb["text"]
+                
+                if len(current_chunk) >= 6 or is_sentence_end or (is_comma and len(current_chunk) >= 4) or i == len(word_boundaries) - 1:
+                    start_time = current_chunk[0]["start"]
+                    end_time = current_chunk[-1]["end"]
+                    
+                    # Prevent flickering: Bridge short silences between words
+                    if i + 1 < len(word_boundaries):
+                        next_word_start = word_boundaries[i+1]["start"]
+                        gap = next_word_start - end_time
+                        if 0 < gap < 1.0:
+                            end_time = next_word_start
+                        elif gap >= 1.0:
+                            end_time += 0.3
+                    else:
+                        end_time += 0.5
+                        
+                    text = " ".join([w["text"] for w in current_chunk])
+                    
+                    f.write(f"{chunk_idx}\n")
+                    f.write(f"{format_time(start_time)} --> {format_time(end_time)}\n")
+                    f.write(f"{text}\n\n")
+                    
+                    chunk_idx += 1
+                    current_chunk = []
+        return
+
+    # Fallback Smart chunking: respect punctuation and group 2-3 words for natural reading
     clean_text = script_text.strip()
     words = clean_text.split()
     chunks = []
@@ -41,15 +86,6 @@ def generate_srt(script_text: str, duration_sec: float, filepath: str):
 
     time_per_chunk = duration_sec / len(chunks)
     
-    def format_time(seconds):
-        ms = int((seconds % 1) * 1000)
-        s = int(seconds)
-        m = s // 60
-        h = m // 60
-        s = s % 60
-        m = m % 60
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
     with open(filepath, 'w', encoding='utf-8') as f:
         for i, chunk in enumerate(chunks):
             start_time = i * time_per_chunk
@@ -81,7 +117,7 @@ async def export_video(request: ExportRequest):
         audio_duration = float(probe['format']['duration'])
         
         # 3. Generate SRT file
-        generate_srt(request.generated_script, audio_duration, srt_path)
+        generate_srt(request.generated_script, audio_duration, srt_path, request.word_boundaries)
         
         # Windows path escaping for ffmpeg subtitles filter is notoriously tricky.
         # It's better to use forward slashes and escape colons if absolute, or use relative paths.
