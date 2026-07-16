@@ -1,13 +1,20 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select, delete
-from faster_whisper import WhisperModel
+
 from app.database import get_session, VideoRecord, Caption
 from app.config import MINIO_BUCKET
 
 router = APIRouter()
 
-model = WhisperModel("base", device="cpu", compute_type="int8")
+_whisper_model = None
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel  # lazy import: avoids CUDA/cuDNN conflict with torch/SAM if this loads first
+        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+    return _whisper_model
 
 
 @router.post("/captions/{object_name}")
@@ -28,7 +35,7 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
 
     try:
-        segments, info = model.transcribe(video_url, beam_size=5)
+        segments, info = get_whisper_model().transcribe(video_url, beam_size=5)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 

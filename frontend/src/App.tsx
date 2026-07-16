@@ -9,6 +9,7 @@ function App() {
   const [screen, setScreen] = useState<Screen>('upload')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [referenceResults, setReferenceResults] = useState<any[]>([])
+  const [rawObjectName, setRawObjectName] = useState<string | null>(null)
 
   if (screen === 'upload') {
     return (
@@ -17,6 +18,9 @@ function App() {
           console.log('Backend upload result:', data.uploadResult)
           setVideoUrl(URL.createObjectURL(data.sourceFile))
           setReferenceResults(data.referenceUploadResults || [])
+          if (data.uploadResult?.object_name) {
+            setRawObjectName(data.uploadResult.object_name)
+          }
           setScreen('prompt')
         }}
       />
@@ -38,7 +42,13 @@ function App() {
   }
 
   if (screen === 'timeline' && videoUrl) {
-    return <TimelineEditorPage videoUrl={videoUrl} referenceResults={referenceResults} />
+    return (
+      <TimelineEditorPage
+        videoUrl={videoUrl}
+        referenceResults={referenceResults}
+        rawObjectName={rawObjectName || undefined}
+      />
+    )
   }
 
   return null

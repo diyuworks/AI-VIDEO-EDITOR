@@ -10,3 +10,9 @@ ffmpeg-python==0.2.0
 sqlmodel
 faster-whisper
 groq
+requests
+gTTS
+segment-anything
+torch
+torchvision
+opencv-python-headless

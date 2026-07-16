@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 type TrackType = 'video' | 'overlay' | 'audio'
-type OverlayKind = 'caption' | 'boundary' | 'logo'
+type OverlayKind = 'caption' | 'boundary' | 'logo' | 'autoBoundary'
 
 interface Clip {
   id: string
@@ -17,6 +17,11 @@ interface Clip {
   boxWidthPct?: number
   boxHeightPct?: number
   imageDataUrl?: string // only set for overlayKind === 'logo'
+  // Only set for overlayKind === 'autoBoundary' — a sampled path of box
+  // positions over time, from the real SAM + CSRT pipeline (see /segment-plot).
+  // Proven reliable for ~15-18s from the click point; render code interpolates
+  // between samples rather than jumping between them.
+  boxPath?: { time: number; xPct: number; yPct: number; widthPct: number; heightPct: number }[]
 }
 
 const PIXELS_PER_SECOND = 70
@@ -54,6 +59,7 @@ const GENERATION_STEPS = [
 interface TimelineEditorPageProps {
   videoUrl: string
   referenceResults?: any[]
+  rawObjectName?: string // backend object_name for the raw video — required for Auto Mark Land
 }
 
 // Drag session data. Lives in a ref (not state) so mousemove/mouseup handlers
@@ -67,7 +73,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, referenceResults }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, referenceResults, rawObjectName }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -106,6 +112,19 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
   const [logoTop, setLogoTop] = useState(4)
   const [logoWidth, setLogoWidth] = useState(22)
   const [logoHeight, setLogoHeight] = useState(14)
+
+  // ---- Auto Mark Land state (SAM + tracking) ----
+  const [autoMarkMode, setAutoMarkMode] = useState(false) // true = waiting for a click on the preview
+  const [autoMarkLoading, setAutoMarkLoading] = useState(false)
+  const [autoMarkError, setAutoMarkError] = useState<string | null>(null)
+  const [pendingAutoMark, setPendingAutoMark] = useState<{
+    path: { time: number; xPct: number; yPct: number; widthPct: number; heightPct: number }[]
+    startTime: number
+    endTime: number
+    score: number
+    warning?: string
+  } | null>(null)
+  const [autoMarkLabel, setAutoMarkLabel] = useState('')
 
   // ---- Drag-to-rearrange state ----
   const dragSessionRef = useRef<DragSession | null>(null)
@@ -167,6 +186,115 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
     const rect = e.currentTarget.getBoundingClientRect()
     const clickX = e.clientX - rect.left + (timelineScrollRef.current?.scrollLeft ?? 0)
     seekTo(clickX / PIXELS_PER_SECOND)
+  }
+
+  // ---- Auto Mark Land (SAM + tracking) ----
+
+  const handlePreviewClick = async (e: React.MouseEvent<HTMLVideoElement>) => {
+    if (!autoMarkMode || !videoRef.current) return
+
+    if (!rawObjectName) {
+      setAutoMarkError('No backend object_name available for this video — cannot run auto-tracking.')
+      setAutoMarkMode(false)
+      return
+    }
+
+    const video = videoRef.current
+    const rect = video.getBoundingClientRect()
+    // Convert click position (in displayed pixels) to the video's native resolution
+    const scaleX = video.videoWidth / rect.width
+    const scaleY = video.videoHeight / rect.height
+    const clickX = Math.round((e.clientX - rect.left) * scaleX)
+    const clickY = Math.round((e.clientY - rect.top) * scaleY)
+
+    setAutoMarkMode(false)
+    setAutoMarkLoading(true)
+    setAutoMarkError(null)
+
+    try {
+      const res = await fetch('http://localhost:8000/segment-plot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          object_name: rawObjectName,
+          click_x: clickX,
+          click_y: clickY,
+          click_time: playhead,
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody.detail || `Request failed (${res.status})`)
+      }
+      const data = await res.json()
+
+      const path = data.path.map((p: any) => ({
+        time: p.time,
+        xPct: p.x_pct,
+        yPct: p.y_pct,
+        widthPct: p.width_pct,
+        heightPct: p.height_pct,
+      }))
+
+      setPendingAutoMark({
+        path,
+        startTime: path[0]?.time ?? playhead,
+        endTime: path[path.length - 1]?.time ?? playhead,
+        score: data.initial_mask_score,
+        warning: data.warning,
+      })
+      setAutoMarkLabel('')
+    } catch (err: any) {
+      setAutoMarkError(err.message || 'Auto Mark Land failed. Check console/backend logs.')
+    } finally {
+      setAutoMarkLoading(false)
+    }
+  }
+
+  const confirmAutoMark = () => {
+    if (!pendingAutoMark || !autoMarkLabel.trim()) return
+    const newClip: Clip = {
+      id: `auto-boundary-${Date.now()}`,
+      track: 'overlay',
+      overlayKind: 'autoBoundary',
+      start: pendingAutoMark.startTime,
+      end: pendingAutoMark.endTime,
+      label: autoMarkLabel,
+      text: autoMarkLabel,
+      boxPath: pendingAutoMark.path,
+    }
+    setClips((prev) => [...prev, newClip])
+    setPendingAutoMark(null)
+    setAutoMarkLabel('')
+  }
+
+  const cancelAutoMark = () => {
+    setPendingAutoMark(null)
+    setAutoMarkLabel('')
+  }
+
+  // Interpolate a box position from a clip's path at the current playhead —
+  // the backend only sends samples every 0.5s, this fills the gaps smoothly.
+  const getInterpolatedBox = (clip: Clip, t: number) => {
+    if (!clip.boxPath || clip.boxPath.length === 0) return null
+    const path = clip.boxPath
+    if (t <= path[0].time) return path[0]
+    if (t >= path[path.length - 1].time) return path[path.length - 1]
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i]
+      const b = path[i + 1]
+      if (t >= a.time && t <= b.time) {
+        const ratio = (t - a.time) / (b.time - a.time || 1)
+        return {
+          xPct: a.xPct + (b.xPct - a.xPct) * ratio,
+          yPct: a.yPct + (b.yPct - a.yPct) * ratio,
+          widthPct: a.widthPct + (b.widthPct - a.widthPct) * ratio,
+          heightPct: a.heightPct + (b.heightPct - a.heightPct) * ratio,
+        }
+      }
+    }
+    return path[path.length - 1]
   }
 
   // ---- AI plan generation (real backend calls) ----
@@ -609,6 +737,10 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
   const activeLogo = clips.find(
     (c) => c.track === 'overlay' && c.overlayKind === 'logo' && playhead >= c.start && playhead < c.end,
   )
+  const activeAutoBoundary = clips.find(
+    (c) => c.track === 'overlay' && c.overlayKind === 'autoBoundary' && playhead >= c.start && playhead < c.end,
+  )
+  const activeAutoBoundaryBox = activeAutoBoundary ? getInterpolatedBox(activeAutoBoundary, playhead) : null
 
   const tracks: TrackType[] = ['video', 'overlay', 'audio']
   const timelineWidth = Math.max(duration * PIXELS_PER_SECOND, 600)
@@ -626,8 +758,32 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
             src={videoUrl}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
-            className="max-h-full max-w-full rounded-lg block"
+            onClick={handlePreviewClick}
+            className={`max-h-full max-w-full rounded-lg block ${autoMarkMode ? 'cursor-crosshair' : ''}`}
           />
+
+          {autoMarkMode && (
+            <div className="absolute top-2 left-2 bg-cyan-500 text-canvas text-xs font-semibold px-2.5 py-1 rounded pointer-events-none">
+              Click on the plot to auto-mark it
+            </div>
+          )}
+
+          {/* Auto-tracked land boundary — position interpolated from the real SAM+CSRT path */}
+          {activeAutoBoundaryBox && (
+            <div
+              className="absolute border-4 border-cyan-400 bg-cyan-400/20 rounded-sm pointer-events-none flex items-start justify-start"
+              style={{
+                left: `${activeAutoBoundaryBox.xPct}%`,
+                top: `${activeAutoBoundaryBox.yPct}%`,
+                width: `${activeAutoBoundaryBox.widthPct}%`,
+                height: `${activeAutoBoundaryBox.heightPct}%`,
+              }}
+            >
+              <span className="bg-cyan-400 text-canvas text-xs font-display font-semibold px-1.5 py-0.5 -translate-y-1/2 ml-1 rounded">
+                {activeAutoBoundary?.label}
+              </span>
+            </div>
+          )}
 
           {/* Land-boundary marker: static yellow box + label, does not track camera motion */}
           {activeBoundary && (
@@ -687,6 +843,12 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
           <ToolbarButton icon="T" label="Text" onClick={openNewCaptionPanel} disabled={duration === 0} />
           <ToolbarButton icon="▭" label="Mark Land" onClick={openNewBoundaryPanel} disabled={duration === 0} />
           <ToolbarButton icon="🖼" label="Logo" onClick={openNewLogoPanel} disabled={duration === 0} />
+          <ToolbarButton
+            icon="◎"
+            label={autoMarkMode ? 'Click video…' : 'Auto Mark Land'}
+            onClick={() => setAutoMarkMode((v) => !v)}
+            disabled={duration === 0 || !rawObjectName || autoMarkLoading}
+          />
           <ToolbarButton icon="♪" label="Music" disabled />
           <ToolbarButton icon="✨" label="Effects" disabled />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
@@ -696,6 +858,26 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
           Export
         </button>
       </div>
+
+      {autoMarkLoading && (
+        <div className="px-6 py-2.5 bg-cyan-500/20 border-b border-canvas-border flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span className="text-xs text-cyan-200">Running SAM + tracking on the click point… this can take a while, especially without a GPU.</span>
+        </div>
+      )}
+
+      {autoMarkError && (
+        <div className="px-6 py-2.5 bg-red-500/20 border-b border-canvas-border flex items-center justify-between">
+          <span className="text-xs text-red-200">{autoMarkError}</span>
+          <button onClick={() => setAutoMarkError(null)} className="text-red-200 text-xs underline">Dismiss</button>
+        </div>
+      )}
+
+      {!rawObjectName && (
+        <div className="px-6 py-2 bg-white/5 border-b border-canvas-border">
+          <span className="text-xs text-white/40">Auto Mark Land is disabled — no backend object_name was passed to this video.</span>
+        </div>
+      )}
 
       {hasGeneratedPlan && rationale.length > 0 && (
         <div className="px-6 py-2.5 bg-teal-dim/30 border-b border-canvas-border">
@@ -748,10 +930,11 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
                       const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
                       const isBoundary = clip.overlayKind === 'boundary'
                       const isLogo = clip.overlayKind === 'logo'
-                      const clipColor = isBoundary ? 'bg-yellow-400/20' : isLogo ? 'bg-purple-400/20' : meta.color
-                      const clipBorder = isBoundary ? 'border-yellow-400' : isLogo ? 'border-purple-400' : meta.border
-                      const clipTextColor = isBoundary ? 'text-yellow-300' : isLogo ? 'text-purple-300' : 'text-white/90'
-                      const clipIcon = isBoundary ? '▭ ' : isLogo ? '🖼 ' : ''
+                      const isAutoBoundary = clip.overlayKind === 'autoBoundary'
+                      const clipColor = isBoundary ? 'bg-yellow-400/20' : isLogo ? 'bg-purple-400/20' : isAutoBoundary ? 'bg-cyan-400/20' : meta.color
+                      const clipBorder = isBoundary ? 'border-yellow-400' : isLogo ? 'border-purple-400' : isAutoBoundary ? 'border-cyan-400' : meta.border
+                      const clipTextColor = isBoundary ? 'text-yellow-300' : isLogo ? 'text-purple-300' : isAutoBoundary ? 'text-cyan-300' : 'text-white/90'
+                      const clipIcon = isBoundary ? '▭ ' : isLogo ? '🖼 ' : isAutoBoundary ? '◎ ' : ''
                       return (
                         <button
                           key={clip.id}
@@ -1021,6 +1204,56 @@ export default function TimelineEditorPage({ videoUrl, referenceResults }: Timel
                 ].join(' ')}
               >
                 {editingBoundaryId ? 'Update' : 'Add marker'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- AUTO MARK LAND — CONFIRM RESULT ---------------- */}
+      {pendingAutoMark && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6">
+          <div className="w-full max-w-md rounded-2xl bg-canvas-panel border border-canvas-border p-6">
+            <h3 className="font-display font-semibold text-lg mb-1">Auto-tracked plot found</h3>
+            <p className="text-white/40 text-sm mb-4">
+              Tracked from {formatTime(pendingAutoMark.startTime)} to {formatTime(pendingAutoMark.endTime)}
+              {' '}(mask confidence: {(pendingAutoMark.score * 100).toFixed(0)}%). This is a bounding-box
+              approximation that follows camera motion — not a pixel-precise outline.
+            </p>
+
+            {pendingAutoMark.warning && (
+              <p className="text-amber text-xs mb-4 bg-amber/10 border border-amber/30 rounded-lg px-3 py-2">
+                {pendingAutoMark.warning}
+              </p>
+            )}
+
+            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">
+              Name this plot
+            </label>
+            <input
+              type="text"
+              value={autoMarkLabel}
+              onChange={(e) => setAutoMarkLabel(e.target.value)}
+              maxLength={40}
+              autoFocus
+              placeholder="e.g. Vadnagar"
+              className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2.5 text-sm placeholder:text-white/25 focus:outline-none focus:border-amber/60 mb-6"
+            />
+
+            <div className="flex gap-2">
+              <button onClick={cancelAutoMark} className="px-4 py-2.5 rounded-lg text-sm text-white/50 hover:text-white transition-colors">
+                Discard
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={confirmAutoMark}
+                disabled={!autoMarkLabel.trim()}
+                className={[
+                  'px-5 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  autoMarkLabel.trim() ? 'bg-amber text-canvas hover:bg-amber-bright' : 'bg-canvas-raised text-white/25 cursor-not-allowed',
+                ].join(' ')}
+              >
+                Add to timeline
               </button>
             </div>
           </div>
