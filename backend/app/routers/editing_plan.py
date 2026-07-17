@@ -73,6 +73,7 @@ CRITICAL PUNCTUATION RULE: You MUST use proper punctuation (commas ',', full sto
 CRITICAL PURE GUJARATI RULE: Do NOT use any Hindi words (e.g. 'lekin', 'zaroor', 'dost'). Do NOT use English words or transliterated English words (e.g. do NOT write 'ટાઇટલ' for Title, 'વિડિયો' for Video, or 'લોકેશન' for Location). Use ONLY pure, authentic Gujarati words (e.g. 'શીર્ષક', 'દ્રશ્ય', 'જગ્યા'). It must sound exactly like a local Gujarati person.
 CRITICAL ANTI-HALLUCINATION RULE: Under NO circumstances should you repeat a word or phrase multiple times in a row (e.g. do NOT write "જી જી જી" or "છે છે છે"). Write clean, realistic text.
 DO NOT use English characters for the script.
+CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
     else:
         context += f"""
@@ -81,6 +82,7 @@ Write a highly engaging, professional voiceover script for the Main Video.
 The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો).
 CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
 CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media.
+CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
 
     context += f"""

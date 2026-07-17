@@ -32,6 +32,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
   const [duration, setDuration] = useState(0)
+  const [videoDuration, setVideoDuration] = useState(0) // Original video duration (without end screen)
   const [clips, setClips] = useState<Clip[]>([])
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [playhead, setPlayhead] = useState(0)
@@ -48,6 +49,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
   const handleLoadedMetadata = () => {
     const d = videoRef.current?.duration ?? 0
     setDuration(d)
+    setVideoDuration(d)
     
     // Update all clips to match true video duration
     setClips(prev => {
@@ -121,6 +123,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
         // 3. Generate TTS from the generated script
         let ttsAudioId = 'audio-main'
         let ttsAudioUrl = ''
+        
         if (planData.editing_plan.generated_script) {
           setLoadingMsg('Generating AI Voiceover (Edge TTS)...')
           try {
@@ -204,7 +207,8 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
                     end += 0.3; // Small padding for large gaps
                  }
               } else {
-                 end += 0.5; // Final word padding
+                 // Final word padding + extend by 5 seconds to show over the JAMIN24 end screen image
+                 end += 5.5;
               }
               
               newClips.push({
@@ -239,7 +243,12 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
             // Add a baseline weight (5) to ensure even short words get enough readable time
             const weight = text.length + 5; 
             const totalWeight = totalChars + (chunks.length * 5);
-            const chunkDuration = (weight / totalWeight) * actualAudioDuration;
+            let chunkDuration = (weight / totalWeight) * actualAudioDuration;
+            
+            // If it's the last chunk, extend it by 5 seconds so it displays over the end screen
+            if (i === chunks.length - 1) {
+              chunkDuration += 5;
+            }
             
             newClips.push({
               id: `cap-gen-${i}`,
@@ -263,6 +272,15 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
           })
         }
         
+        // End Screen clip (last 5 seconds — JAMIN24 branding image)
+        newClips.push({
+          id: 'end-screen',
+          track: 'video',
+          start: currentDuration,
+          end: currentDuration + 5,
+          label: 'End Screen (JAMIN24)'
+        })
+
         // Audio clip (AI Voiceover)
         newClips.push({
           id: ttsAudioId,
@@ -274,6 +292,7 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
         })
         
         setClips(newClips)
+        setDuration(currentDuration + 5) // Extend timeline to include 5s end screen
         setIsLoading(false)
         
       } catch (err: any) {
@@ -299,17 +318,56 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
     if (!videoRef.current) return
     if (isPlaying) {
       videoRef.current.pause()
+      setIsPlaying(false)
     } else {
+      // If video has finished completely (at or past total duration), restart from beginning
+      if (playhead >= duration - 0.1) {
+        videoRef.current.currentTime = 0
+        setPlayhead(0)
+        videoRef.current.play()
+        setIsPlaying(true)
+        return
+      }
+      // If we're in the end screen phase (past video, but not finished), just resume the timer
+      if (playhead >= videoDuration && videoDuration > 0) {
+        setIsPlaying(true)
+        return
+      }
       videoRef.current.play()
+      setIsPlaying(true)
     }
-    setIsPlaying(!isPlaying)
   }
+
+  // Timer to advance playhead during end screen (video element is not playing anymore)
+  useEffect(() => {
+    if (!isPlaying || videoDuration <= 0 || playhead < videoDuration) return
+    if (playhead >= duration) {
+      setIsPlaying(false)
+      return
+    }
+    const interval = setInterval(() => {
+      setPlayhead(prev => {
+        const next = prev + 0.05
+        if (next >= duration) {
+          setIsPlaying(false)
+          clearInterval(interval)
+          return duration
+        }
+        return next
+      })
+    }, 50)
+    return () => clearInterval(interval)
+  }, [isPlaying, playhead >= videoDuration, duration, videoDuration])
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
+    const onPause = () => {
+      // Don't stop isPlaying if video ended naturally — end screen timer will take over
+      if (video.ended) return
+      setIsPlaying(false)
+    }
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     return () => {
@@ -427,14 +485,24 @@ export default function TimelineEditorPage({ videoUrl, objectName, referenceObje
       {/* ---------------- PREVIEW ---------------- */}
       <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh]">
         <div className="relative h-full w-full flex items-center justify-center">
+          {/* Video — always in DOM, hidden via opacity during end screen so it keeps its space */}
           <video
             ref={videoRef}
             src={videoUrl}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             className="max-h-full max-w-full rounded-lg"
+            style={{ opacity: videoDuration > 0 && playhead >= videoDuration ? 0 : 1 }}
             muted
           />
+          {/* End screen image — shown on top during last 5 seconds */}
+          {videoDuration > 0 && playhead >= videoDuration && (
+            <img
+              src="http://localhost:8000/assets/end_screen.PNG"
+              alt="End Screen - JAMIN24"
+              className="absolute inset-0 m-auto max-h-full max-w-full rounded-lg object-contain z-20"
+            />
+          )}
           {/* Caption Overlay */}
           {displayCaption && (
             <div className="absolute bottom-10 left-0 w-full flex justify-center px-4 z-10 pointer-events-none">

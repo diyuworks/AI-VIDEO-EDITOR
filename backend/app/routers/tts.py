@@ -26,8 +26,8 @@ async def generate_tts(request: TTSRequest):
     
     try:
         # User explicitly requested the Male Voice which was Edge-TTS Niranjan
-        # Restored to completely normal speed to guarantee exact original tone
-        communicate = edge_tts.Communicate(request.text, "gu-IN-NiranjanNeural")
+        # Speed +70% for highly energetic real-video feel
+        communicate = edge_tts.Communicate(request.text, "gu-IN-NiranjanNeural", rate="+70%")
         
         word_boundaries = []
         with open(filepath, "wb") as f:
