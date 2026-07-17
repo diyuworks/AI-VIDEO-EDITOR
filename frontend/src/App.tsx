@@ -2,8 +2,9 @@ import { useState } from 'react'
 import UploadPage from './features/upload/UploadPage'
 import PromptInputPage from './features/prompt/PromptInputPage'
 import TimelineEditorPage from './features/timeline/TimelineEditorPage'
+import ReelGeneratorPage from './pages/ReelGeneratorPage'
 
-type Screen = 'upload' | 'prompt' | 'timeline'
+type Screen = 'upload' | 'prompt' | 'reel-generator' | 'timeline'
 
 export interface PromptData {
   presets: string[]
@@ -38,12 +39,27 @@ function App() {
         onContinue={(data) => {
           console.log('Prompt submitted:', data)
           setPromptData(data)
-          setScreen('timeline')
+          // Move to reel generator step
+          setScreen('reel-generator')
         }}
       />
     )
   }
 
+  if (screen === 'reel-generator' && objectName) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
+        <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-4xl flex justify-center">
+          <ReelGeneratorPage
+            rawVideoObjectName={objectName}
+            prompt={promptData?.prompt}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback to timeline if ever needed
   if (screen === 'timeline' && videoUrl && objectName && promptData) {
     return (
       <TimelineEditorPage 

@@ -20,14 +20,20 @@ const TRACK_META: Record<TrackType, { label: string; color: string; border: stri
   audio: { label: 'Music', color: 'bg-white/10', border: 'border-white/30' },
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
 interface TimelineEditorPageProps {
   videoUrl: string
   objectName: string
   referenceObjectName?: string | null
   promptData: { presets: string[]; prompt: string }
+  boundaryPoints?: Point[] | null
 }
 
-export default function TimelineEditorPage({ videoUrl, objectName, referenceObjectName, promptData }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, objectName, referenceObjectName, promptData, boundaryPoints }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
