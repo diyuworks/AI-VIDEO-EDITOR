@@ -43,7 +43,7 @@ You are an AI video editing assistant and scriptwriter. Based on the information
 Main Video duration: {duration} seconds
 Main Video Resolution: {video.width}x{video.height}
 """
-    duration_str = f"CRITICAL REQUIREMENT: The video is EXACTLY {duration} seconds long. You MUST write a script that is EXACTLY 160 to 175 words long. Count the words carefully. This is CRITICAL because the voiceover MUST be spoken very FAST and energetically like a modern social media reel. If you write a short script, it will play in slow-motion and ruin the video. Write a long, continuous, detailed voiceover paragraph consisting of at least 14 to 16 full sentences. Do NOT fail this."
+    duration_str = f"The video is {duration} seconds long. Write a naturally paced voiceover script. Do NOT force a specific word count, and do NOT repeat phrases just to fill time. The voiceover should be spoken at a NORMAL, professional, and clear speed."
 
     if reference_text:
         context += f"""
@@ -51,12 +51,29 @@ Reference Video Script/Voiceover:
 "{reference_text}"
 
 Task: {duration_str}
-You MUST write a NEW voiceover script for the Main Video that perfectly matches the STYLE, TONE, and ENERGY of the Reference Video.
-The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો). 
-CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
-CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media. 
+CRITICAL TOPIC: This is a Real Estate / Land (જમીન લે-વેચ) video. 
+You MUST write a voiceover script for the Main Video that perfectly conveys the meaning of the Reference Video, but in the style of a highly successful, professional Gujarati Real Estate Broker on Instagram/YouTube Reels.
+Do NOT repeat words unnecessarily. Keep it realistic and natural.
+
+CRITICAL HOOK INSTRUCTION: The very FIRST sentence MUST be an extremely impressive, realistic, and catchy Gujarati hook. 
+Examples of a GOOD start: 
+- "નમસ્તે મિત્રો, શું તમે પણ રોકાણ માટે એક શ્રેષ્ઠ જમીન શોધી રહ્યા છો?"
+- "જો તમે ભવિષ્ય માટે જમીન લેવાનું વિચારી રહ્યા છો, તો આ વિડીયો તમારા માટે જ છે!"
+- "આજે અમે તમારા માટે લાવ્યા છીએ એક એવી શાનદાર જમીન, જે તમારું મન મોહી લેશે..."
+Make the start sound EXACTLY like this—natural, welcoming, and directly speaking to a buyer or investor.
+
+CRITICAL LOCATION FORMATTING: You MUST ALWAYS include the exact location in this specific sequence: "ગામ શેખપુર, તાલુકો વડનગર, જિલ્લો મહેસાણા". Do NOT use any other village, taluka, or district name.
+
+CRITICAL PRICING & TENURE INFO: You MUST include the exact price and condition: "ભાવ પ્રતિ વીઘા ચાલીસ લાખ છે" (Price is 40 Lakh per bigha). You MUST explicitly mention the word "શરત" (Sharat / Tenure), for example "નવી શરતની જમીન" (New Tenure Land). Do not skip this!
+
+CRITICAL CONTENT RULE (No Plus/Minus): Do NOT add extra unnecessary words (no 'plus') and do NOT skip important details from the reference video (no 'minus'). You MUST retain EVERY SINGLE technical real estate word from the reference (like શરત, વીઘા, ભાવ, etc.). Keep the script highly realistic, exact, and to the point.
+DO NOT write headers like "Title:", "ટાઇટલ:", "શીર્ષક:", or "Script:" inside the generated_script. The script should ONLY contain the exact words to be spoken.
+CRITICAL PUNCTUATION RULE: You MUST use proper punctuation (commas ',', full stops '.', question marks '?'). Write short, punchy sentences. This is required so the AI voice pauses naturally and breathes like a normal human in the video.
+
+CRITICAL PURE GUJARATI RULE: Do NOT use any Hindi words (e.g. 'lekin', 'zaroor', 'dost'). Do NOT use English words or transliterated English words (e.g. do NOT write 'ટાઇટલ' for Title, 'વિડિયો' for Video, or 'લોકેશન' for Location). Use ONLY pure, authentic Gujarati words (e.g. 'શીર્ષક', 'દ્રશ્ય', 'જગ્યા'). It must sound exactly like a local Gujarati person.
+CRITICAL ANTI-HALLUCINATION RULE: Under NO circumstances should you repeat a word or phrase multiple times in a row (e.g. do NOT write "જી જી જી" or "છે છે છે"). Write clean, realistic text.
 DO NOT use English characters for the script.
-DO NOT translate word-for-word. Adapt the message to fit the silent drone/scenic footage of the Main Video.
+CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
     else:
         context += f"""
@@ -65,6 +82,7 @@ Write a highly engaging, professional voiceover script for the Main Video.
 The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો).
 CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
 CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media.
+CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
 
     context += f"""
@@ -89,7 +107,7 @@ Return ONLY valid JSON, no extra text or markdown formatting.
         response = groq_client.chat.completions.create(
             model='llama-3.3-70b-versatile',
             messages=[{"role": "user", "content": context}],
-            temperature=0.7,
+            temperature=0.2,
             response_format={"type": "json_object"}
         )
         raw_text = response.choices[0].message.content.strip()
@@ -99,6 +117,26 @@ Return ONLY valid JSON, no extra text or markdown formatting.
             raw_text = raw_text.split("```")[1]
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:]
+                
+        # Apply specific Gujarati pronunciation/spelling corrections requested by user
+        corrections = {
+            "શાકેપુર": "શેખપુર",
+            "શારદા": "શરત",
+            "બડાનગર": "વડનગર",
+            "બડા નગર": "વડનગર",
+            "બડનગર": "વડનગર",
+            "બાઓ": "ભાવ",
+            "ભાવો": "ભાવ",
+            "ટાઇટલ:": "",
+            "ટાઈટલ:": "",
+            "ટાઇટલ": "",
+            "ટાઈટલ": "",
+            "Title:": "",
+            "title:": "",
+            "શીર્ષક:": ""
+        }
+        for wrong, right in corrections.items():
+            raw_text = raw_text.replace(wrong, right)
 
         editing_plan = json.loads(raw_text)
     except json.JSONDecodeError:

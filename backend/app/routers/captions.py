@@ -1,4 +1,4 @@
-﻿from datetime import timedelta
+from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select, delete
 from app.database import get_session, VideoRecord, Caption
@@ -30,7 +30,7 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
     try:
-        segments, info = get_whisper_model().transcribe(video_url, beam_size=5)
+        segments, info = get_whisper_model().transcribe(video_url, beam_size=5, condition_on_previous_text=False)
     except Exception as e:
         if "tuple index out of range" in str(e):
             # This happens when the video has no audio track

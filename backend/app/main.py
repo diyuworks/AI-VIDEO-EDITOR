@@ -1,8 +1,9 @@
-﻿from dotenv import load_dotenv
+from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import uploads, analyze, metadata, captions, reference, editing_plan, voiceover, segment_plot, tts
+from fastapi.staticfiles import StaticFiles
+from app.routers import uploads, analyze, metadata, captions, reference, editing_plan, voiceover, segment_plot, tts, export, frame_extraction, tracking, overlay, pipeline
 from app.database import init_db
 
 app = FastAPI(title="AI Video Editor API", version="0.1.0")
@@ -25,6 +26,14 @@ app.include_router(editing_plan.router)
 app.include_router(voiceover.router)
 app.include_router(segment_plot.router)
 app.include_router(tts.router)
+app.include_router(export.router)
+app.include_router(frame_extraction.router)
+app.include_router(tracking.router)
+app.include_router(overlay.router)
+app.include_router(pipeline.router)
+
+# Serve backend/assets as static files (for end_screen.PNG etc.)
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 @app.on_event("startup")
 def on_startup():
