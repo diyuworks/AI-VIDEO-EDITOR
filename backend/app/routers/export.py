@@ -142,16 +142,22 @@ async def export_video(request: ExportRequest):
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
         
-        # Setup video stream (standardize fps, sar, and format)
-        video_scaled = input_video.video.filter('fps', fps=25).filter('setsar', '1').filter('format', 'yuv420p')
+        # Convert video to 9:16 Reels format (crop center)
+        crop_w = 'min(iw,ih*9/16)'
+        crop_h = 'min(ih,iw*16/9)'
+        video_scaled = input_video.video.filter('fps', fps=25).filter('crop', crop_w, crop_h).filter('setsar', '1').filter('format', 'yuv420p')
+        
+        # We need to get the new width/height for the end screen based on 9:16
+        reel_width = int(min(width, height * 9 / 16))
+        reel_height = int(min(height, width * 16 / 9))
         
         # Setup end screen image stream (5 seconds)
         image_stream = ffmpeg.input("assets/end_screen.PNG", loop=1, t=5)
         image_scaled = (
             image_stream
             .filter('fps', fps=25)
-            .filter('scale', width, height, force_original_aspect_ratio='decrease')
-            .filter('pad', width, height, '(ow-iw)/2', '(oh-ih)/2')
+            .filter('scale', reel_width, reel_height, force_original_aspect_ratio='decrease')
+            .filter('pad', reel_width, reel_height, '(ow-iw)/2', '(oh-ih)/2')
             .filter('setsar', '1')
             .filter('format', 'yuv420p')
         )
@@ -160,7 +166,8 @@ async def export_video(request: ExportRequest):
         concat_video = ffmpeg.concat(video_scaled, image_scaled, v=1, a=0)
         
         # Adding subtitles with premium Reel styling (Bold, White text, heavy black outline)
-        style = "FontName=Arial,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=3,Shadow=2,Alignment=2,MarginV=40,Bold=-1"
+        # Reduced FontSize to 18 and increased MarginV to 80 for a more professional, smaller look in 9:16 format.
+        style = "FontName=Nirmala UI,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=80,Bold=-1"
         
         filtered_video = concat_video.filter('subtitles', srt_path_ffmpeg, force_style=style)
         

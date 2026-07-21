@@ -52,6 +52,7 @@ function App() {
         <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-4xl flex justify-center">
           <ReelGeneratorPage
             rawVideoObjectName={objectName}
+            referenceObjectName={referenceObjectName}
             prompt={promptData?.prompt}
           />
         </div>

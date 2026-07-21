@@ -19,11 +19,13 @@ type ProcessingStage =
 
 interface ReelGeneratorPageProps {
   rawVideoObjectName: string;
+  referenceObjectName?: string | null;
   prompt?: string;
 }
 
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName,
+  referenceObjectName,
   prompt,
 }) => {
   const [stage, setStage] = useState<ProcessingStage>("marking");
@@ -68,6 +70,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: JSON.stringify({
           raw_video_object_name: rawVideoObjectName,
           highlighted_video_object_name: overlayData.output_object_name,
+          reference_object_name: referenceObjectName || null,
           prompt: prompt || "",
         }),
       });
@@ -79,6 +82,26 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     } catch (err: any) {
       setErrorMessage(err.message || "Kuch galat ho gaya");
       setStage("error");
+    }
+  };
+
+  const handleDownload = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "Final_Reel.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Download failed:", error);
+      // Fallback
+      window.open(url, "_blank");
     }
   };
 
@@ -117,13 +140,12 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           className="max-w-md rounded-lg shadow-lg"
         />
         
-        <a
-          href={finalVideoUrl}
-          download
+        <button
+          onClick={() => handleDownload(finalVideoUrl)}
           className="px-6 py-2 bg-yellow-400 font-semibold rounded-lg"
         >
           Download Reel
-        </a>
+        </button>
       </div>
     );
   }
