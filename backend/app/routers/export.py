@@ -125,7 +125,8 @@ async def export_video(request: ExportRequest):
         video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
         video_duration = float(probe_video['format']['duration'])
         
-        speed_ratio = audio_duration / video_duration
+        # ALWAYS keep natural voice speed. Do not stretch/slow audio to fit video.
+        speed_ratio = 1.0
         
         # 3. Generate SRT file
         generate_srt(request.generated_script, audio_duration, srt_path, request.word_boundaries, speed_ratio)
@@ -143,9 +144,18 @@ async def export_video(request: ExportRequest):
         input_audio = ffmpeg.input(audio_path)
         
         # Convert video to 9:16 Reels format (crop center)
+        # Trim video to exactly the audio length so we don't have awkward silence.
         crop_w = 'min(iw,ih*9/16)'
         crop_h = 'min(ih,iw*16/9)'
-        video_scaled = input_video.video.filter('fps', fps=25).filter('crop', crop_w, crop_h).filter('setsar', '1').filter('format', 'yuv420p')
+        video_scaled = (
+            input_video.video
+            .trim(duration=audio_duration)
+            .setpts('PTS-STARTPTS')
+            .filter('fps', fps=25)
+            .filter('crop', crop_w, crop_h)
+            .filter('setsar', '1')
+            .filter('format', 'yuv420p')
+        )
         
         # We need to get the new width/height for the end screen based on 9:16
         reel_width = int(min(width, height * 9 / 16))
@@ -171,18 +181,10 @@ async def export_video(request: ExportRequest):
         
         filtered_video = concat_video.filter('subtitles', srt_path_ffmpeg, force_style=style)
         
-        # Apply atempo filter to audio stream to sync perfectly with video
+        # Keep original natural audio stream
         audio_stream = input_audio.audio
-        if speed_ratio != 1.0:
-            if speed_ratio < 0.5:
-                audio_stream = audio_stream.filter('atempo', 0.5).filter('atempo', speed_ratio / 0.5)
-            elif speed_ratio > 2.0:
-                audio_stream = audio_stream.filter('atempo', 2.0).filter('atempo', speed_ratio / 2.0)
-            else:
-                audio_stream = audio_stream.filter('atempo', speed_ratio)
         
-        # We truncate the video if the audio is shorter, or pad it if longer.
-        # shortest=None by default, we can just mix them and let it use the video length or audio length.
+        # We let it use the video length (which includes the 5s end screen)
         (
             ffmpeg
             .output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
