@@ -20,11 +20,13 @@ type ProcessingStage =
 
 interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
+  referenceObjectName?: string | null;
   prompt?: string;
 }
 
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
+  referenceObjectName = null,
   prompt: initialPrompt = "",
 }) => {
   const [activeTab, setActiveTab] = useState<"multi_clip" | "single_video">("multi_clip");
@@ -118,6 +120,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: JSON.stringify({
           raw_video_object_name: rawVideoObjectName,
           highlighted_video_object_name: overlayData.output_object_name,
+          reference_object_name: referenceObjectName || null,
           prompt: prompt || "",
         }),
       });
@@ -129,6 +132,26 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to generate reel");
       setStage("error");
+    }
+  };
+
+  const handleDownload = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "Final_Reel.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Download failed:", error);
+      // Fallback
+      window.open(url, "_blank");
     }
   };
 
@@ -274,13 +297,12 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           />
 
           <div className="flex gap-4">
-            <a
-              href={finalVideoUrl}
-              download="Real_Estate_Reel.mp4"
+            <button
+              onClick={() => handleDownload(finalVideoUrl)}
               className="px-8 py-3 bg-yellow-400 hover:bg-yellow-300 text-black font-bold rounded-xl transition shadow-lg flex items-center gap-2"
             >
               ⬇️ Download Reel
-            </a>
+            </button>
             <button
               onClick={() => {
                 setStage("idle");

@@ -197,16 +197,28 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
 
     # ---- SUB-STEP A: AI Script Generate Karo ----
     try:
+        from app.routers.captions import generate_captions
+        
+        reference_captions = None
+        if request.reference_object_name:
+            try:
+                cap_res = generate_captions(request.reference_object_name, session)
+                reference_captions = cap_res.get("captions")
+            except Exception as e:
+                with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
+
         # Call our actual editing_plan endpoint logic
         plan_req = EditingPlanRequest(
             object_name=request.raw_video_object_name,
             reference_object_name=request.reference_object_name,
+            reference_captions=reference_captions,
             prompt=request.prompt,
             structured_options=request.structured_options
         )
         plan_res = generate_editing_plan(plan_req, session)
         generated_script = plan_res["editing_plan"]["generated_script"]
     except Exception as e:
+        with open("debug.log", "a") as f: f.write(f"Script Error: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
 
     # ---- SUB-STEP B: TTS + Word Timestamps Generate Karo ----
@@ -222,6 +234,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         shutil.copy(source_audio_path, audio_path)
         word_boundaries = tts_res["word_boundaries"]
     except Exception as e:
+        with open("debug.log", "a", encoding="utf-8") as f: f.write(f"TTS Error: {str(e)} | Script: {generated_script}\n")
         raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
@@ -252,7 +265,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
         video_duration = float(probe_video['format']['duration'])
         
-        speed_ratio = audio_duration / video_duration
+        # ALWAYS keep natural voice speed. Do not stretch/slow audio to fit video.
+        speed_ratio = 1.0
         
         # Generate SRT file (exact same function as old export)
         generate_srt(generated_script, audio_duration, srt_path, word_boundaries, speed_ratio)
@@ -266,8 +280,23 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
         
-        # Setup video stream (standardize fps, sar, and format) — EXACT same as export.py
-        video_scaled = input_video.video.filter('fps', fps=25).filter('setsar', '1').filter('format', 'yuv420p')
+        # Convert video to 9:16 Reels format (crop center)
+        # Trim video to exactly the audio length so we don't have awkward silence.
+        crop_w = 'min(iw,ih*9/16)'
+        crop_h = 'min(ih,iw*16/9)'
+        video_scaled = (
+            input_video.video
+            .trim(duration=audio_duration)
+            .setpts('PTS-STARTPTS')
+            .filter('fps', fps=25)
+            .filter('crop', crop_w, crop_h)
+            .filter('setsar', '1')
+            .filter('format', 'yuv420p')
+        )
+        
+        # We need to get the new width/height for the end screen based on 9:16
+        reel_width = int(min(width, height * 9 / 16))
+        reel_height = int(min(height, width * 16 / 9))
         
         # Setup end screen image stream (5 seconds) — EXACT same as export.py
         end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
@@ -276,8 +305,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             image_scaled = (
                 image_stream
                 .filter('fps', fps=25)
-                .filter('scale', width, height, force_original_aspect_ratio='decrease')
-                .filter('pad', width, height, '(ow-iw)/2', '(oh-ih)/2')
+                .filter('scale', reel_width, reel_height, force_original_aspect_ratio='decrease')
+                .filter('pad', reel_width, reel_height, '(ow-iw)/2', '(oh-ih)/2')
                 .filter('setsar', '1')
                 .filter('format', 'yuv420p')
             )
@@ -286,19 +315,13 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             # Fallback: agar end_screen na mile toh bina end screen ke
             video_for_subs = video_scaled
         
-        # Adding subtitles with premium Reel styling — EXACT same as export.py
-        style = "FontName=Arial,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=3,Shadow=2,Alignment=2,MarginV=40,Bold=-1"
+        # Adding subtitles with premium Reel styling (Bold, White text, heavy black outline)
+        # Reduced FontSize to 18 and increased MarginV to 80 for a more professional, smaller look in 9:16 format.
+        style = "FontName=Nirmala UI,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=80,Bold=-1"
         filtered_video = video_for_subs.filter('subtitles', srt_path_ffmpeg, force_style=style)
         
-        # Apply atempo filter to audio stream — EXACT same as export.py
+        # Keep original natural audio stream
         audio_stream = input_audio.audio
-        if speed_ratio != 1.0:
-            if speed_ratio < 0.5:
-                audio_stream = audio_stream.filter('atempo', 0.5).filter('atempo', speed_ratio / 0.5)
-            elif speed_ratio > 2.0:
-                audio_stream = audio_stream.filter('atempo', 2.0).filter('atempo', speed_ratio / 2.0)
-            else:
-                audio_stream = audio_stream.filter('atempo', speed_ratio)
         
         (
             ffmpeg
@@ -313,6 +336,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         error_message = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
         raise HTTPException(status_code=500, detail=f"FFmpeg error: {error_message}")
     except Exception as e:
+        with open("debug.log", "a") as f: f.write(f"Export Error: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Export pipeline failed: {str(e)}")
 
     # ---- SUB-STEP E: Final Video Upload Karo ----

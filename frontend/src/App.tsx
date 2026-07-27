@@ -6,11 +6,17 @@ import ReelGeneratorPage from './pages/ReelGeneratorPage'
 
 type Screen = 'upload' | 'prompt' | 'timeline' | 'reel'
 
+export interface PromptData {
+  presets: string[]
+  prompt: string
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('upload')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [referenceResults, setReferenceResults] = useState<any[]>([])
   const [rawObjectName, setRawObjectName] = useState<string | null>(null)
+  const [promptData, setPromptData] = useState<PromptData | null>(null)
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', background: '#0F0F11' }}>
@@ -56,6 +62,7 @@ function App() {
         <PromptInputPage
           onContinue={(data) => {
             console.log('Prompt submitted:', data)
+            setPromptData(data)
             setScreen('timeline')
           }}
         />
@@ -70,7 +77,15 @@ function App() {
       )}
 
       {screen === 'reel' && (
-        <ReelGeneratorPage rawVideoObjectName={rawObjectName || 'clip_1.mp4'} />
+        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
+          <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-4xl flex justify-center text-black">
+            <ReelGeneratorPage
+              rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
+              referenceObjectName={referenceResults?.[0]?.object_name || undefined}
+              prompt={promptData?.prompt}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
