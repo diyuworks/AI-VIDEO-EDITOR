@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -20,13 +20,31 @@ minio_client = Minio(
     secure=MINIO_SECURE
 )
 
+import json
+
 def init_minio():
     try:
         if not minio_client.bucket_exists(MINIO_BUCKET):
             minio_client.make_bucket(MINIO_BUCKET)
-        print("MinIO bucket initialized successfully.")
+        
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:*"],
+                    "Resource": [
+                        f"arn:aws:s3:::{MINIO_BUCKET}",
+                        f"arn:aws:s3:::{MINIO_BUCKET}/*"
+                    ]
+                }
+            ]
+        }
+        minio_client.set_bucket_policy(MINIO_BUCKET, json.dumps(policy))
+        print("MinIO bucket initialized and permissions set successfully.")
     except Exception as e:
-        print(f"Warning: Could not connect to MinIO during startup. {e}")
+        print(f"Warning: MinIO init error: {e}")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
