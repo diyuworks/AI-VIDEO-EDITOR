@@ -35,6 +35,7 @@ interface ClipHighlight {
   points?: Point[];
   label?: string;
   highlightedObjectName?: string;
+  polygonPerFrame?: number[][][]; // Cache tracked polygon for fast label updates
   isTracking?: boolean;
   isDone?: boolean;
 }
@@ -293,6 +294,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         [clipName]: {
           ...prev[clipName],
           highlightedObjectName: overlayData.output_object_name,
+          polygonPerFrame: trackData.polygon_per_frame, // Cache polygon points for quick editing
           isTracking: false,
           isDone: true,
         },
@@ -308,6 +310,58 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           isDone: false,
         },
       }));
+    }
+  };
+
+  // Re-renders overlay instantly when label changes in a completed clip
+  const handleLabelBlur = async (clipName: string, newLabel: string) => {
+    const highlight = clipHighlights[clipName];
+    if (highlight && highlight.isDone && highlight.polygonPerFrame) {
+      try {
+        setClipHighlights((prev) => ({
+          ...prev,
+          [clipName]: {
+            ...prev[clipName],
+            isTracking: true,
+            isDone: false, // temporarily clear done state while updating
+          },
+        }));
+
+        const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            object_name: clipName,
+            polygon_per_frame: highlight.polygonPerFrame,
+            highlight_color: "#FFEB3B",
+            border_thickness: 4,
+            label: newLabel || undefined,
+          }),
+        });
+        if (!overlayRes.ok) throw new Error("Overlay update failed");
+        const overlayData = await overlayRes.json();
+
+        setClipHighlights((prev) => ({
+          ...prev,
+          [clipName]: {
+            ...prev[clipName],
+            highlightedObjectName: overlayData.output_object_name,
+            isTracking: false,
+            isDone: true,
+          },
+        }));
+      } catch (err: any) {
+        console.error(`Failed to update label for ${clipName}:`, err);
+        alert(`Failed to update plot label: ${err.message}`);
+        setClipHighlights((prev) => ({
+          ...prev,
+          [clipName]: {
+            ...prev[clipName],
+            isTracking: false,
+            isDone: true,
+          },
+        }));
+      }
     }
   };
 
@@ -404,7 +458,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     return (
                       <div
                         key={clip.id}
-                        className={`p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[165px] ${
+                        className={`p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[175px] ${
                           isSelected
                             ? "border-yellow-400 bg-yellow-400/10 shadow-lg"
                             : "border-gray-800 bg-gray-800/40 opacity-60"
@@ -446,7 +500,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                           </button>
 
                           {isSelected && (
-                            <div className="w-full">
+                            <div className="w-full space-y-2">
+                              {/* Plot name input directly inside the card */}
+                              <div className="flex flex-col text-left gap-0.5">
+                                <span className="text-[9px] font-bold text-gray-400">Plot Name:</span>
+                                <input
+                                  type="text"
+                                  value={clipHighlights[clipName]?.label || label.split(".")[0]}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setClipHighlights((prev) => ({
+                                      ...prev,
+                                      [clipName]: {
+                                        ...prev[clipName],
+                                        objectName: clipName,
+                                        label: val,
+                                      },
+                                    }));
+                                  }}
+                                  onBlur={(e) => handleLabelBlur(clipName, e.target.value)}
+                                  placeholder="e.g. Plot A"
+                                  className="bg-gray-850 border border-gray-750 rounded px-2 py-1 text-white text-[10px] w-full focus:outline-none focus:border-yellow-400"
+                                />
+                              </div>
+
                               {clipHighlights[clipName]?.isTracking ? (
                                 <span className="text-[10px] text-yellow-400 animate-pulse font-mono flex items-center justify-center py-1">⏳ Tracking AI...</span>
                               ) : clipHighlights[clipName]?.isDone ? (
@@ -458,13 +535,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   className="w-full py-1 px-1 bg-yellow-400/20 hover:bg-yellow-400/30 text-yellow-300 text-[10px] font-bold rounded flex items-center justify-center truncate border border-yellow-400/30"
                                   title="Click to edit plot boundary"
                                 >
-                                  ✏️ Edit: {clipHighlights[clipName]?.label}
+                                  ✏️ Edit Plot: {clipHighlights[clipName]?.label}
                                 </button>
                               ) : (
                                 <button
                                   onClick={() => {
                                     setActiveMarkingClip(clipName);
-                                    setActiveMarkingLabel(label.split(".")[0]);
+                                    setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
                                   }}
                                   className="w-full py-1 bg-gray-850 hover:bg-gray-800 text-white text-[10px] font-semibold rounded flex items-center justify-center border border-gray-700"
                                 >
