@@ -19,16 +19,17 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET
 
-    # Step A: Secure temporary URL banao
+    # Step A: Video ko local temp file me download karo
+    # HTTP stream me OpenCV kabhi-kabhi starting frames skip kar deta hai
+    temp_dir = tempfile.mkdtemp()
+    local_video_path = os.path.join(temp_dir, "extract_source.mp4")
     try:
-        video_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, object_name, expires=timedelta(minutes=10)
-        )
+        minio_client.fget_object(MINIO_BUCKET, object_name, local_video_path)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
-    # Step B: OpenCV se video kholo (URL se seedha stream read karega)
-    cap = cv2.VideoCapture(video_url)
+    # Step B: OpenCV se local video kholo (guarantees frame parity with tracking)
+    cap = cv2.VideoCapture(local_video_path)
 
     if not cap.isOpened():
         raise HTTPException(status_code=400, detail="Could not open video for reading")

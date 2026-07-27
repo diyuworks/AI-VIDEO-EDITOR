@@ -141,23 +141,41 @@ async def merge_clips(request: MergeClipsRequest):
                     raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
             local_clip_paths.append(local_p)
 
-        # Create FFmpeg concat list
-        concat_txt = os.path.join(temp_dir, "concat.txt")
-        with open(concat_txt, "w") as f:
-            for p in local_clip_paths:
-                clean_p = p.replace('\\', '/')
-                f.write(f"file '{clean_p}'\n")
+        # Build FFmpeg filter pipeline to normalize and concatenate all clips in one go
+        streams = []
+        for p in local_clip_paths:
+            probe = ffmpeg.probe(p)
+            has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
+            duration = float(probe['format']['duration'])
+            
+            # Normalize video to 9:16 (720x1280), 25fps
+            vid = (
+                ffmpeg.input(p).video
+                .filter('fps', fps=25)
+                .filter('scale', 720, 1280, force_original_aspect_ratio='decrease')
+                .filter('pad', 720, 1280, '(ow-iw)/2', '(oh-ih)/2')
+                .filter('setsar', '1')
+            )
+            
+            # Normalize audio to 44.1kHz stereo, or generate silence if missing
+            if has_audio:
+                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo')
+            else:
+                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration).audio
+                
+            streams.append(vid)
+            streams.append(aud)
 
+        # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
-        cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", concat_txt,
-            "-c", "copy",
-            output_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"FFmpeg concat failed: {res.stderr}")
+        joined = ffmpeg.concat(*streams, v=1, a=1).node
+        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
+        
+        try:
+            out.overwrite_output().run(capture_stdout=True, capture_stderr=True)
+        except ffmpeg.Error as e:
+            error_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+            raise HTTPException(status_code=500, detail=f"FFmpeg concat filter failed: {error_msg}")
 
         # Upload merged output to MinIO
         with open(output_path, "rb") as f:

@@ -107,21 +107,23 @@ def render_overlay(request: OverlayRequest):
                         cv2.line(frame, p_start_tuple, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
                 else:
                     # Border is complete, draw closed polygon outline with anti-aliasing
-                    cv2.polylines(frame, [polygon_points], isClosed=True,
-                                  color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                    cv2.polylines(frame, [polygon_points], isClosed=True,
-                                  color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
-                    
-                    # Fade-in semi-transparent overlay fill
+                    pts = polygon_points.reshape((-1, 1, 2))
                     overlay = frame.copy()
+                    
+                    # Use a more subtle, realistic transparency (0.2 instead of 0.4)
                     cv2.fillPoly(overlay, [polygon_points], color_bgr)
                     
+                    # Apply transparency
                     if frame_idx < ANIM_FRAMES + FADE_FRAMES:
-                        alpha = 0.25 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
+                        alpha = 0.2 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
                     else:
-                        alpha = 0.25
-                        
+                        alpha = 0.2
+                    
                     frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+
+                    # Draw a sleek, anti-aliased border using the highlight color and white
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 2, lineType=cv2.LINE_AA)
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
                     
                     # Draw plot name label (only after tracing outline completes)
                     if request.label:
