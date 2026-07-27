@@ -4,7 +4,7 @@ import tempfile
 import os
 import subprocess
 from datetime import timedelta
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ class OverlayRequest(BaseModel):
     polygon_per_frame: List[List[List[float]]]  # Step 3 ka output
     highlight_color: str = "#FFEB3B"  # yellow, default
     border_thickness: int = 4
+    label: Optional[str] = None  # plot name / label text
 
 
 def hex_to_bgr(hex_color: str):
@@ -27,27 +28,32 @@ def hex_to_bgr(hex_color: str):
 
 @router.post("/render-overlay")
 def render_overlay(request: OverlayRequest):
+    import traceback
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
+    from typing import Optional
 
-    # Step A: Video ka secure URL nikalo
+    # Step A: Video ko local temp file me download karo
+    # (presigned URLs ke saath cv2.VideoCapture Windows pe fail hota hai)
+    temp_dir = tempfile.mkdtemp()
+    source_local_path = os.path.join(temp_dir, "source_video.mp4")
     try:
-        video_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, request.object_name, expires=timedelta(minutes=20)
-        )
+        minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+        print(f"[overlay] MinIO download failed for {request.object_name}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
-    cap = cv2.VideoCapture(video_url)
+    cap = cv2.VideoCapture(source_local_path)
     if not cap.isOpened():
-        raise HTTPException(status_code=400, detail="Could not open video")
+        print(f"[overlay] cv2.VideoCapture failed to open: {source_local_path}")
+        raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     # Step B: Temporary output file banao (bina audio ke, sirf video)
-    temp_dir = tempfile.mkdtemp()
     temp_video_path = os.path.join(temp_dir, "overlay_temp.mp4")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -68,18 +74,82 @@ def render_overlay(request: OverlayRequest):
                 request.polygon_per_frame[frame_idx], dtype=np.int32
             )
 
-            # Semi-transparent fill ke liye overlay banate hain
-            overlay = frame.copy()
-            cv2.fillPoly(overlay, [polygon_points], color_bgr)
-            alpha = 0.25  # transparency level (0=invisible, 1=solid)
-            frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+            # Animate the border drawing: first 25 frames (1 second at 25 fps)
+            ANIM_FRAMES = 25
+            FADE_FRAMES = 10
+            M = len(polygon_points)
 
-            # Border draw karo (thoda glow effect ke liye do baar draw karenge)
-            cv2.polylines(frame, [polygon_points], isClosed=True,
-                          color=color_bgr, thickness=request.border_thickness + 4)
-            cv2.polylines(frame, [polygon_points], isClosed=True,
-                          color=(255, 255, 255), thickness=request.border_thickness)
-
+            if M >= 3:
+                if frame_idx < ANIM_FRAMES:
+                    # Live tracing dynamic border drawing animation
+                    t = frame_idx / ANIM_FRAMES
+                    curr_progress = t * M
+                    K = int(curr_progress)
+                    fr = curr_progress - K
+                    
+                    # Draw fully completed border segments
+                    for i in range(K):
+                        p_start = tuple(polygon_points[i])
+                        p_end = tuple(polygon_points[(i + 1) % M])
+                        cv2.line(frame, p_start, p_end, color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
+                        
+                    # Draw current partial tracing segment
+                    if K < M:
+                        p_start = polygon_points[K]
+                        p_next = polygon_points[(K + 1) % M]
+                        p_end_x = int(p_start[0] + fr * (p_next[0] - p_start[0]))
+                        p_end_y = int(p_start[1] + fr * (p_next[1] - p_start[1]))
+                        p_end = (p_end_x, p_end_y)
+                        p_start_tuple = tuple(p_start)
+                        
+                        cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start_tuple, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
+                else:
+                    # Border is complete, draw closed polygon outline with anti-aliasing
+                    cv2.polylines(frame, [polygon_points], isClosed=True,
+                                  color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                    cv2.polylines(frame, [polygon_points], isClosed=True,
+                                  color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
+                    
+                    # Fade-in semi-transparent overlay fill
+                    overlay = frame.copy()
+                    cv2.fillPoly(overlay, [polygon_points], color_bgr)
+                    
+                    if frame_idx < ANIM_FRAMES + FADE_FRAMES:
+                        alpha = 0.25 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
+                    else:
+                        alpha = 0.25
+                        
+                    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+                    
+                    # Draw plot name label (only after tracing outline completes)
+                    if request.label:
+                        min_y_idx = np.argmin(polygon_points[:, 1])
+                        label_x = polygon_points[min_y_idx][0]
+                        
+                        # Calculate dynamic scale based on video width to make it highly legible
+                        font_scale = max(0.9, width / 750.0)
+                        font_thickness = max(2, int(width / 350.0))
+                        
+                        label_text = request.label
+                        (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+                        
+                        # Space offset above the top point of the polygon
+                        label_y = polygon_points[min_y_idx][1] - 25
+                        
+                        # Bounds check safety so it stays fully inside the frame
+                        label_x = max(15, min(label_x, width - text_w - 20))
+                        label_y = max(text_h + 20, min(label_y, height - 20))
+                        # Background box for the text label
+                        cv2.rectangle(frame, 
+                                      (label_x - 12, label_y - text_h - 12),
+                                      (label_x + text_w + 12, label_y + 12),
+                                      color_bgr, -1)
+                        
+                        # Plot name text drawing
+                        cv2.putText(frame, label_text, (label_x, label_y),
+                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
         out.write(frame)
         frame_idx += 1
 
@@ -109,8 +179,9 @@ def render_overlay(request: OverlayRequest):
     )
 
     # Cleanup
-    os.remove(temp_video_path)
-    os.remove(final_output_path)
+    for path in [temp_video_path, final_output_path, source_local_path]:
+        if os.path.exists(path):
+            os.remove(path)
 
     output_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{output_object_name}"
 
@@ -132,26 +203,17 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
 
     temp_dir = tempfile.mkdtemp()
 
-    # Step A: Dono videos ke secure URLs nikalo
-    try:
-        highlighted_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, highlighted_object_name, expires=timedelta(minutes=20)
-        )
-        original_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, original_object_name, expires=timedelta(minutes=20)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
-
-    # Step B: Dono ko local temp files mein download karo
-    # (FFmpeg ko direct streaming URLs se kaam karne mein kabhi dikkat ho sakti hai, isliye safe side)
+    # Step A+B: Dono videos ko directly MinIO se local temp files mein download karo
+    # (presigned URLs + FFmpeg copy bhi Windows pe fail hota hai sometimes)
     highlighted_local = os.path.join(temp_dir, "highlighted.mp4")
     original_local = os.path.join(temp_dir, "original.mp4")
 
-    subprocess.run(["ffmpeg", "-y", "-i", highlighted_url, "-c", "copy", highlighted_local],
-                   check=True, capture_output=True)
-    subprocess.run(["ffmpeg", "-y", "-i", original_url, "-c", "copy", original_local],
-                   check=True, capture_output=True)
+    try:
+        minio_client.fget_object(MINIO_BUCKET, highlighted_object_name, highlighted_local)
+        minio_client.fget_object(MINIO_BUCKET, original_object_name, original_local)
+    except Exception as e:
+        print(f"[merge-audio] MinIO download failed: {e}")
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
     # Step C: Check karo original video mein audio stream hai bhi ya nahi
     probe = subprocess.run(

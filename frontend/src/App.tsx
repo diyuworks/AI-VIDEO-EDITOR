@@ -4,7 +4,7 @@ import PromptInputPage from './features/prompt/PromptInputPage'
 import TimelineEditorPage from './features/timeline/TimelineEditorPage'
 import ReelGeneratorPage from './pages/ReelGeneratorPage'
 
-type Screen = 'upload' | 'prompt' | 'reel-generator' | 'timeline'
+type Screen = 'upload' | 'prompt' | 'timeline' | 'reel'
 
 export interface PromptData {
   presets: string[]
@@ -12,68 +12,83 @@ export interface PromptData {
 }
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('upload')
+  const [screen, setScreen] = useState<Screen>('reel')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [objectName, setObjectName] = useState<string | null>(null)
-  const [referenceObjectName, setReferenceObjectName] = useState<string | null>(null)
+  const [referenceResults, setReferenceResults] = useState<any[]>([])
+  const [rawObjectName, setRawObjectName] = useState<string | null>(null)
   const [promptData, setPromptData] = useState<PromptData | null>(null)
 
-  if (screen === 'upload') {
-    return (
-      <UploadPage
-        onContinue={(data) => {
-          console.log('Backend upload result:', data.uploadResult)
-          console.log('Reference upload result:', data.referenceUploadResult)
-          setVideoUrl(URL.createObjectURL(data.sourceFile))
-          if (data.uploadResult) setObjectName(data.uploadResult.object_name)
-          if (data.referenceUploadResult) setReferenceObjectName(data.referenceUploadResult.object_name)
-          setScreen('prompt')
+  return (
+    <div style={{ position: 'relative', minHeight: '100vh', background: '#0F0F11' }}>
+      {/* Top Bar Quick Access Button for Live Demo */}
+      <button
+        onClick={() => setScreen(screen === 'reel' ? 'upload' : 'reel')}
+        style={{
+          position: 'fixed',
+          top: 14,
+          right: 14,
+          zIndex: 9999,
+          padding: '10px 18px',
+          background: '#FFEB3B',
+          color: '#000000',
+          borderRadius: 10,
+          fontWeight: 700,
+          fontSize: '14px',
+          cursor: 'pointer',
+          border: '2px solid #000',
+          boxShadow: '0 4px 12px rgba(255,235,59,0.4)',
         }}
-      />
-    )
-  }
+      >
+        {screen === 'reel' ? '✏️ Go to Timeline Editor' : '🎬 Go to Reel Generator'}
+      </button>
 
-  if (screen === 'prompt') {
-    return (
-      <PromptInputPage
-        onContinue={(data) => {
-          console.log('Prompt submitted:', data)
-          setPromptData(data)
-          // Move to reel generator step
-          setScreen('reel-generator')
-        }}
-      />
-    )
-  }
+      {screen === 'upload' && (
+        <UploadPage
+          onContinue={(data) => {
+            console.log('Backend upload result:', data.uploadResult)
+            if (data.sourceFile) {
+              setVideoUrl(URL.createObjectURL(data.sourceFile))
+            }
+            setReferenceResults(data.referenceUploadResults || [])
+            if (data.uploadResult?.object_name) {
+              setRawObjectName(data.uploadResult.object_name)
+            }
+            setScreen('prompt')
+          }}
+        />
+      )}
 
-  if (screen === 'reel-generator' && objectName) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
-        <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-4xl flex justify-center">
-          <ReelGeneratorPage
-            rawVideoObjectName={objectName}
-            referenceObjectName={referenceObjectName}
-            prompt={promptData?.prompt}
-          />
+      {screen === 'prompt' && (
+        <PromptInputPage
+          onContinue={(data) => {
+            console.log('Prompt submitted:', data)
+            setPromptData(data)
+            setScreen('timeline')
+          }}
+        />
+      )}
+
+      {screen === 'timeline' && (
+        <TimelineEditorPage
+          videoUrl={videoUrl || ''}
+          referenceResults={referenceResults}
+          rawObjectName={rawObjectName || undefined}
+        />
+      )}
+
+      {screen === 'reel' && (
+        <div className="min-h-screen bg-[#0F0F11] flex flex-col items-center justify-center p-8">
+          <div className="bg-[#151518] border border-gray-800 p-6 rounded-2xl shadow-2xl w-full max-w-4xl flex justify-center text-white">
+            <ReelGeneratorPage
+              rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
+              referenceObjectName={referenceResults?.[0]?.object_name || undefined}
+              prompt={promptData?.prompt}
+            />
+          </div>
         </div>
-      </div>
-    )
-  }
-
-  // Fallback to timeline if ever needed
-  if (screen === 'timeline' && videoUrl && objectName && promptData) {
-    return (
-      <TimelineEditorPage 
-        videoUrl={videoUrl} 
-        objectName={objectName}
-        referenceObjectName={referenceObjectName}
-        promptData={promptData}
-      />
-    )
-  }
-
-  return null
+      )}
+    </div>
+  )
 }
 
 export default App
-

@@ -6,10 +6,13 @@ interface ReferenceVideo {
   id: string
   file: File
   previewUrl: string
+  uploadStatus?: 'uploading' | 'done' | 'error'
+  uploadResult?: UploadResult
 }
 
 const MAX_REFERENCE_VIDEOS = 5
 const UPLOAD_ENDPOINT = 'http://localhost:8000/upload'
+const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:8000/upload-reference'
 
 interface UploadResult {
   success: boolean
@@ -23,7 +26,7 @@ interface UploadPageProps {
     sourceFile: File
     referenceVideos: File[]
     uploadResult: UploadResult | null
-    referenceUploadResult: UploadResult | null
+    referenceUploadResults?: UploadResult[]
   }) => void
 }
 
@@ -135,49 +138,52 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     setUploadResult(null)
   }
 
-  const [referenceUploadResult, setReferenceUploadResult] = useState<UploadResult | null>(null)
-  const [isUploadingRefs, setIsUploadingRefs] = useState(false)
+  // ---- Reference video handlers ----
 
-  const handleReferenceFiles = async (files: FileList | null) => {
+  const handleReferenceFiles = (files: FileList | null) => {
     if (!files) return
     const incoming = Array.from(files).filter(isVideoFile)
-    if (incoming.length === 0) return
 
-    setIsUploadingRefs(true)
-    setReferenceVideos((prev) => {
-      const room = MAX_REFERENCE_VIDEOS - prev.length
-      const toAdd = incoming.slice(0, room).map((file) => ({
-        id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }))
-      return [...prev, ...toAdd]
-    })
+    incoming.forEach((file) => {
+      setReferenceVideos((prev) => {
+        if (prev.length >= MAX_REFERENCE_VIDEOS) return prev
+        const id = `${file.name}-${file.size}-${Date.now()}-${Math.random()}`
+        const newRef: ReferenceVideo = {
+          id,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          uploadStatus: 'uploading'
+        }
 
-    // Upload the first reference video to backend
-    const refFile = incoming[0]
-    const formData = new FormData()
-    formData.append('file', refFile)
+        const formData = new FormData()
+        formData.append('file', file)
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', UPLOAD_REFERENCE_ENDPOINT)
 
-    try {
-      const res = await fetch(UPLOAD_ENDPOINT, {
-        method: 'POST',
-        body: formData,
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const result = JSON.parse(xhr.responseText)
+              setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'done', uploadResult: result } : v))
+            } catch {
+              setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+            }
+          } else {
+            setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+          }
+        }
+        xhr.onerror = () => {
+          setReferenceVideos((current) => current.map((v) => v.id === id ? { ...v, uploadStatus: 'error' } : v))
+        }
+        xhr.send(formData)
+
+        return [...prev, newRef]
       })
-      if (res.ok) {
-        const result = await res.json()
-        setReferenceUploadResult(result)
-      }
-    } catch (e) {
-      console.error('Failed to upload reference video', e)
-    } finally {
-      setIsUploadingRefs(false)
-    }
+    })
   }
 
   const removeReferenceVideo = (id: string) => {
     setReferenceVideos((prev) => prev.filter((v) => v.id !== id))
-    // Simplification: if we remove, we don't bother deleting from backend for now
   }
 
   return (
@@ -297,7 +303,13 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                     ×
                   </button>
                   <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-amber text-canvas flex items-center justify-center">
-                    <CheckIcon />
+                    {ref.uploadStatus === 'uploading' ? (
+                      <div className="w-3 h-3 rounded-full border border-canvas border-t-transparent animate-spin" />
+                    ) : ref.uploadStatus === 'error' ? (
+                      <span className="text-xs leading-none">!</span>
+                    ) : (
+                      <CheckIcon />
+                    )}
                   </div>
                 </div>
               ))}
@@ -329,7 +341,9 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
                   sourceFile,
                   referenceVideos: referenceVideos.map((v) => v.file),
                   uploadResult,
-                  referenceUploadResult,
+                  referenceUploadResults: referenceVideos
+                    .filter((v) => v.uploadStatus === 'done' && v.uploadResult)
+                    .map((v) => v.uploadResult!),
                 })
               }
               className="w-full mt-8 py-3.5 rounded-xl font-medium bg-amber text-canvas hover:bg-amber-bright transition-colors"

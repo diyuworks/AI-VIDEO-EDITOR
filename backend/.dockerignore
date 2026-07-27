@@ -1,0 +1,10 @@
+models/
+venv/
+.venv/
+__pycache__/
+*.mp4
+*.wav
+*.mp3
+*.jpg
+*.png
+*.pth

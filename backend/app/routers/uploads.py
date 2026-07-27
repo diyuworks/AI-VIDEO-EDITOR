@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -70,6 +70,39 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     return {
         "success": True,
         "id": record.id,
+        "filename": file.filename,
+        "object_name": object_name,
+        "url": file_url,
+    }
+
+
+@router.post("/upload-reference")
+async def upload_reference_video(file: UploadFile = File(...)):
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    object_name = f"ref_{uuid.uuid4().hex}{ext}"
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(status_code=400, detail="File too large")
+
+    try:
+        minio_client.put_object(
+            MINIO_BUCKET,
+            object_name,
+            data=BytesIO(contents),
+            length=len(contents),
+            content_type=file.content_type,
+        )
+    except S3Error as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+    file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
+
+    return {
+        "success": True,
         "filename": file.filename,
         "object_name": object_name,
         "url": file_url,

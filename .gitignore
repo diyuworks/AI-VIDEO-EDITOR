@@ -30,3 +30,72 @@ uploads/
 # Database
 *.db
 *.sqlite3
+
+# Large Model Files
+backend/models/
+
+# Test audio/video/image files
+*.mp3
+*.wav
+backend/plot_test_frame.jpg
+backend/sam_mask_*.jpg
+current_diff.txt
+
+# Log files
+*.log
+
+# Temp directory & output
+# Node
+node_modules/
+dist/
+build/
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Media
+*.mp4
+*.mov
+*.avi
+uploads/
+
+# Database
+*.db
+*.sqlite3
+
+# Large Model Files
+backend/models/
+
+# Test audio/video/image files
+*.mp3
+*.wav
+backend/plot_test_frame.jpg
+backend/sam_mask_*.jpg
+current_diff.txt
+
+# Log files
+*.log
+
+# Temp directory & output
+backend/tmp_exports/
+backend/tts_output/
+backend/keyframes/
+backend/verify_frames/
+backend/chatgpt_images/
+backend/demo_clips/
+backend/minio-data/
+*.exe

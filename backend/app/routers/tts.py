@@ -13,7 +13,7 @@ router = APIRouter()
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = 'gu-IN-NiranjanNeural'
+    voice: str = "gu-IN-NiranjanNeural"  # Original Male Voice
 
 TMP_AUDIO_DIR = 'tts_output'
 os.makedirs(TMP_AUDIO_DIR, exist_ok=True)
@@ -25,8 +25,10 @@ async def generate_tts(request: TTSRequest):
     filepath = os.path.join(TMP_AUDIO_DIR, filename)
 
     try:
-        # +20% gives an energetic, real-feel pace without sounding robotic
-        communicate = edge_tts.Communicate(request.text, request.voice, rate='+20%')
+        # Original Male Voice (gu-IN-NiranjanNeural)
+        selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-NiranjanNeural"
+        # Adjust rate and pitch for a more natural, professional real-estate voice
+        communicate = edge_tts.Communicate(request.text, selected_voice, rate="+10%", pitch="+5Hz")
         
         last_offset = 0
         last_duration = 0

@@ -6,9 +6,16 @@ pg8000
 pydantic==2.9.2
 python-multipart
 minio
-ffmpeg-python
+ffmpeg-python==0.2.0
 sqlmodel
 faster-whisper
 groq
+requests
+gTTS
+segment-anything
+torch
+torchvision
+opencv-python-headless
+edge-tts==7.2.8
 opencv-python
 numpy
