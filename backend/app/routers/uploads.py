@@ -1,3 +1,4 @@
+import os
 import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
