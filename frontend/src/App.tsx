@@ -77,8 +77,8 @@ function App() {
       )}
 
       {screen === 'reel' && (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
-          <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-4xl flex justify-center text-black">
+        <div className="min-h-screen bg-[#0F0F11] flex flex-col items-center justify-center p-8">
+          <div className="bg-[#151518] border border-gray-800 p-6 rounded-2xl shadow-2xl w-full max-w-4xl flex justify-center text-white">
             <ReelGeneratorPage
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
