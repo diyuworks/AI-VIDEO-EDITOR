@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -33,6 +33,13 @@ interface ClipHighlight {
   isDone?: boolean;
 }
 
+interface UploadedClip {
+  id: number;
+  filename: string;
+  object_name: string;
+  url: string;
+}
+
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -49,14 +56,84 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [activeMarkingClip, setActiveMarkingClip] = useState<string | null>(null);
   const [activeMarkingLabel, setActiveMarkingLabel] = useState<string>("");
 
-  // Selected clips for multi-clip demo
-  const [selectedClips, setSelectedClips] = useState<string[]>([
-    "clip_1.mp4",
-    "clip_2.mp4",
-    "clip_3.mp4",
-    "clip_4.mp4",
-    "clip_5.mp4",
-  ]);
+  // Uploaded clips and progress states
+  const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
+
+  // Selected clips for multi-clip merging
+  const [selectedClips, setSelectedClips] = useState<string[]>([]);
+
+  // Fetch uploaded clips on mount
+  useEffect(() => {
+    fetchUploadedClips();
+  }, []);
+
+  const fetchUploadedClips = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/videos`);
+      if (res.ok) {
+        const data = await res.json();
+        setUploadedClips(data);
+        // Select first 5 clips by default if any exist
+        if (data.length > 0) {
+          setSelectedClips(data.slice(0, 5).map((c: UploadedClip) => c.object_name));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch clips:", err);
+    }
+  };
+
+  // Handle uploading multiple raw video files
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const newClips: UploadedClip[] = [];
+    const newlySelected: string[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress(`Uploading ${file.name} (${i + 1}/${files.length})...`);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch(`${API_BASE_URL}/upload`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || `Upload failed for ${file.name}`);
+        }
+
+        const data = await res.json();
+        const clip: UploadedClip = {
+          id: data.id,
+          filename: data.filename,
+          object_name: data.object_name,
+          url: data.url,
+        };
+        newClips.push(clip);
+        newlySelected.push(data.object_name);
+      }
+
+      setUploadedClips((prev) => [...newClips, ...prev]);
+      setSelectedClips((prev) => [...newlySelected, ...prev]);
+      setUploadProgress("Upload complete! 🎉");
+      setTimeout(() => setUploadProgress(""), 2000);
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // Handle Multi-Clip Merge & AI Reel Generation
   const handleGenerateMultiClipReel = async () => {
@@ -279,71 +356,115 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               Real Estate Multi-Clip Reel Generator
             </h2>
             <p className="text-gray-400 text-sm mt-1">
-              Select land plot clips to stitch together into a seamless 9:16 vertical Reel. You can draw highlights & name plots for each clip.
+              Upload raw footage clips, select which ones to stitch together, draw Highlights and name plots for each clip.
             </p>
           </div>
 
-          {/* Clip Grid */}
-          <div className="grid grid-cols-5 gap-3">
-            {["PLOT A", "PLOT B", "PLOT C", "PLOT D", "PLOT E"].map((label, idx) => {
-              const clipName = `clip_${idx + 1}.mp4`;
-              const isSelected = selectedClips.includes(clipName);
-              return (
-                <div
-                  key={clipName}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedClips(selectedClips.filter((c) => c !== clipName));
-                    } else {
-                      setSelectedClips([...selectedClips, clipName]);
-                    }
-                  }}
-                  className={`cursor-pointer p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[145px] ${
-                    isSelected
-                      ? "border-yellow-400 bg-yellow-400/10 shadow-lg"
-                      : "border-gray-800 bg-gray-800/40 opacity-60"
-                  }`}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    <div className="text-xl">📍</div>
-                    <span className="font-bold text-sm text-yellow-300 mt-1">{label}</span>
-                    <span className="text-[10px] text-gray-400">4 Sec Clip</span>
-                  </div>
-
-                  {isSelected && (
-                    <div className="w-full mt-2 pt-2 border-t border-gray-800/50 flex flex-col items-center">
-                      {clipHighlights[clipName]?.isTracking ? (
-                        <span className="text-[10px] text-yellow-400 animate-pulse font-mono">⏳ Tracking AI...</span>
-                      ) : clipHighlights[clipName]?.isDone ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMarkingClip(clipName);
-                            setActiveMarkingLabel(clipHighlights[clipName]?.label || label);
-                          }}
-                          className="w-full py-1 px-1 bg-yellow-400 hover:bg-yellow-300 text-black text-[10px] font-bold rounded flex items-center justify-center truncate"
-                          title="Click to edit plot boundary"
-                        >
-                          ✅ {clipHighlights[clipName]?.label || "Highlighted"}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMarkingClip(clipName);
-                            setActiveMarkingLabel(label);
-                          }}
-                          className="w-full py-1 bg-gray-800 hover:bg-gray-700 text-white text-[10px] font-semibold rounded flex items-center justify-center"
-                        >
-                          ✏️ Highlight Plot
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {/* Upload Section */}
+          <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <h3 className="font-bold text-yellow-300">📤 Upload Raw Footage Clips</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Upload one or more .mp4 files from your computer.</p>
+            </div>
+            <div className="relative">
+              <input
+                type="file"
+                multiple
+                accept="video/*"
+                onChange={handleFileUpload}
+                disabled={isUploading}
+                className="hidden"
+                id="raw-clip-upload"
+              />
+              <label
+                htmlFor="raw-clip-upload"
+                className={`px-6 py-3 font-semibold rounded-xl text-sm transition cursor-pointer flex items-center gap-2 ${
+                  isUploading 
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed" 
+                    : "bg-yellow-400 hover:bg-yellow-300 text-black shadow-lg"
+                }`}
+              >
+                {isUploading ? "⏳ Uploading..." : "📂 Select Video Files"}
+              </label>
+            </div>
           </div>
+
+          {uploadProgress && (
+            <div className="bg-yellow-400/10 border border-yellow-400/20 text-yellow-300 px-4 py-2 rounded-lg text-xs font-mono animate-pulse">
+              {uploadProgress}
+            </div>
+          )}
+
+          {/* Clip Grid */}
+          {uploadedClips.length === 0 ? (
+            <div className="border-2 border-dashed border-gray-800 rounded-2xl p-12 text-center text-gray-500 text-sm">
+              📁 No raw footages uploaded yet. Use the upload button above to add raw clips.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {uploadedClips.map((clip) => {
+                const clipName = clip.object_name;
+                const isSelected = selectedClips.includes(clipName);
+                const label = clip.filename;
+                return (
+                  <div
+                    key={clip.id}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedClips(selectedClips.filter((c) => c !== clipName));
+                      } else {
+                        setSelectedClips([...selectedClips, clipName]);
+                      }
+                    }}
+                    className={`cursor-pointer p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[145px] ${
+                      isSelected
+                        ? "border-yellow-400 bg-yellow-400/10 shadow-lg"
+                        : "border-gray-800 bg-gray-800/40 opacity-60"
+                    }`}
+                  >
+                    <div className="flex flex-col items-center text-center w-full">
+                      <div className="text-xl">📍</div>
+                      <span className="font-bold text-xs text-yellow-300 mt-1 truncate w-full" title={label}>
+                        {label}
+                      </span>
+                      <span className="text-[10px] text-gray-500 truncate w-full mt-0.5">Custom Clip</span>
+                    </div>
+
+                    {isSelected && (
+                      <div className="w-full mt-2 pt-2 border-t border-gray-800/50 flex flex-col items-center">
+                        {clipHighlights[clipName]?.isTracking ? (
+                          <span className="text-[10px] text-yellow-400 animate-pulse font-mono">⏳ Tracking AI...</span>
+                        ) : clipHighlights[clipName]?.isDone ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMarkingClip(clipName);
+                              setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                            }}
+                            className="w-full py-1 px-1 bg-yellow-400 hover:bg-yellow-300 text-black text-[10px] font-bold rounded flex items-center justify-center truncate"
+                            title="Click to edit plot boundary"
+                          >
+                            ✅ {clipHighlights[clipName]?.label || "Highlighted"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMarkingClip(clipName);
+                              setActiveMarkingLabel(label.split(".")[0]);
+                            }}
+                            className="w-full py-1 bg-gray-800 hover:bg-gray-700 text-white text-[10px] font-semibold rounded flex items-center justify-center"
+                          >
+                            ✏️ Highlight Plot
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Prompt Input */}
           <div className="space-y-2">
