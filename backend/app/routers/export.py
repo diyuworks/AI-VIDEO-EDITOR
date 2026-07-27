@@ -135,11 +135,14 @@ def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boun
 @router.post("/export")
 async def export_reel(request: ReelExportRequest):
     export_id = str(uuid.uuid4())
+    TEMPORARY_DISABLE_VOICEOVER = True  # Set to False to restore AI script, voiceover & captions
     
     # Paths
-    audio_path = os.path.join("tts_output", f"{request.audio_id}.mp3")
-    if not os.path.exists(audio_path):
-        raise HTTPException(status_code=400, detail="Audio file not found")
+    audio_path = None
+    if not TEMPORARY_DISABLE_VOICEOVER:
+        audio_path = os.path.join("tts_output", f"{request.audio_id}.mp3")
+        if not os.path.exists(audio_path):
+            raise HTTPException(status_code=400, detail="Audio file not found")
         
     video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")
     srt_path = os.path.join(TMP_DIR, f"{export_id}_subs.srt")
@@ -149,40 +152,32 @@ async def export_reel(request: ReelExportRequest):
         # 1. Download original video
         minio_client.fget_object(MINIO_BUCKET, request.object_name, video_path)
         
-        # 2. Get audio duration
-        probe_audio = ffmpeg.probe(audio_path)
-        audio_duration = float(probe_audio['format']['duration'])
-        
         # Get video duration
         probe_video = ffmpeg.probe(video_path)
         video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
         video_duration = float(probe_video['format']['duration'])
         
-        # ALWAYS keep natural voice speed. Do not stretch/slow audio to fit video.
-        speed_ratio = 1.0
+        has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
         
-        # 3. Generate SRT file
-        generate_srt(request.generated_script, audio_duration, srt_path, request.word_boundaries, speed_ratio)
+        # 2. Get audio duration
+        if not TEMPORARY_DISABLE_VOICEOVER and audio_path:
+            probe_audio = ffmpeg.probe(audio_path)
+            audio_duration = float(probe_audio['format']['duration'])
+            trim_duration = audio_duration
+        else:
+            trim_duration = video_duration
         
-        # Windows path escaping for ffmpeg subtitles filter is notoriously tricky.
-        # It's better to use forward slashes and escape colons if absolute, or use relative paths.
-        srt_path_ffmpeg = srt_path.replace('\\', '/')
-        
-        # 4. Use ffmpeg to combine: video + end_screen image + new audio + subtitles
-        # First probe video to get dimensions (already have video_info)
         width = int(video_info['width'])
         height = int(video_info['height'])
-
+ 
         input_video = ffmpeg.input(video_path)
-        input_audio = ffmpeg.input(audio_path)
         
         # Convert video to 9:16 Reels format (crop center)
-        # Trim video to exactly the audio length so we don't have awkward silence.
         crop_w = 'min(iw,ih*9/16)'
         crop_h = 'min(ih,iw*16/9)'
         video_scaled = (
             input_video.video
-            .trim(duration=audio_duration)
+            .trim(duration=trim_duration)
             .setpts('PTS-STARTPTS')
             .filter('fps', fps=25)
             .filter('crop', crop_w, crop_h)
@@ -207,29 +202,35 @@ async def export_reel(request: ReelExportRequest):
         
         # Concat video and image
         concat_video = ffmpeg.concat(video_scaled, image_scaled, v=1, a=0)
-
+ 
         # Overlay logo watermark if jamin24_logo.png exists in assets/ folder
         logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "jamin24_logo.png")
         if os.path.exists(logo_path):
             logo_input = ffmpeg.input(logo_path)
-            # Scale logo to fit nicely (width 120px)
             logo_scaled = logo_input.filter('scale', 120, -1)
-            # Overlay in top-right corner with 20px margins
             concat_video = ffmpeg.overlay(concat_video, logo_scaled, x='main_w-overlay_w-20', y='20')
         
-        # Adding subtitles with premium Reel styling (Bold, White text, heavy black outline)
-        # Reduced FontSize to 18 and increased MarginV to 80 for a more professional, smaller look in 9:16 format.
-        style = "FontName=Nirmala UI,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=80,Bold=-1"
+        if not TEMPORARY_DISABLE_VOICEOVER:
+            # 3. Generate SRT file
+            generate_srt(request.generated_script, trim_duration, srt_path, request.word_boundaries, 1.0)
+            srt_path_ffmpeg = srt_path.replace('\\', '/')
+            
+            style = "FontName=Nirmala UI,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=80,Bold=-1"
+            filtered_video = concat_video.filter('subtitles', srt_path_ffmpeg, force_style=style)
+            
+            input_audio = ffmpeg.input(audio_path)
+            audio_stream = input_audio.audio
+            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+        else:
+            filtered_video = concat_video
+            if has_audio:
+                audio_stream = input_video.audio
+                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            else:
+                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264')
         
-        filtered_video = concat_video.filter('subtitles', srt_path_ffmpeg, force_style=style)
-        
-        # Keep original natural audio stream
-        audio_stream = input_audio.audio
-        
-        # We let it use the video length (which includes the 5s end screen)
         (
-            ffmpeg
-            .output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            ffmpeg_out
             .overwrite_output()
             .run(capture_stdout=True, capture_stderr=True)
         )
