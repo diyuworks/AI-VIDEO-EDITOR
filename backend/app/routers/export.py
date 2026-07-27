@@ -207,6 +207,15 @@ async def export_reel(request: ReelExportRequest):
         
         # Concat video and image
         concat_video = ffmpeg.concat(video_scaled, image_scaled, v=1, a=0)
+
+        # Overlay logo watermark if jamin24_logo.png exists in assets/ folder
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "jamin24_logo.png")
+        if os.path.exists(logo_path):
+            logo_input = ffmpeg.input(logo_path)
+            # Scale logo to fit nicely (width 120px)
+            logo_scaled = logo_input.filter('scale', 120, -1)
+            # Overlay in top-right corner with 20px margins
+            concat_video = ffmpeg.overlay(concat_video, logo_scaled, x='main_w-overlay_w-20', y='20')
         
         # Adding subtitles with premium Reel styling (Bold, White text, heavy black outline)
         # Reduced FontSize to 18 and increased MarginV to 80 for a more professional, smaller look in 9:16 format.

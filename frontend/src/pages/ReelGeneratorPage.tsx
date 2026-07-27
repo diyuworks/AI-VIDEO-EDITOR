@@ -24,6 +24,15 @@ interface ReelGeneratorPageProps {
   prompt?: string;
 }
 
+interface ClipHighlight {
+  objectName: string;
+  points?: Point[];
+  label?: string;
+  highlightedObjectName?: string;
+  isTracking?: boolean;
+  isDone?: boolean;
+}
+
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -34,6 +43,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [prompt, setPrompt] = useState<string>(initialPrompt || "Real estate plot sales reel in Hindi");
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Custom highlights & labels for each multi-clip
+  const [clipHighlights, setClipHighlights] = useState<Record<string, ClipHighlight>>({});
+  const [activeMarkingClip, setActiveMarkingClip] = useState<string | null>(null);
+  const [activeMarkingLabel, setActiveMarkingLabel] = useState<string>("");
 
   // Selected clips for multi-clip demo
   const [selectedClips, setSelectedClips] = useState<string[]>([
@@ -49,13 +63,20 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     try {
       setErrorMessage(null);
       
-      // Step 1: Merge multi-clips into single stream
+      // Step 1: Use highlighted clips if available, else fallback to raw clips
+      const clipsToMerge = selectedClips.map(clip => {
+        const highlight = clipHighlights[clip];
+        return (highlight && highlight.isDone && highlight.highlightedObjectName) 
+          ? highlight.highlightedObjectName 
+          : clip;
+      });
+
       setStage("merging_clips");
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clip_object_names: selectedClips,
+          clip_object_names: clipsToMerge,
         }),
       });
 
@@ -135,6 +156,70 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
+  // Async tracking and rendering for an individual multi-clip
+  const handleMultiClipBoundaryConfirmed = async (clipName: string, points: Point[], label: string) => {
+    try {
+      setClipHighlights(prev => ({
+        ...prev,
+        [clipName]: {
+          objectName: clipName,
+          points,
+          label,
+          isTracking: true,
+          isDone: false,
+        }
+      }));
+
+      // 1. Call track-boundary
+      const trackRes = await fetch(`${API_BASE_URL}/track-boundary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object_name: clipName,
+          initial_points: points,
+        }),
+      });
+      if (!trackRes.ok) throw new Error("Boundary tracking failed");
+      const trackData = await trackRes.json();
+
+      // 2. Call render-overlay (passing the label for the text box overlay)
+      const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object_name: clipName,
+          polygon_per_frame: trackData.polygon_per_frame,
+          highlight_color: "#FFEB3B",
+          border_thickness: 4,
+          label: label || undefined,
+        }),
+      });
+      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
+      const overlayData = await overlayRes.json();
+
+      setClipHighlights(prev => ({
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          highlightedObjectName: overlayData.output_object_name,
+          isTracking: false,
+          isDone: true,
+        }
+      }));
+    } catch (err: any) {
+      console.error(`Failed to track/render overlay for ${clipName}:`, err);
+      alert(`Failed to track and highlight clip: ${err.message}`);
+      setClipHighlights(prev => ({
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          isTracking: false,
+          isDone: false,
+        }
+      }));
+    }
+  };
+
   const handleDownload = async (url: string) => {
     try {
       const response = await fetch(url);
@@ -150,7 +235,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       URL.revokeObjectURL(blobUrl);
     } catch (error) {
       console.error("Download failed:", error);
-      // Fallback
       window.open(url, "_blank");
     }
   };
@@ -195,7 +279,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               Real Estate Multi-Clip Reel Generator
             </h2>
             <p className="text-gray-400 text-sm mt-1">
-              Select land plot clips to stitch together into a seamless 9:16 vertical Reel with AI voiceover and captions.
+              Select land plot clips to stitch together into a seamless 9:16 vertical Reel. You can draw highlights & name plots for each clip.
             </p>
           </div>
 
@@ -214,15 +298,48 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       setSelectedClips([...selectedClips, clipName]);
                     }
                   }}
-                  className={`cursor-pointer p-4 rounded-xl border flex flex-col items-center justify-center transition ${
+                  className={`cursor-pointer p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[145px] ${
                     isSelected
                       ? "border-yellow-400 bg-yellow-400/10 shadow-lg"
                       : "border-gray-800 bg-gray-800/40 opacity-60"
                   }`}
                 >
-                  <div className="text-xl">📍</div>
-                  <span className="font-bold text-sm text-yellow-300 mt-1">{label}</span>
-                  <span className="text-xs text-gray-400 mt-1">4 Sec Clip</span>
+                  <div className="flex flex-col items-center text-center">
+                    <div className="text-xl">📍</div>
+                    <span className="font-bold text-sm text-yellow-300 mt-1">{label}</span>
+                    <span className="text-[10px] text-gray-400">4 Sec Clip</span>
+                  </div>
+
+                  {isSelected && (
+                    <div className="w-full mt-2 pt-2 border-t border-gray-800/50 flex flex-col items-center">
+                      {clipHighlights[clipName]?.isTracking ? (
+                        <span className="text-[10px] text-yellow-400 animate-pulse font-mono">⏳ Tracking AI...</span>
+                      ) : clipHighlights[clipName]?.isDone ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMarkingClip(clipName);
+                            setActiveMarkingLabel(clipHighlights[clipName]?.label || label);
+                          }}
+                          className="w-full py-1 px-1 bg-yellow-400 hover:bg-yellow-300 text-black text-[10px] font-bold rounded flex items-center justify-center truncate"
+                          title="Click to edit plot boundary"
+                        >
+                          ✅ {clipHighlights[clipName]?.label || "Highlighted"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMarkingClip(clipName);
+                            setActiveMarkingLabel(label);
+                          }}
+                          className="w-full py-1 bg-gray-800 hover:bg-gray-700 text-white text-[10px] font-semibold rounded flex items-center justify-center"
+                        >
+                          ✏️ Highlight Plot
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -326,6 +443,47 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           >
             Try Again
           </button>
+        </div>
+      )}
+
+      {/* Multi-clip individual boundary marking modal */}
+      {activeMarkingClip && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-8 overflow-y-auto">
+          <div className="w-full max-w-4xl bg-gray-950 p-6 rounded-2xl border border-gray-800 shadow-2xl relative">
+            <button 
+              onClick={() => setActiveMarkingClip(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white font-bold text-xl px-2 py-1"
+            >
+              ✕
+            </button>
+            <h3 className="text-xl font-bold text-yellow-400 mb-2">
+              Mark Land Plot Boundary for {activeMarkingClip}
+            </h3>
+            <p className="text-gray-400 text-xs mb-5">
+              Click points along the edges of the plot to define the boundary, and type a plot label/name to display.
+            </p>
+            
+            <div className="mb-5 flex flex-col gap-1.5 text-black">
+              <label className="text-xs font-semibold text-gray-300">Plot Label / Name:</label>
+              <input
+                type="text"
+                value={activeMarkingLabel}
+                onChange={(e) => setActiveMarkingLabel(e.target.value)}
+                placeholder="e.g. Plot A / Road Face"
+                className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-black focus:outline-none focus:border-yellow-400 text-sm w-full max-w-sm"
+              />
+            </div>
+            
+            <BoundaryMarker
+              objectName={activeMarkingClip}
+              onBoundaryConfirmed={async (points) => {
+                const clipName = activeMarkingClip;
+                const label = activeMarkingLabel;
+                setActiveMarkingClip(null);
+                await handleMultiClipBoundaryConfirmed(clipName, points, label);
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

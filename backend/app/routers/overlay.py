@@ -4,7 +4,7 @@ import tempfile
 import os
 import subprocess
 from datetime import timedelta
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ class OverlayRequest(BaseModel):
     polygon_per_frame: List[List[List[float]]]  # Step 3 ka output
     highlight_color: str = "#FFEB3B"  # yellow, default
     border_thickness: int = 4
+    label: Optional[str] = None  # plot name / label text
 
 
 def hex_to_bgr(hex_color: str):
@@ -29,6 +30,7 @@ def hex_to_bgr(hex_color: str):
 def render_overlay(request: OverlayRequest):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
+    from typing import Optional
 
     # Step A: Video ka secure URL nikalo
     try:
@@ -79,6 +81,25 @@ def render_overlay(request: OverlayRequest):
                           color=color_bgr, thickness=request.border_thickness + 4)
             cv2.polylines(frame, [polygon_points], isClosed=True,
                           color=(255, 255, 255), thickness=request.border_thickness)
+
+            # Draw plot name label above the polygon if provided
+            if request.label:
+                min_y_idx = np.argmin(polygon_points[:, 1])
+                label_x = polygon_points[min_y_idx][0]
+                label_y = polygon_points[min_y_idx][1] - 15
+                
+                # Bounds check safety
+                label_x = max(10, min(label_x, width - 150))
+                label_y = max(30, min(label_y, height - 10))
+
+                label_text = request.label
+                (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                cv2.rectangle(frame, 
+                              (label_x - 5, label_y - text_h - 8),
+                              (label_x + text_w + 5, label_y + 5),
+                              color_bgr, -1)
+                cv2.putText(frame, label_text, (label_x, label_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
 
         out.write(frame)
         frame_idx += 1
