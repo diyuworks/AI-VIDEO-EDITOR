@@ -86,20 +86,30 @@ def render_overlay(request: OverlayRequest):
             if request.label:
                 min_y_idx = np.argmin(polygon_points[:, 1])
                 label_x = polygon_points[min_y_idx][0]
-                label_y = polygon_points[min_y_idx][1] - 15
                 
-                # Bounds check safety
-                label_x = max(10, min(label_x, width - 150))
-                label_y = max(30, min(label_y, height - 10))
-
+                # Calculate dynamic scale based on video width to make it highly legible on all resolutions
+                font_scale = max(0.9, width / 750.0)
+                font_thickness = max(2, int(width / 350.0))
+                
                 label_text = request.label
-                (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+                
+                # Space offset above the top point of the polygon
+                label_y = polygon_points[min_y_idx][1] - 25
+                
+                # Bounds check safety so it stays fully inside the frame
+                label_x = max(15, min(label_x, width - text_w - 20))
+                label_y = max(text_h + 20, min(label_y, height - 20))
+
+                # Background box for the text label
                 cv2.rectangle(frame, 
-                              (label_x - 5, label_y - text_h - 8),
-                              (label_x + text_w + 5, label_y + 5),
+                              (label_x - 12, label_y - text_h - 12),
+                              (label_x + text_w + 12, label_y + 12),
                               color_bgr, -1)
+                
+                # Plot name text drawing
                 cv2.putText(frame, label_text, (label_x, label_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
 
         out.write(frame)
         frame_idx += 1
