@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -54,7 +54,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "Real estate plot sales reel in Hindi");
 
-  // Multi-Clip States
+  // Multi-Clip States (Always start empty for a clean workspace)
   const [multiClipStage, setMultiClipStage] = useState<MultiClipStage>("idle");
   const [multiClipVideoUrl, setMultiClipVideoUrl] = useState<string | null>(null);
   const [multiClipError, setMultiClipError] = useState<string | null>(null);
@@ -70,26 +70,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
   const [singleVideoError, setSingleVideoError] = useState<string | null>(null);
-
-  // Fetch uploaded clips on mount
-  useEffect(() => {
-    fetchUploadedClips();
-  }, []);
-
-  const fetchUploadedClips = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/videos`);
-      if (res.ok) {
-        const data = await res.json();
-        setUploadedClips(data);
-        if (data.length > 0) {
-          setSelectedClips(data.slice(0, 5).map((c: UploadedClip) => c.object_name));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch clips:", err);
-    }
-  };
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,6 +125,17 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Discard a clip from the active workspace
+  const handleRemoveClip = (clipName: string) => {
+    setUploadedClips((prev) => prev.filter((c) => c.object_name !== clipName));
+    setSelectedClips((prev) => prev.filter((c) => c !== clipName));
+    setClipHighlights((prev) => {
+      const next = { ...prev };
+      delete next[clipName];
+      return next;
+    });
   };
 
   // Helper check: enforce plot highlight for every selected clip
@@ -419,8 +410,20 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             : "border-gray-800 bg-gray-800/40 opacity-60"
                         }`}
                       >
+                        {/* Remove clip button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveClip(clipName);
+                          }}
+                          className="absolute top-2 right-2 text-gray-500 hover:text-red-400 transition text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/40"
+                          title="Remove clip"
+                        >
+                          ✕
+                        </button>
+
                         <div className="flex flex-col items-center text-center w-full">
-                          <div className="text-xl">📍</div>
+                          <div className="text-xl mt-2">📍</div>
                           <span className="font-bold text-xs text-yellow-300 mt-1 truncate w-full" title={label}>
                             {label}
                           </span>
@@ -433,7 +436,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             ) : clipHighlights[clipName]?.isDone ? (
                               <button
                                 onClick={(e) => {
-                                                                      e.stopPropagation();
+                                  e.stopPropagation();
                                   setActiveMarkingClip(clipName);
                                   setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
                                 }}
@@ -445,7 +448,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             ) : (
                               <button
                                 onClick={(e) => {
-                                                                      e.stopPropagation();
+                                  e.stopPropagation();
                                   setActiveMarkingClip(clipName);
                                   setActiveMarkingLabel(label.split(".")[0]);
                                 }}
