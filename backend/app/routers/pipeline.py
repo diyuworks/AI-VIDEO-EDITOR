@@ -127,18 +127,22 @@ async def merge_clips(request: MergeClipsRequest):
     local_clip_paths = []
 
     try:
-        # Download clips or copy local demo clips
+        # Download clips or copy local demo/uploaded clips
         for idx, name in enumerate(request.clip_object_names):
             local_p = os.path.join(temp_dir, f"clip_{idx}.mp4")
+            upload_p = os.path.join("uploads", name)
             demo_p = os.path.join("demo_clips", name)
-            if os.path.exists(demo_p):
+            if os.path.exists(upload_p):
+                import shutil
+                shutil.copy(upload_p, local_p)
+            elif os.path.exists(demo_p):
                 import shutil
                 shutil.copy(demo_p, local_p)
             else:
                 try:
                     minio_client.fget_object(MINIO_BUCKET, name, local_p)
                 except Exception as e:
-                    raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
+                    raise HTTPException(status_code=404, detail=f"Clip {name} not found on disk or MinIO: {str(e)}")
             local_clip_paths.append(local_p)
 
         # Create FFmpeg concat list

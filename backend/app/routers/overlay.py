@@ -32,21 +32,27 @@ def render_overlay(request: OverlayRequest):
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
     import urllib.request
 
-    # Step A: Video ka secure URL nikalo
-    try:
-        video_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, request.object_name, expires=timedelta(minutes=20)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
-
-    # Step A2: Video ko pehle local temp file mein download karo — URL stream karna slow hota hai
     temp_dir = tempfile.mkdtemp()
     local_video_path = os.path.join(temp_dir, "input_video.mp4")
-    try:
-        urllib.request.urlretrieve(video_url, local_video_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Video download failed: {str(e)}")
+
+    # Step A: Local disk file check (uploads/ or demo_clips/) for 100% reliability
+    upload_disk_path = os.path.join("uploads", request.object_name)
+    demo_disk_path = os.path.join("demo_clips", request.object_name)
+
+    if os.path.exists(upload_disk_path):
+        import shutil
+        shutil.copy(upload_disk_path, local_video_path)
+    elif os.path.exists(demo_disk_path):
+        import shutil
+        shutil.copy(demo_disk_path, local_video_path)
+    else:
+        try:
+            video_url = minio_client.presigned_get_object(
+                MINIO_BUCKET, request.object_name, expires=timedelta(minutes=20)
+            )
+            urllib.request.urlretrieve(video_url, local_video_path)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"File not found on disk or MinIO: {str(e)}")
 
     cap = cv2.VideoCapture(local_video_path)
     if not cap.isOpened():

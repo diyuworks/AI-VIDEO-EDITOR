@@ -63,6 +63,13 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
+    # Save to local disk uploads/ directory for instant 100% reliable access
+    os.makedirs("uploads", exist_ok=True)
+    local_path = os.path.join("uploads", object_name)
+    with open(local_path, "wb") as f:
+        f.write(contents)
+
+    # Best effort MinIO upload
     try:
         minio_client.put_object(
             MINIO_BUCKET,
@@ -72,9 +79,9 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
             content_type=file.content_type,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed (MinIO might be down): {str(e)}")
+        print(f"Notice: MinIO upload skipped/failed, serving locally: {e}")
 
-    file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
+    file_url = f"http://localhost:8000/uploads/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,

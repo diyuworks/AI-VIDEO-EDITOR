@@ -40,6 +40,10 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 # Serve backend/demo_clips as static files so user can download clean raw footage clips
 app.mount("/demo-videos", StaticFiles(directory="demo_clips"), name="demo-videos")
 
+# Serve backend/uploads as static files for reliable local file access
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 @app.on_event("startup")
 def on_startup():
     init_db()
