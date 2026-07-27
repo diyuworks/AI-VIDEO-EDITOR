@@ -558,7 +558,19 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
             )}
 
-
+            {/* Voiceover Prompt Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                🗣️ AI Voiceover Script (Plot Names / Key Info):
+              </label>
+              <input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g. Plot A – Road Facing, 200 sq yd"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400"
+              />
+            </div>
 
             {/* Merge Action Button with validation constraints */}
             <div className="space-y-2 pt-2">
@@ -773,14 +785,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               Click points along the edges of the plot to define the boundary, and type a plot label/name to display.
             </p>
             
-            <div className="mb-5 flex flex-col gap-1.5 text-black">
+            <div className="mb-5 flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-300">Plot Label / Name:</label>
               <input
                 type="text"
                 value={activeMarkingLabel}
                 onChange={(e) => setActiveMarkingLabel(e.target.value)}
                 placeholder="e.g. Plot A / Road Face"
-                className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-black focus:outline-none focus:border-yellow-400 text-sm w-full max-w-sm"
+                className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400 text-sm w-full max-w-sm"
               />
             </div>
             

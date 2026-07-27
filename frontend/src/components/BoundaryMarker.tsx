@@ -124,11 +124,11 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
       />
 
       <div className="flex gap-3">
-        <button onClick={handleUndo} className="px-4 py-2 bg-gray-200 rounded-lg">
-          Undo
+        <button onClick={handleUndo} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg border border-gray-600 transition">
+          ↩ Undo
         </button>
-        <button onClick={handleReset} className="px-4 py-2 bg-gray-200 rounded-lg">
-          Reset
+        <button onClick={handleReset} className="px-4 py-2 bg-red-900/60 hover:bg-red-800 text-red-300 font-semibold rounded-lg border border-red-700/50 transition">
+          🗑 Reset
         </button>
         <button
           onClick={handleConfirm}
