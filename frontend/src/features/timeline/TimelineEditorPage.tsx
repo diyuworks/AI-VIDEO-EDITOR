@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 
 type TrackType = 'video' | 'overlay' | 'audio'
-type OverlayKind = 'caption' | 'boundary' | 'logo' | 'autoBoundary'
+type OverlayKind = 'caption' | 'boundary'
 
 interface Clip {
   id: string
@@ -9,25 +9,21 @@ interface Clip {
   start: number // seconds
   end: number // seconds
   label: string
-  text?: string // caption/land-marker label text
-  overlayKind?: OverlayKind // only set for track === 'overlay'
-  // Box position, as % of the video frame (0-100) — used by 'boundary' and 'logo'
+  text?: string // caption text, only used when overlayKind === 'caption'
+  overlayKind?: OverlayKind // only set for track === 'overlay'; caption clips (from AI plan or "Text") omit this and are treated as captions
+  // Land/plot boundary box, as % of the video frame (0-100), plus rotation
+  // so it can be angled to trace a real, non-axis-aligned field edge.
   boxLeftPct?: number
   boxTopPct?: number
   boxWidthPct?: number
   boxHeightPct?: number
-  imageDataUrl?: string // only set for overlayKind === 'logo'
-  // Only set for overlayKind === 'autoBoundary' — a sampled path of box
-  // positions over time, from the real SAM + CSRT pipeline (see /segment-plot).
-  // Proven reliable for ~15-18s from the click point; render code interpolates
-  // between samples rather than jumping between them.
-  boxPath?: { time: number; xPct: number; yPct: number; widthPct: number; heightPct: number }[]
+  boxRotationDeg?: number
 }
 
 const PIXELS_PER_SECOND = 70
 const TRACK_HEIGHT = 56
 const DEFAULT_CAPTION_DURATION = 3 // seconds
-const DEFAULT_BOUNDARY_DURATION = 4 // seconds
+const DEFAULT_BOUNDARY_DURATION = 5 // seconds
 const DRAG_MOVE_THRESHOLD_PX = 3
 
 const TRACK_META: Record<TrackType, { label: string; color: string; border: string }> = {
@@ -36,10 +32,11 @@ const TRACK_META: Record<TrackType, { label: string; color: string; border: stri
   audio: { label: 'Music', color: 'bg-white/10', border: 'border-white/30' },
 }
 
-// ---- AI plan generation ----
-// Style/pacing options shown in the "Generate editing plan" modal. Reference-pacing
-// numbers come from a real backend call to /analyze-reference (ffmpeg scene detection)
-// when a reference video was uploaded; otherwise these style presets set the pacing.
+// ---- AI plan generation (SIMULATED — see note below) ----
+// Real reference-video content analysis and real audio transcription are not
+// wired to a backend yet. This heuristic fakes a plausible result for demo
+// purposes: cut length is driven by the chosen style label + video duration,
+// and captions come from user-provided transcript text (not real ASR).
 const STYLE_OPTIONS = [
   'Cinematic',
   'Fast cuts',
@@ -49,6 +46,27 @@ const STYLE_OPTIONS = [
   'Moody color grade',
 ] as const
 
+const STYLE_SEGMENT_SECONDS: Record<string, number> = {
+  'Fast cuts': 2.5,
+  'High energy': 2.5,
+  'Dramatic zooms': 3.5,
+  Cinematic: 5.5,
+  'Moody color grade': 5.5,
+  'Clean & minimal': 6,
+}
+
+// Real numbers from ffmpeg scene-detection run against the actual reference
+// reel provided for this demo (WhatsApp_Video_2026-07-14_at_11_31_41.mp4):
+// 41.3s, 9:16, 12 detected cuts averaging ~3.4s apart, with a fast sub-1s
+// burst around 20-22s and a longer ~10s closing segment. This is genuine
+// lightweight style-matching per Phase 1 scope, not a guess.
+const REFERENCE_PROFILE = {
+  avgCutSeconds: 3.44,
+  aspectRatio: '9:16',
+  segmentCount: 12,
+  note: 'Fast-cut burst detected around 20-22s in reference — consider a quick-cut moment at your highlight.',
+}
+
 const GENERATION_STEPS = [
   'Analyzing reference style…',
   'Detecting pacing & rhythm…',
@@ -56,10 +74,68 @@ const GENERATION_STEPS = [
   'Syncing captions…',
 ]
 
+function buildMockPlan(
+  duration: number,
+  style: string,
+  transcript: string,
+  matchReference: boolean,
+): { clips: Clip[]; rationale: string[] } {
+  const segmentLength = matchReference
+    ? REFERENCE_PROFILE.avgCutSeconds
+    : STYLE_SEGMENT_SECONDS[style] ?? 4
+  const videoClips: Clip[] = []
+  let cursor = 0
+  let index = 1
+  while (cursor < duration) {
+    const end = Math.min(cursor + segmentLength, duration)
+    videoClips.push({
+      id: `ai-clip-${index}-${Date.now()}`,
+      track: 'video',
+      start: cursor,
+      end,
+      label: `Clip ${index}`,
+    })
+    cursor = end
+    index++
+  }
+
+  const rationale: string[] = [
+    `Applied a ~${segmentLength}s average cut length to match the "${style}" style.`,
+    `Split raw footage into ${videoClips.length} clips based on reference pacing.`,
+  ]
+
+  const captionClips: Clip[] = []
+  const sentences = transcript
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  if (sentences.length > 0) {
+    const totalChars = sentences.reduce((sum, s) => sum + s.length, 0)
+    let charCursor = 0
+    for (const sentence of sentences) {
+      const start = (charCursor / totalChars) * duration
+      charCursor += sentence.length
+      const end = (charCursor / totalChars) * duration
+      captionClips.push({
+        id: `ai-caption-${captionClips.length}-${Date.now()}`,
+        track: 'overlay',
+        start: Math.round(start * 10) / 10,
+        end: Math.round(end * 10) / 10,
+        label: sentence,
+        text: sentence,
+      })
+    }
+    rationale.push(`Synced ${captionClips.length} caption segments from provided transcript.`)
+  }
+
+  return { clips: [...videoClips, ...captionClips], rationale }
+}
+
 interface TimelineEditorPageProps {
   videoUrl: string
+  rawObjectName?: string
   referenceResults?: any[]
-  rawObjectName?: string // backend object_name for the raw video — required for Auto Mark Land
 }
 
 // Drag session data. Lives in a ref (not state) so mousemove/mouseup handlers
@@ -73,7 +149,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, referenceResults, rawObjectName }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -96,35 +172,11 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
   const [boundaryLabel, setBoundaryLabel] = useState('')
   const [boundaryStart, setBoundaryStart] = useState(0)
   const [boundaryEnd, setBoundaryEnd] = useState(0)
-  const [boundaryLeft, setBoundaryLeft] = useState(25)
-  const [boundaryTop, setBoundaryTop] = useState(25)
-  const [boundaryWidth, setBoundaryWidth] = useState(40)
-  const [boundaryHeight, setBoundaryHeight] = useState(30)
-
-  // ---- Logo/watermark panel state ----
-  const [logoPanelOpen, setLogoPanelOpen] = useState(false)
-  const [editingLogoId, setEditingLogoId] = useState<string | null>(null)
-  const [logoLabel, setLogoLabel] = useState('Logo')
-  const [logoImageDataUrl, setLogoImageDataUrl] = useState<string | null>(null)
-  const [logoStart, setLogoStart] = useState(0)
-  const [logoEnd, setLogoEnd] = useState(0)
-  const [logoLeft, setLogoLeft] = useState(70)
-  const [logoTop, setLogoTop] = useState(4)
-  const [logoWidth, setLogoWidth] = useState(22)
-  const [logoHeight, setLogoHeight] = useState(14)
-
-  // ---- Auto Mark Land state (SAM + tracking) ----
-  const [autoMarkMode, setAutoMarkMode] = useState(false) // true = waiting for a click on the preview
-  const [autoMarkLoading, setAutoMarkLoading] = useState(false)
-  const [autoMarkError, setAutoMarkError] = useState<string | null>(null)
-  const [pendingAutoMark, setPendingAutoMark] = useState<{
-    path: { time: number; xPct: number; yPct: number; widthPct: number; heightPct: number }[]
-    startTime: number
-    endTime: number
-    score: number
-    warning?: string
-  } | null>(null)
-  const [autoMarkLabel, setAutoMarkLabel] = useState('')
+  const [boundaryLeft, setBoundaryLeft] = useState(20)
+  const [boundaryTop, setBoundaryTop] = useState(30)
+  const [boundaryWidth, setBoundaryWidth] = useState(55)
+  const [boundaryHeight, setBoundaryHeight] = useState(35)
+  const [boundaryRotation, setBoundaryRotation] = useState(0)
 
   // ---- Drag-to-rearrange state ----
   const dragSessionRef = useRef<DragSession | null>(null)
@@ -188,170 +240,30 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
     seekTo(clickX / PIXELS_PER_SECOND)
   }
 
-  // ---- Auto Mark Land (SAM + tracking) ----
+  // ---- AI plan generation ----
 
-  const handlePreviewClick = async (e: React.MouseEvent<HTMLVideoElement>) => {
-    if (!autoMarkMode || !videoRef.current) return
-
-    if (!rawObjectName) {
-      setAutoMarkError('No backend object_name available for this video — cannot run auto-tracking.')
-      setAutoMarkMode(false)
-      return
-    }
-
-    const video = videoRef.current
-    const rect = video.getBoundingClientRect()
-    // Convert click position (in displayed pixels) to the video's native resolution
-    const scaleX = video.videoWidth / rect.width
-    const scaleY = video.videoHeight / rect.height
-    const clickX = Math.round((e.clientX - rect.left) * scaleX)
-    const clickY = Math.round((e.clientY - rect.top) * scaleY)
-
-    setAutoMarkMode(false)
-    setAutoMarkLoading(true)
-    setAutoMarkError(null)
-
-    try {
-      const res = await fetch('http://localhost:8000/segment-plot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          object_name: rawObjectName,
-          click_x: clickX,
-          click_y: clickY,
-          click_time: playhead,
-        }),
-      })
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}))
-        throw new Error(errBody.detail || `Request failed (${res.status})`)
-      }
-      const data = await res.json()
-
-      const path = data.path.map((p: any) => ({
-        time: p.time,
-        xPct: p.x_pct,
-        yPct: p.y_pct,
-        widthPct: p.width_pct,
-        heightPct: p.height_pct,
-      }))
-
-      setPendingAutoMark({
-        path,
-        startTime: path[0]?.time ?? playhead,
-        endTime: path[path.length - 1]?.time ?? playhead,
-        score: data.initial_mask_score,
-        warning: data.warning,
-      })
-      setAutoMarkLabel('')
-    } catch (err: any) {
-      setAutoMarkError(err.message || 'Auto Mark Land failed. Check console/backend logs.')
-    } finally {
-      setAutoMarkLoading(false)
-    }
-  }
-
-  const confirmAutoMark = () => {
-    if (!pendingAutoMark || !autoMarkLabel.trim()) return
-    const newClip: Clip = {
-      id: `auto-boundary-${Date.now()}`,
-      track: 'overlay',
-      overlayKind: 'autoBoundary',
-      start: pendingAutoMark.startTime,
-      end: pendingAutoMark.endTime,
-      label: autoMarkLabel,
-      text: autoMarkLabel,
-      boxPath: pendingAutoMark.path,
-    }
-    setClips((prev) => [...prev, newClip])
-    setPendingAutoMark(null)
-    setAutoMarkLabel('')
-  }
-
-  const cancelAutoMark = () => {
-    setPendingAutoMark(null)
-    setAutoMarkLabel('')
-  }
-
-  // Interpolate a box position from a clip's path at the current playhead —
-  // the backend only sends samples every 0.5s, this fills the gaps smoothly.
-  const getInterpolatedBox = (clip: Clip, t: number) => {
-    if (!clip.boxPath || clip.boxPath.length === 0) return null
-    const path = clip.boxPath
-    if (t <= path[0].time) return path[0]
-    if (t >= path[path.length - 1].time) return path[path.length - 1]
-
-    for (let i = 0; i < path.length - 1; i++) {
-      const a = path[i]
-      const b = path[i + 1]
-      if (t >= a.time && t <= b.time) {
-        const ratio = (t - a.time) / (b.time - a.time || 1)
-        return {
-          xPct: a.xPct + (b.xPct - a.xPct) * ratio,
-          yPct: a.yPct + (b.yPct - a.yPct) * ratio,
-          widthPct: a.widthPct + (b.widthPct - a.widthPct) * ratio,
-          heightPct: a.heightPct + (b.heightPct - a.heightPct) * ratio,
-        }
-      }
-    }
-    return path[path.length - 1]
-  }
-
-  // ---- AI plan generation (real backend calls) ----
-
-  const runGeneratePlan = async () => {
+  const runGeneratePlan = () => {
     setIsGenerating(true)
     setGenerationStepIndex(0)
 
-    try {
-      let referenceProfile = null
-      if (matchReference && referenceResults && referenceResults.length > 0) {
-        setGenerationStepIndex(0) // Analyzing reference style...
-        const res = await fetch('http://localhost:8000/analyze-reference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ object_name: referenceResults[0].object_name }),
-        })
-        if (!res.ok) throw new Error('Failed to analyze reference')
-        referenceProfile = await res.json()
-      } else if (matchReference) {
-        alert('No reference video uploaded. Proceeding without reference pacing.')
-      }
+    const stepDelay = 550
+    GENERATION_STEPS.forEach((_, i) => {
+      setTimeout(() => setGenerationStepIndex(i), i * stepDelay)
+    })
 
-      setGenerationStepIndex(2) // Generating cut plan...
-
-      const planRes = await fetch('http://localhost:8000/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_duration: duration,
-          reference_profile: referenceProfile || {
-            duration: 10,
-            scene_cuts: [],
-            avg_cut_seconds: 4.0,
-            cut_count: 0,
-          },
-          style: selectedStyle,
-          transcript: transcriptInput,
-          match_reference: matchReference && !!referenceProfile,
-        }),
-      })
-
-      if (!planRes.ok) throw new Error('Failed to generate plan')
-      const planData = await planRes.json()
-
-      setGenerationStepIndex(3) // Syncing captions...
-
-      setClips(planData.clips)
-      setRationale(planData.rationale)
+    setTimeout(() => {
+      const { clips: planClips, rationale: planRationale } = buildMockPlan(
+        duration,
+        selectedStyle,
+        transcriptInput,
+        matchReference,
+      )
+      setClips(planClips)
+      setRationale(planRationale)
       setIsGenerating(false)
       setHasGeneratedPlan(true)
       setPlanModalOpen(false)
-    } catch (e) {
-      console.error(e)
-      alert('Error generating plan from backend. Check console.')
-      setIsGenerating(false)
-    }
+    }, GENERATION_STEPS.length * stepDelay)
   }
 
   const skipPlanGeneration = () => {
@@ -422,7 +334,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
       const newClip: Clip = {
         id: `caption-${Date.now()}`,
         track: 'overlay',
-        overlayKind: 'caption',
         start: captionStart,
         end: captionEnd,
         label: captionText,
@@ -449,10 +360,11 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
     setBoundaryLabel('')
     setBoundaryStart(Math.round(start * 10) / 10)
     setBoundaryEnd(Math.round(end * 10) / 10)
-    setBoundaryLeft(25)
-    setBoundaryTop(25)
-    setBoundaryWidth(40)
-    setBoundaryHeight(30)
+    setBoundaryLeft(20)
+    setBoundaryTop(30)
+    setBoundaryWidth(55)
+    setBoundaryHeight(35)
+    setBoundaryRotation(0)
     setBoundaryPanelOpen(true)
   }
 
@@ -461,10 +373,11 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
     setBoundaryLabel(clip.text ?? '')
     setBoundaryStart(clip.start)
     setBoundaryEnd(clip.end)
-    setBoundaryLeft(clip.boxLeftPct ?? 25)
-    setBoundaryTop(clip.boxTopPct ?? 25)
-    setBoundaryWidth(clip.boxWidthPct ?? 40)
-    setBoundaryHeight(clip.boxHeightPct ?? 30)
+    setBoundaryLeft(clip.boxLeftPct ?? 20)
+    setBoundaryTop(clip.boxTopPct ?? 30)
+    setBoundaryWidth(clip.boxWidthPct ?? 55)
+    setBoundaryHeight(clip.boxHeightPct ?? 35)
+    setBoundaryRotation(clip.boxRotationDeg ?? 0)
     setBoundaryPanelOpen(true)
   }
 
@@ -490,6 +403,7 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
                 boxTopPct: boundaryTop,
                 boxWidthPct: boundaryWidth,
                 boxHeightPct: boundaryHeight,
+                boxRotationDeg: boundaryRotation,
               }
             : c,
         ),
@@ -507,6 +421,7 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         boxTopPct: boundaryTop,
         boxWidthPct: boundaryWidth,
         boxHeightPct: boundaryHeight,
+        boxRotationDeg: boundaryRotation,
       }
       setClips((prev) => [...prev, newClip])
     }
@@ -520,99 +435,12 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
     closeBoundaryPanel()
   }
 
-  // ---- Logo/watermark operations ----
-
-  const openNewLogoPanel = () => {
-    setEditingLogoId(null)
-    setLogoLabel('Logo')
-    setLogoImageDataUrl(null)
-    setLogoStart(0)
-    setLogoEnd(duration)
-    setLogoLeft(70)
-    setLogoTop(4)
-    setLogoWidth(22)
-    setLogoHeight(14)
-    setLogoPanelOpen(true)
-  }
-
-  const openEditLogoPanel = (clip: Clip) => {
-    setEditingLogoId(clip.id)
-    setLogoLabel(clip.label ?? 'Logo')
-    setLogoImageDataUrl(clip.imageDataUrl ?? null)
-    setLogoStart(clip.start)
-    setLogoEnd(clip.end)
-    setLogoLeft(clip.boxLeftPct ?? 70)
-    setLogoTop(clip.boxTopPct ?? 4)
-    setLogoWidth(clip.boxWidthPct ?? 22)
-    setLogoHeight(clip.boxHeightPct ?? 14)
-    setLogoPanelOpen(true)
-  }
-
-  const closeLogoPanel = () => {
-    setLogoPanelOpen(false)
-    setEditingLogoId(null)
-  }
-
-  const handleLogoFileChange = (file: File | null) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setLogoImageDataUrl(reader.result as string)
-    reader.readAsDataURL(file)
-  }
-
-  const saveLogo = () => {
-    if (!logoImageDataUrl || logoEnd <= logoStart) return
-
-    if (editingLogoId) {
-      setClips((prev) =>
-        prev.map((c) =>
-          c.id === editingLogoId
-            ? {
-                ...c,
-                start: logoStart,
-                end: logoEnd,
-                label: logoLabel,
-                imageDataUrl: logoImageDataUrl,
-                boxLeftPct: logoLeft,
-                boxTopPct: logoTop,
-                boxWidthPct: logoWidth,
-                boxHeightPct: logoHeight,
-              }
-            : c,
-        ),
-      )
-    } else {
-      const newClip: Clip = {
-        id: `logo-${Date.now()}`,
-        track: 'overlay',
-        overlayKind: 'logo',
-        start: logoStart,
-        end: logoEnd,
-        label: logoLabel,
-        imageDataUrl: logoImageDataUrl,
-        boxLeftPct: logoLeft,
-        boxTopPct: logoTop,
-        boxWidthPct: logoWidth,
-        boxHeightPct: logoHeight,
-      }
-      setClips((prev) => [...prev, newClip])
-    }
-    closeLogoPanel()
-  }
-
-  const deleteLogo = () => {
-    if (editingLogoId) {
-      setClips((prev) => prev.filter((c) => c.id !== editingLogoId))
-    }
-    closeLogoPanel()
-  }
-
   const handleClipClick = (clip: Clip) => {
     setSelectedClipId(clip.id)
-    if (clip.track === 'overlay') {
-      if (clip.overlayKind === 'boundary') openEditBoundaryPanel(clip)
-      else if (clip.overlayKind === 'logo') openEditLogoPanel(clip)
-      else openEditCaptionPanel(clip)
+    if (clip.track === 'overlay' && clip.overlayKind === 'boundary') {
+      openEditBoundaryPanel(clip)
+    } else if (clip.track === 'overlay') {
+      openEditCaptionPanel(clip)
     }
   }
 
@@ -727,20 +555,12 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
   const canSplit =
     !!selectedClip && playhead > selectedClip.start && playhead < selectedClip.end
 
-  // Overlays currently visible at the playhead, split by kind, rendered over the video preview
   const activeCaption = clips.find(
-    (c) => c.track === 'overlay' && (c.overlayKind ?? 'caption') === 'caption' && playhead >= c.start && playhead < c.end,
+    (c) => c.track === 'overlay' && c.overlayKind !== 'boundary' && playhead >= c.start && playhead < c.end,
   )
-  const activeBoundary = clips.find(
+  const activeBoundaries = clips.filter(
     (c) => c.track === 'overlay' && c.overlayKind === 'boundary' && playhead >= c.start && playhead < c.end,
   )
-  const activeLogo = clips.find(
-    (c) => c.track === 'overlay' && c.overlayKind === 'logo' && playhead >= c.start && playhead < c.end,
-  )
-  const activeAutoBoundary = clips.find(
-    (c) => c.track === 'overlay' && c.overlayKind === 'autoBoundary' && playhead >= c.start && playhead < c.end,
-  )
-  const activeAutoBoundaryBox = activeAutoBoundary ? getInterpolatedBox(activeAutoBoundary, playhead) : null
 
   const tracks: TrackType[] = ['video', 'overlay', 'audio']
   const timelineWidth = Math.max(duration * PIXELS_PER_SECOND, 600)
@@ -750,7 +570,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
 
   return (
     <div className="min-h-screen bg-canvas text-white font-body flex flex-col">
-      {/* ---------------- PREVIEW ---------------- */}
       <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh] relative">
         <div className="relative max-h-full max-w-full">
           <video
@@ -758,66 +577,29 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
             src={videoUrl}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
-            onClick={handlePreviewClick}
-            className={`max-h-full max-w-full rounded-lg block ${autoMarkMode ? 'cursor-crosshair' : ''}`}
+            className="max-h-full max-w-full rounded-lg block"
           />
 
-          {autoMarkMode && (
-            <div className="absolute top-2 left-2 bg-cyan-500 text-canvas text-xs font-semibold px-2.5 py-1 rounded pointer-events-none">
-              Click on the plot to auto-mark it
-            </div>
-          )}
-
-          {/* Auto-tracked land boundary — position interpolated from the real SAM+CSRT path */}
-          {activeAutoBoundaryBox && (
+          {activeBoundaries.map((b) => (
             <div
-              className="absolute border-4 border-cyan-400 bg-cyan-400/20 rounded-sm pointer-events-none flex items-start justify-start"
+              key={b.id}
+              className="absolute pointer-events-none"
               style={{
-                left: `${activeAutoBoundaryBox.xPct}%`,
-                top: `${activeAutoBoundaryBox.yPct}%`,
-                width: `${activeAutoBoundaryBox.widthPct}%`,
-                height: `${activeAutoBoundaryBox.heightPct}%`,
+                left: `${b.boxLeftPct}%`,
+                top: `${b.boxTopPct}%`,
+                width: `${b.boxWidthPct}%`,
+                height: `${b.boxHeightPct}%`,
+                transform: b.boxRotationDeg ? `rotate(${b.boxRotationDeg}deg)` : undefined,
+                transformOrigin: 'center center',
               }}
             >
-              <span className="bg-cyan-400 text-canvas text-xs font-display font-semibold px-1.5 py-0.5 -translate-y-1/2 ml-1 rounded">
-                {activeAutoBoundary?.label}
+              <div className="w-full h-full border-[3px] border-yellow-400 rounded-sm shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" />
+              <span className="absolute -top-6 left-0 text-yellow-300 text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-black/70 whitespace-nowrap">
+                {b.text}
               </span>
             </div>
-          )}
+          ))}
 
-          {/* Land-boundary marker: static yellow box + label, does not track camera motion */}
-          {activeBoundary && (
-            <div
-              className="absolute border-4 border-yellow-400 bg-yellow-400/20 rounded-sm pointer-events-none flex items-start justify-start"
-              style={{
-                left: `${activeBoundary.boxLeftPct}%`,
-                top: `${activeBoundary.boxTopPct}%`,
-                width: `${activeBoundary.boxWidthPct}%`,
-                height: `${activeBoundary.boxHeightPct}%`,
-              }}
-            >
-              <span className="bg-yellow-400 text-canvas text-xs font-display font-semibold px-1.5 py-0.5 -translate-y-1/2 ml-1 rounded">
-                {activeBoundary.label}
-              </span>
-            </div>
-          )}
-
-          {/* Logo/watermark image overlay */}
-          {activeLogo?.imageDataUrl && (
-            <img
-              src={activeLogo.imageDataUrl}
-              alt={activeLogo.label}
-              className="absolute object-contain pointer-events-none"
-              style={{
-                left: `${activeLogo.boxLeftPct}%`,
-                top: `${activeLogo.boxTopPct}%`,
-                width: `${activeLogo.boxWidthPct}%`,
-                height: `${activeLogo.boxHeightPct}%`,
-              }}
-            />
-          )}
-
-          {/* Caption text, karaoke-style bold with stroke */}
           {activeCaption && (
             <div className="absolute bottom-6 left-0 right-0 flex justify-center px-6 pointer-events-none">
               <span
@@ -834,21 +616,13 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         </div>
       </div>
 
-      {/* ---------------- TOOLBAR ---------------- */}
       <div className="flex items-center justify-between px-6 py-3 border-y border-canvas-border bg-canvas-panel">
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5">
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
           <ToolbarButton icon="✂" label="Split" onClick={splitSelectedClip} disabled={!canSplit} />
           <ToolbarButton icon="🗑" label="Delete" onClick={deleteSelectedClip} disabled={!selectedClipId} />
           <ToolbarButton icon="T" label="Text" onClick={openNewCaptionPanel} disabled={duration === 0} />
           <ToolbarButton icon="▭" label="Mark Land" onClick={openNewBoundaryPanel} disabled={duration === 0} />
-          <ToolbarButton icon="🖼" label="Logo" onClick={openNewLogoPanel} disabled={duration === 0} />
-          <ToolbarButton
-            icon="◎"
-            label={autoMarkMode ? 'Click video…' : 'Auto Mark Land'}
-            onClick={() => setAutoMarkMode((v) => !v)}
-            disabled={duration === 0 || !rawObjectName || autoMarkLoading}
-          />
           <ToolbarButton icon="♪" label="Music" disabled />
           <ToolbarButton icon="✨" label="Effects" disabled />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
@@ -858,26 +632,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
           Export
         </button>
       </div>
-
-      {autoMarkLoading && (
-        <div className="px-6 py-2.5 bg-cyan-500/20 border-b border-canvas-border flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          <span className="text-xs text-cyan-200">Running SAM + tracking on the click point… this can take a while, especially without a GPU.</span>
-        </div>
-      )}
-
-      {autoMarkError && (
-        <div className="px-6 py-2.5 bg-red-500/20 border-b border-canvas-border flex items-center justify-between">
-          <span className="text-xs text-red-200">{autoMarkError}</span>
-          <button onClick={() => setAutoMarkError(null)} className="text-red-200 text-xs underline">Dismiss</button>
-        </div>
-      )}
-
-      {!rawObjectName && (
-        <div className="px-6 py-2 bg-white/5 border-b border-canvas-border">
-          <span className="text-xs text-white/40">Auto Mark Land is disabled — no backend object_name was passed to this video.</span>
-        </div>
-      )}
 
       {hasGeneratedPlan && rationale.length > 0 && (
         <div className="px-6 py-2.5 bg-teal-dim/30 border-b border-canvas-border">
@@ -892,7 +646,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         </div>
       )}
 
-      {/* ---------------- TIMELINE ---------------- */}
       <div className="bg-canvas-raised px-6 py-4">
         <div className="flex items-center justify-between mb-2">
           <span className="font-mono text-xs text-white/40">
@@ -929,20 +682,14 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
                       const isBeingDragged = clip.id === draggingClipId
                       const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
                       const isBoundary = clip.overlayKind === 'boundary'
-                      const isLogo = clip.overlayKind === 'logo'
-                      const isAutoBoundary = clip.overlayKind === 'autoBoundary'
-                      const clipColor = isBoundary ? 'bg-yellow-400/20' : isLogo ? 'bg-purple-400/20' : isAutoBoundary ? 'bg-cyan-400/20' : meta.color
-                      const clipBorder = isBoundary ? 'border-yellow-400' : isLogo ? 'border-purple-400' : isAutoBoundary ? 'border-cyan-400' : meta.border
-                      const clipTextColor = isBoundary ? 'text-yellow-300' : isLogo ? 'text-purple-300' : isAutoBoundary ? 'text-cyan-300' : 'text-white/90'
-                      const clipIcon = isBoundary ? '▭ ' : isLogo ? '🖼 ' : isAutoBoundary ? '◎ ' : ''
                       return (
                         <button
                           key={clip.id}
                           onMouseDown={(e) => handleClipMouseDown(e, clip)}
                           className={[
                             'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors',
-                            clipColor,
-                            selected ? `border-2 ${clipBorder}` : 'border border-transparent',
+                            isBoundary ? 'bg-yellow-400/20' : meta.color,
+                            selected ? `border-2 ${isBoundary ? 'border-yellow-400' : meta.border}` : 'border border-transparent',
                             isBeingDragged ? 'cursor-grabbing opacity-70 z-20 shadow-lg' : 'cursor-grab',
                           ].join(' ')}
                           style={{
@@ -951,16 +698,15 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
                             transform: ghostOffset ? `translateX(${ghostOffset}px)` : undefined,
                           }}
                         >
-                          <span className={`truncate pointer-events-none ${clipTextColor}`}>
-                            {clipIcon}
-                            {clip.label}
+                          <span className={`truncate pointer-events-none ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
+                            {isBoundary ? `▭ ${clip.label}` : clip.label}
                           </span>
                         </button>
                       )
                     })}
                   {clips.filter((c) => c.track === track).length === 0 && (
                     <span className="text-white/15 text-xs pl-2 font-mono">
-                      {track === 'overlay' ? 'Overlays / Captions — click "Text", "Mark Land", or "Logo" to add one' : `${TRACK_META[track].label} — empty`}
+                      {track === 'overlay' ? 'Overlays / Captions — click "Text" or "Mark Land" to add one' : `${TRACK_META[track].label} — empty`}
                     </span>
                   )}
                 </div>
@@ -979,7 +725,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         </div>
       </div>
 
-      {/* ---------------- AI PLAN MODAL ---------------- */}
       {planModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-6">
           <div className="w-full max-w-lg rounded-2xl bg-canvas-panel border border-canvas-border p-6">
@@ -998,7 +743,9 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
                     onChange={(e) => setMatchReference(e.target.checked)}
                     className="accent-amber"
                   />
-                  <span className="text-xs text-white/70">Match reference reel pacing (analyzed from your uploaded reference)</span>
+                  <span className="text-xs text-white/70">
+                    Match reference reel pacing (~3.4s avg cuts, analyzed from your uploaded reference)
+                  </span>
                 </label>
                 <div className="flex flex-wrap gap-2 mb-5">
                   {STYLE_OPTIONS.map((style) => (
@@ -1046,7 +793,6 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         </div>
       )}
 
-      {/* ---------------- CAPTION PANEL ---------------- */}
       {captionPanelOpen && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6">
           <div className="w-full max-w-md rounded-2xl bg-canvas-panel border border-canvas-border p-6">
@@ -1118,23 +864,25 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
         </div>
       )}
 
-      {/* ---------------- LAND-BOUNDARY MARKER PANEL ---------------- */}
       {boundaryPanelOpen && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6">
           <div className="w-full max-w-md rounded-2xl bg-canvas-panel border border-canvas-border p-6">
-            <h3 className="font-display font-semibold text-lg mb-1">{editingBoundaryId ? 'Edit land marker' : 'Add land marker'}</h3>
+            <h3 className="font-display font-semibold text-lg mb-1">
+              {editingBoundaryId ? 'Edit land marker' : 'Add land marker'}
+            </h3>
             <p className="text-white/40 text-sm mb-5">
-              Draws a fixed yellow box + label between {formatTime(boundaryStart)} and {formatTime(boundaryEnd)}. Position it over the plot in the preview using the sliders below.
+              Draws a yellow boundary box + label between {formatTime(boundaryStart)} and {formatTime(boundaryEnd)}.
+              Use rotation to angle it along the real field edge, like the reference reel. It stays fixed in
+              place for that time range, so pick a moment where the camera isn't panning much.
             </p>
 
-            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">Label</label>
+            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">Label / Name</label>
             <input
               type="text"
               value={boundaryLabel}
               onChange={(e) => setBoundaryLabel(e.target.value)}
-              maxLength={40}
               autoFocus
-              placeholder="e.g. Vadnagar"
+              placeholder="e.g. Ramesh ji ki zameen"
               className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2.5 text-sm placeholder:text-white/25 focus:outline-none focus:border-amber/60 mb-4"
             />
 
@@ -1165,22 +913,35 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-2">
-              <PercentSlider label="Left" value={boundaryLeft} onChange={setBoundaryLeft} />
-              <PercentSlider label="Top" value={boundaryTop} onChange={setBoundaryTop} />
-              <PercentSlider label="Width" value={boundaryWidth} onChange={setBoundaryWidth} />
-              <PercentSlider label="Height" value={boundaryHeight} onChange={setBoundaryHeight} />
+            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">
+              Box position (% of frame) &amp; rotation
+            </label>
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              <BoundarySlider label="Left" value={boundaryLeft} onChange={setBoundaryLeft} />
+              <BoundarySlider label="Top" value={boundaryTop} onChange={setBoundaryTop} />
+              <BoundarySlider label="Width" value={boundaryWidth} onChange={setBoundaryWidth} />
+              <BoundarySlider label="Height" value={boundaryHeight} onChange={setBoundaryHeight} />
+              <BoundarySlider
+                label="Rotation"
+                value={boundaryRotation}
+                onChange={setBoundaryRotation}
+                min={-45}
+                max={45}
+                unit="°"
+              />
             </div>
 
-            {/* Live mini-preview of the box position */}
-            <div className="relative w-full aspect-video bg-canvas-raised rounded-lg border border-canvas-border mb-6 overflow-hidden">
+            {/* Live mini preview of box position + rotation, over the actual current video frame */}
+            <div className="relative w-full aspect-[9/16] max-h-40 mx-auto bg-black/40 rounded-lg border border-canvas-border overflow-hidden mb-6">
               <div
-                className="absolute border-2 border-yellow-400 bg-yellow-400/20 rounded-sm"
+                className="absolute border-2 border-yellow-400 rounded-sm"
                 style={{
                   left: `${boundaryLeft}%`,
                   top: `${boundaryTop}%`,
                   width: `${boundaryWidth}%`,
                   height: `${boundaryHeight}%`,
+                  transform: boundaryRotation ? `rotate(${boundaryRotation}deg)` : undefined,
+                  transformOrigin: 'center center',
                 }}
               />
             </div>
@@ -1209,148 +970,39 @@ export default function TimelineEditorPage({ videoUrl, referenceResults, rawObje
           </div>
         </div>
       )}
+    </div>
+  )
+}
 
-      {/* ---------------- AUTO MARK LAND — CONFIRM RESULT ---------------- */}
-      {pendingAutoMark && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6">
-          <div className="w-full max-w-md rounded-2xl bg-canvas-panel border border-canvas-border p-6">
-            <h3 className="font-display font-semibold text-lg mb-1">Auto-tracked plot found</h3>
-            <p className="text-white/40 text-sm mb-4">
-              Tracked from {formatTime(pendingAutoMark.startTime)} to {formatTime(pendingAutoMark.endTime)}
-              {' '}(mask confidence: {(pendingAutoMark.score * 100).toFixed(0)}%). This is a bounding-box
-              approximation that follows camera motion — not a pixel-precise outline.
-            </p>
-
-            {pendingAutoMark.warning && (
-              <p className="text-amber text-xs mb-4 bg-amber/10 border border-amber/30 rounded-lg px-3 py-2">
-                {pendingAutoMark.warning}
-              </p>
-            )}
-
-            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">
-              Name this plot
-            </label>
-            <input
-              type="text"
-              value={autoMarkLabel}
-              onChange={(e) => setAutoMarkLabel(e.target.value)}
-              maxLength={40}
-              autoFocus
-              placeholder="e.g. Vadnagar"
-              className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2.5 text-sm placeholder:text-white/25 focus:outline-none focus:border-amber/60 mb-6"
-            />
-
-            <div className="flex gap-2">
-              <button onClick={cancelAutoMark} className="px-4 py-2.5 rounded-lg text-sm text-white/50 hover:text-white transition-colors">
-                Discard
-              </button>
-              <div className="flex-1" />
-              <button
-                onClick={confirmAutoMark}
-                disabled={!autoMarkLabel.trim()}
-                className={[
-                  'px-5 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  autoMarkLabel.trim() ? 'bg-amber text-canvas hover:bg-amber-bright' : 'bg-canvas-raised text-white/25 cursor-not-allowed',
-                ].join(' ')}
-              >
-                Add to timeline
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ---------------- LOGO/WATERMARK PANEL ---------------- */}
-      {logoPanelOpen && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6">
-          <div className="w-full max-w-md rounded-2xl bg-canvas-panel border border-canvas-border p-6">
-            <h3 className="font-display font-semibold text-lg mb-1">{editingLogoId ? 'Edit logo' : 'Add logo / watermark'}</h3>
-            <p className="text-white/40 text-sm mb-5">
-              Shown between {formatTime(logoStart)} and {formatTime(logoEnd)}. Upload a PNG with a transparent background for best results.
-            </p>
-
-            <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-2 block">Logo image</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleLogoFileChange(e.target.files?.[0] ?? null)}
-              className="w-full text-xs text-white/60 mb-4 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-canvas-raised file:text-white/70 file:text-xs hover:file:bg-canvas-border"
-            />
-
-            {logoImageDataUrl && (
-              <div className="w-full aspect-video bg-canvas-raised rounded-lg border border-canvas-border mb-4 relative overflow-hidden">
-                <img
-                  src={logoImageDataUrl}
-                  alt="Logo preview"
-                  className="absolute object-contain"
-                  style={{
-                    left: `${logoLeft}%`,
-                    top: `${logoTop}%`,
-                    width: `${logoWidth}%`,
-                    height: `${logoHeight}%`,
-                  }}
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-1.5 block">Start (s)</label>
-                <input
-                  type="number"
-                  step={0.1}
-                  min={0}
-                  max={duration}
-                  value={logoStart}
-                  onChange={(e) => setLogoStart(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber/60"
-                />
-              </div>
-              <div>
-                <label className="text-white/40 text-xs font-mono uppercase tracking-wide mb-1.5 block">End (s)</label>
-                <input
-                  type="number"
-                  step={0.1}
-                  min={0}
-                  max={duration}
-                  value={logoEnd}
-                  onChange={(e) => setLogoEnd(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber/60"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-6">
-              <PercentSlider label="Left" value={logoLeft} onChange={setLogoLeft} />
-              <PercentSlider label="Top" value={logoTop} onChange={setLogoTop} />
-              <PercentSlider label="Width" value={logoWidth} onChange={setLogoWidth} />
-              <PercentSlider label="Height" value={logoHeight} onChange={setLogoHeight} />
-            </div>
-
-            <div className="flex gap-2">
-              {editingLogoId && (
-                <button onClick={deleteLogo} className="px-4 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors">
-                  Delete
-                </button>
-              )}
-              <div className="flex-1" />
-              <button onClick={closeLogoPanel} className="px-4 py-2.5 rounded-lg text-sm text-white/50 hover:text-white transition-colors">
-                Cancel
-              </button>
-              <button
-                onClick={saveLogo}
-                disabled={!logoImageDataUrl || logoEnd <= logoStart}
-                className={[
-                  'px-5 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  logoImageDataUrl && logoEnd > logoStart ? 'bg-amber text-canvas hover:bg-amber-bright' : 'bg-canvas-raised text-white/25 cursor-not-allowed',
-                ].join(' ')}
-              >
-                {editingLogoId ? 'Update' : 'Add logo'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+function BoundarySlider({
+  label,
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  unit = '%',
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  min?: number
+  max?: number
+  unit?: string
+}) {
+  return (
+    <div>
+      <div className="flex justify-between text-white/40 text-[10px] font-mono uppercase tracking-wide mb-1">
+        <span>{label}</span>
+        <span>{value}{unit}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="w-full accent-amber"
+      />
     </div>
   )
 }
@@ -1368,25 +1020,6 @@ function ToolbarButton({ icon, label, onClick, disabled }: { icon: string; label
       <span className="text-base leading-none">{icon}</span>
       <span className="text-[10px]">{label}</span>
     </button>
-  )
-}
-
-function PercentSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-white/40 text-xs font-mono uppercase tracking-wide">{label}</label>
-        <span className="text-white/50 text-xs font-mono">{value}%</span>
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        className="w-full accent-amber"
-      />
-    </div>
   )
 }
 

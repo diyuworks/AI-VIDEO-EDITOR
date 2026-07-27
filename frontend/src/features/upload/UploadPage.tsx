@@ -143,7 +143,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
   const handleReferenceFiles = (files: FileList | null) => {
     if (!files) return
     const incoming = Array.from(files).filter(isVideoFile)
-    
+
     incoming.forEach((file) => {
       setReferenceVideos((prev) => {
         if (prev.length >= MAX_REFERENCE_VIDEOS) return prev
@@ -159,7 +159,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
         formData.append('file', file)
         const xhr = new XMLHttpRequest()
         xhr.open('POST', UPLOAD_REFERENCE_ENDPOINT)
-        
+
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {

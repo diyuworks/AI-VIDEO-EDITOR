@@ -9,7 +9,7 @@ router = APIRouter()
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "gu-IN-DhwaniNeural"  # Default voice changed to Gujarati Female (Dhwani) for maximum clarity
+    voice: str = "gu-IN-NiranjanNeural"  # Original Male Voice
 
 # Create a directory to store TTS outputs locally (for simplicity during dev)
 TTS_DIR = "tts_output"
@@ -25,9 +25,9 @@ async def generate_tts(request: TTSRequest):
     filepath = os.path.join(TTS_DIR, filename)
     
     try:
-        # User explicitly requested the Male Voice which was Edge-TTS Niranjan
-        # Speed +70% for highly energetic real-video feel
-        communicate = edge_tts.Communicate(request.text, "gu-IN-NiranjanNeural", rate="+70%")
+        # Original Male Voice (gu-IN-NiranjanNeural)
+        selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-NiranjanNeural"
+        communicate = edge_tts.Communicate(request.text, selected_voice, rate="+30%")
         
         word_boundaries = []
         with open(filepath, "wb") as f:

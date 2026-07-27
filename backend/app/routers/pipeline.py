@@ -11,7 +11,86 @@ from app.database import get_session
 # Real functions from our existing routers
 from app.routers.editing_plan import generate_editing_plan, EditingPlanRequest
 from app.routers.tts import generate_tts, TTSRequest
-from app.routers.export import generate_srt
+
+TMP_DIR = "tmp_exports"
+os.makedirs(TMP_DIR, exist_ok=True)
+
+def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boundaries: list = None, speed_ratio: float = 1.0):
+    def format_time(seconds):
+        ms = int((seconds % 1) * 1000)
+        s = int(seconds)
+        m = s // 60
+        h = m // 60
+        s = s % 60
+        m = m % 60
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    if word_boundaries and len(word_boundaries) > 0:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            chunk_idx = 1
+            current_chunk = []
+            for i, wb in enumerate(word_boundaries):
+                current_chunk.append(wb)
+                
+                is_sentence_end = any(p in wb["text"] for p in ['.', '!', '?', '।'])
+                is_comma = ',' in wb["text"]
+                
+                if len(current_chunk) >= 6 or is_sentence_end or (is_comma and len(current_chunk) >= 4) or i == len(word_boundaries) - 1:
+                    start_time = current_chunk[0]["start"] / speed_ratio
+                    end_time = current_chunk[-1]["end"] / speed_ratio
+                    
+                    if i + 1 < len(word_boundaries):
+                        next_word_start = word_boundaries[i+1]["start"] / speed_ratio
+                        gap = next_word_start - end_time
+                        if 0 < gap < 1.0:
+                            end_time = next_word_start
+                        elif gap >= 1.0:
+                            end_time += 0.3
+                    else:
+                        end_time += 5.5
+                        
+                    text = " ".join([w["text"] for w in current_chunk])
+                    
+                    f.write(f"{chunk_idx}\n")
+                    f.write(f"{format_time(start_time)} --> {format_time(end_time)}\n")
+                    f.write(f"{text}\n\n")
+                    
+                    chunk_idx += 1
+                    current_chunk = []
+        return
+
+    clean_text = script_text.strip()
+    words = clean_text.split()
+    chunks = []
+    
+    current_chunk = []
+    for i, w in enumerate(words):
+        current_chunk.append(w)
+        
+        has_punctuation = any(p in w for p in [',', '.', '!', '?', '।'])
+        if has_punctuation or len(current_chunk) >= 3 or (len(current_chunk) >= 2 and i + 1 < len(words) and len(words[i+1]) > 5) or i == len(words) - 1:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+            
+    if not chunks:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write("")
+        return
+
+    actual_duration = duration_sec / speed_ratio
+    time_per_chunk = actual_duration / len(chunks)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        for i, chunk in enumerate(chunks):
+            start_time = i * time_per_chunk
+            end_time = (i + 1) * time_per_chunk
+            
+            if i == len(chunks) - 1:
+                end_time += 5.0
+            
+            f.write(f"{i+1}\n")
+            f.write(f"{format_time(start_time)} --> {format_time(end_time)}\n")
+            f.write(f"{chunk}\n\n")
 
 router = APIRouter()
 
@@ -22,6 +101,87 @@ class GenerateReelRequest(BaseModel):
     reference_object_name: Optional[str] = None  # Style-reference video (agar hai)
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None
+
+
+class MergeClipsRequest(BaseModel):
+    clip_object_names: list  # e.g. ["clip_1.mp4", "clip_2.mp4", ...]
+
+
+@router.post("/merge-clips")
+async def merge_clips(request: MergeClipsRequest):
+    """
+    Merges multiple video/image motion clips into a single continuous video file
+    and uploads to MinIO.
+    """
+    from app.routers.uploads import minio_client
+    from app.config import MINIO_BUCKET
+    import uuid
+    import ffmpeg
+    from io import BytesIO
+
+    if not request.clip_object_names:
+        raise HTTPException(status_code=400, detail="No clips provided for merging")
+
+    merged_id = f"merged_{uuid.uuid4().hex[:8]}.mp4"
+    temp_dir = tempfile.mkdtemp()
+    local_clip_paths = []
+
+    try:
+        # Download clips or copy local demo clips
+        for idx, name in enumerate(request.clip_object_names):
+            local_p = os.path.join(temp_dir, f"clip_{idx}.mp4")
+            demo_p = os.path.join("demo_clips", name)
+            if os.path.exists(demo_p):
+                import shutil
+                shutil.copy(demo_p, local_p)
+            else:
+                try:
+                    minio_client.fget_object(MINIO_BUCKET, name, local_p)
+                except Exception as e:
+                    raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
+            local_clip_paths.append(local_p)
+
+        # Create FFmpeg concat list
+        concat_txt = os.path.join(temp_dir, "concat.txt")
+        with open(concat_txt, "w") as f:
+            for p in local_clip_paths:
+                clean_p = p.replace('\\', '/')
+                f.write(f"file '{clean_p}'\n")
+
+        output_path = os.path.join(temp_dir, "output_merged.mp4")
+        cmd = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", concat_txt,
+            "-c", "copy",
+            output_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"FFmpeg concat failed: {res.stderr}")
+
+        # Upload merged output to MinIO
+        with open(output_path, "rb") as f:
+            data = f.read()
+
+        minio_client.put_object(
+            MINIO_BUCKET, merged_id,
+            data=BytesIO(data), length=len(data), content_type="video/mp4"
+        )
+
+        presigned_url = minio_client.presigned_get_object(
+            MINIO_BUCKET, merged_id, expires=timedelta(days=7)
+        )
+
+        return {
+            "success": True,
+            "merged_object_name": merged_id,
+            "url": presigned_url,
+            "clips_count": len(request.clip_object_names)
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Merge failed: {str(e)}")
 
 
 @router.post("/generate-reel")
@@ -68,7 +228,6 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     # This reuses the proven export flow that gives the "real feel" captions and voice.
     import uuid as _uuid
     import ffmpeg
-    from app.routers.export import generate_srt, TMP_DIR
 
     export_id = str(_uuid.uuid4())
     

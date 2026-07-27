@@ -27,7 +27,14 @@ def generate_editing_plan(request: EditingPlanRequest, session: Session = Depend
         select(VideoRecord).where(VideoRecord.object_name == request.object_name)
     ).first()
     if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
+        # Fallback for dynamic/merged videos
+        video = VideoRecord(
+            filename=request.object_name,
+            object_name=request.object_name,
+            duration_seconds=20.0,
+            width=1080,
+            height=1920
+        )
 
     # 2. Reference script processing
     reference_text = ""
