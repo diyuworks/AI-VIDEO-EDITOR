@@ -30,7 +30,7 @@ def hex_to_bgr(hex_color: str):
 def render_overlay(request: OverlayRequest):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
-    from typing import Optional
+    import urllib.request
 
     # Step A: Video ka secure URL nikalo
     try:
@@ -40,7 +40,15 @@ def render_overlay(request: OverlayRequest):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
 
-    cap = cv2.VideoCapture(video_url)
+    # Step A2: Video ko pehle local temp file mein download karo — URL stream karna slow hota hai
+    temp_dir = tempfile.mkdtemp()
+    local_video_path = os.path.join(temp_dir, "input_video.mp4")
+    try:
+        urllib.request.urlretrieve(video_url, local_video_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Video download failed: {str(e)}")
+
+    cap = cv2.VideoCapture(local_video_path)
     if not cap.isOpened():
         raise HTTPException(status_code=400, detail="Could not open video")
 
@@ -49,7 +57,6 @@ def render_overlay(request: OverlayRequest):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     # Step B: Temporary output file banao (bina audio ke, sirf video)
-    temp_dir = tempfile.mkdtemp()
     temp_video_path = os.path.join(temp_dir, "overlay_temp.mp4")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -154,11 +161,11 @@ def render_overlay(request: OverlayRequest):
     cap.release()
     out.release()
 
-    # Step C: FFmpeg se re-encode karo (OpenCV ka codec browser-friendly nahi hota hamesha)
+    # Step C: FFmpeg se re-encode karo with ultrafast preset for speed
     final_output_path = os.path.join(temp_dir, "overlay_final.mp4")
     subprocess.run([
         "ffmpeg", "-y", "-i", temp_video_path,
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
         final_output_path
     ], check=True, capture_output=True)
 
@@ -176,9 +183,12 @@ def render_overlay(request: OverlayRequest):
         content_type="video/mp4",
     )
 
-    # Cleanup
-    os.remove(temp_video_path)
-    os.remove(final_output_path)
+    # Cleanup temp files
+    for f in [local_video_path, temp_video_path, final_output_path]:
+        try:
+            os.remove(f)
+        except Exception:
+            pass
 
     output_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{output_object_name}"
 
