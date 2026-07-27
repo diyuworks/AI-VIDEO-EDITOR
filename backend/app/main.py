@@ -12,7 +12,7 @@ app = FastAPI(title="AI Video Editor API", version="0.1.0")
 # Allow the frontend dev server to call this API during local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="http://localhost:\d+",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

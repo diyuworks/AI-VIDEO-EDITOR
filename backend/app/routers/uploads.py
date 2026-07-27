@@ -58,26 +58,26 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"{uuid.uuid4().hex}{ext}"
-    contents = await file.read()
-    size_mb = len(contents) / (1024 * 1024)
-    if size_mb > MAX_FILE_SIZE_MB:
-        raise HTTPException(status_code=400, detail="File too large")
-
-    # Save to local disk uploads/ directory for instant 100% reliable access
+    # Save to local disk uploads/ directory using chunked streaming
     os.makedirs("uploads", exist_ok=True)
     local_path = os.path.join("uploads", object_name)
-    with open(local_path, "wb") as f:
-        f.write(contents)
+    
+    import shutil
+    with open(local_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     # Best effort MinIO upload
     try:
-        minio_client.put_object(
-            MINIO_BUCKET,
-            object_name,
-            data=BytesIO(contents),
-            length=len(contents),
-            content_type=file.content_type,
-        )
+        if os.path.exists(local_path):
+            file_size = os.path.getsize(local_path)
+            with open(local_path, "rb") as f:
+                minio_client.put_object(
+                    MINIO_BUCKET,
+                    object_name,
+                    data=f,
+                    length=file_size,
+                    content_type=file.content_type,
+                )
     except Exception as e:
         print(f"Notice: MinIO upload skipped/failed, serving locally: {e}")
 
