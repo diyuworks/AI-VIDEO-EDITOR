@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -70,6 +70,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
   const [singleVideoError, setSingleVideoError] = useState<string | null>(null);
+
+  // Fetch uploaded clips on mount (disabled historical database fetch to start clean)
+  useEffect(() => {
+    // We start with a completely clean workspace, no history loaded
+    setUploadedClips([]);
+    setSelectedClips([]);
+  }, []);
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -397,14 +404,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     return (
                       <div
                         key={clip.id}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedClips(selectedClips.filter((c) => c !== clipName));
-                          } else {
-                            setSelectedClips([...selectedClips, clipName]);
-                          }
-                        }}
-                        className={`cursor-pointer p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[145px] ${
+                        className={`p-4 pb-3 rounded-xl border flex flex-col items-center justify-between transition relative min-h-[165px] ${
                           isSelected
                             ? "border-yellow-400 bg-yellow-400/10 shadow-lg"
                             : "border-gray-800 bg-gray-800/40 opacity-60"
@@ -412,53 +412,68 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       >
                         {/* Remove clip button */}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveClip(clipName);
-                          }}
+                          onClick={() => handleRemoveClip(clipName)}
                           className="absolute top-2 right-2 text-gray-500 hover:text-red-400 transition text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/40"
                           title="Remove clip"
                         >
                           ✕
                         </button>
 
-                        <div className="flex flex-col items-center text-center w-full">
-                          <div className="text-xl mt-2">📍</div>
+                        <div className="flex flex-col items-center text-center w-full mt-2">
+                          <div className="text-xl">📍</div>
                           <span className="font-bold text-xs text-yellow-300 mt-1 truncate w-full" title={label}>
                             {label}
                           </span>
                         </div>
 
-                        {isSelected && (
-                          <div className="w-full mt-2 pt-2 border-t border-gray-800/50 flex flex-col items-center">
-                            {clipHighlights[clipName]?.isTracking ? (
-                              <span className="text-[10px] text-yellow-400 animate-pulse font-mono">⏳ Tracking AI...</span>
-                            ) : clipHighlights[clipName]?.isDone ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMarkingClip(clipName);
-                                  setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
-                                }}
-                                className="w-full py-1 px-1 bg-yellow-400 hover:bg-yellow-300 text-black text-[10px] font-bold rounded flex items-center justify-center truncate"
-                                title="Click to edit plot boundary"
-                              >
-                                ✅ {clipHighlights[clipName]?.label || "Highlighted"}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMarkingClip(clipName);
-                                  setActiveMarkingLabel(label.split(".")[0]);
-                                }}
-                                className="w-full py-1 bg-gray-800 hover:bg-gray-700 text-white text-[10px] font-semibold rounded flex items-center justify-center border border-gray-700"
-                              >
-                                ✏️ Highlight Plot
-                              </button>
-                            )}
-                          </div>
-                        )}
+                        {/* Distinct Sibling Action Buttons to prevent click intercept bugs */}
+                        <div className="w-full mt-3 pt-2 border-t border-gray-800/50 flex flex-col gap-2">
+                          <button
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedClips(selectedClips.filter((c) => c !== clipName));
+                              } else {
+                                setSelectedClips([...selectedClips, clipName]);
+                              }
+                            }}
+                            className={`w-full py-1 text-[10px] font-bold rounded flex items-center justify-center transition border ${
+                              isSelected
+                                ? "bg-yellow-400 text-black border-yellow-400 hover:bg-yellow-300"
+                                : "bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700"
+                            }`}
+                          >
+                            {isSelected ? "✅ Selected" : "⬜ Select Clip"}
+                          </button>
+
+                          {isSelected && (
+                            <div className="w-full">
+                              {clipHighlights[clipName]?.isTracking ? (
+                                <span className="text-[10px] text-yellow-400 animate-pulse font-mono flex items-center justify-center py-1">⏳ Tracking AI...</span>
+                              ) : clipHighlights[clipName]?.isDone ? (
+                                <button
+                                  onClick={() => {
+                                    setActiveMarkingClip(clipName);
+                                    setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                                  }}
+                                  className="w-full py-1 px-1 bg-yellow-400/20 hover:bg-yellow-400/30 text-yellow-300 text-[10px] font-bold rounded flex items-center justify-center truncate border border-yellow-400/30"
+                                  title="Click to edit plot boundary"
+                                >
+                                  ✏️ Edit: {clipHighlights[clipName]?.label}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setActiveMarkingClip(clipName);
+                                    setActiveMarkingLabel(label.split(".")[0]);
+                                  }}
+                                  className="w-full py-1 bg-gray-850 hover:bg-gray-800 text-white text-[10px] font-semibold rounded flex items-center justify-center border border-gray-700"
+                                >
+                                  ✏️ Highlight Plot
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
