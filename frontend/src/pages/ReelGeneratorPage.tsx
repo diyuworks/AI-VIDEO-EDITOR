@@ -558,19 +558,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
             )}
 
-            {/* Prompt Input */}
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                🗣️ AI Voiceover Prompt & Theme:
-              </label>
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g. High energy Hindi real-estate plot sales pitch"
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400"
-              />
-            </div>
+
 
             {/* Merge Action Button with validation constraints */}
             <div className="space-y-2 pt-2">
@@ -584,7 +572,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading}
                 className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-bold rounded-xl text-lg transition shadow-xl disabled:opacity-40"
               >
-                🚀 Merge {selectedClips.length} Clips & Generate AI Voiceover Reel
+                🎬 Merge {selectedClips.length} Clips & Download Reel
               </button>
             </div>
           </>
@@ -612,7 +600,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div>
               <h2 className="text-2xl font-bold text-yellow-400">🎉 Multi-Clip Reel Ready!</h2>
               <p className="text-gray-400 text-xs mt-1">
-                Includes merged clips, custom yellow plot boundaries, name tags, AI voiceover & captions.
+                Includes merged clips, custom yellow plot boundaries & name tags.
               </p>
             </div>
 
