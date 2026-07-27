@@ -193,7 +193,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
 
-    TEMPORARY_DISABLE_VOICEOVER = True  # Set to False to restore AI script, voiceover & captions
+    TEMPORARY_DISABLE_VOICEOVER = False  # Voiceover ON, captions will NOT be shown on screen
 
     temp_dir = tempfile.mkdtemp()
     generated_script = ""
@@ -319,24 +319,17 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             logo_input = ffmpeg.input(logo_path)
             logo_scaled = logo_input.filter('scale', 120, -1)
             video_for_subs = ffmpeg.overlay(video_for_subs, logo_scaled, x='main_w-overlay_w-20', y='20')
-        
-        if not TEMPORARY_DISABLE_VOICEOVER:
-            generate_srt(generated_script, trim_duration, srt_path, word_boundaries, 1.0)
-            srt_path_ffmpeg = srt_path.replace('\\', '/')
-            
-            style = "FontName=Nirmala UI,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=80,Bold=-1"
-            filtered_video = video_for_subs.filter('subtitles', srt_path_ffmpeg, force_style=style)
-            
+
+        # Voiceover audio ON but subtitles/captions NOT burned onto video (text stays off screen)
+        if audio_path:
             input_audio = ffmpeg.input(audio_path)
             audio_stream = input_audio.audio
-            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            ffmpeg_out = ffmpeg.output(video_for_subs, audio_stream, output_path, vcodec='libx264', acodec='aac')
+        elif has_audio:
+            audio_stream = input_video.audio
+            ffmpeg_out = ffmpeg.output(video_for_subs, audio_stream, output_path, vcodec='libx264', acodec='aac')
         else:
-            filtered_video = video_for_subs
-            if has_audio:
-                audio_stream = input_video.audio
-                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
-            else:
-                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264')
+            ffmpeg_out = ffmpeg.output(video_for_subs, output_path, vcodec='libx264')
         
         (
             ffmpeg_out
