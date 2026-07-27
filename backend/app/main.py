@@ -37,6 +37,9 @@ app.include_router(reference_intelligence.router)
 # Serve backend/assets as static files (for end_screen.PNG etc.)
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
+# Serve backend/demo_clips as static files so user can download clean raw footage clips
+app.mount("/demo-videos", StaticFiles(directory="demo_clips"), name="demo-videos")
+
 @app.on_event("startup")
 def on_startup():
     init_db()
