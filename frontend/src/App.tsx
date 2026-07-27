@@ -12,7 +12,7 @@ export interface PromptData {
 }
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('upload')
+  const [screen, setScreen] = useState<Screen>('reel')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [referenceResults, setReferenceResults] = useState<any[]>([])
   const [rawObjectName, setRawObjectName] = useState<string | null>(null)
@@ -22,7 +22,7 @@ function App() {
     <div style={{ position: 'relative', minHeight: '100vh', background: '#0F0F11' }}>
       {/* Top Bar Quick Access Button for Live Demo */}
       <button
-        onClick={() => setScreen('reel')}
+        onClick={() => setScreen(screen === 'reel' ? 'upload' : 'reel')}
         style={{
           position: 'fixed',
           top: 14,
@@ -39,7 +39,7 @@ function App() {
           boxShadow: '0 4px 12px rgba(255,235,59,0.4)',
         }}
       >
-        🎬 Launch Real Estate Reel Generator
+        {screen === 'reel' ? '✏️ Go to Timeline Editor' : '🎬 Go to Reel Generator'}
       </button>
 
       {screen === 'upload' && (
