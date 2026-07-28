@@ -18,6 +18,7 @@ class EditingPlanRequest(BaseModel):
     reference_captions: Optional[List[dict]] = None
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None  # e.g. {"style": "fast-paced", "music": "upbeat"}
+    duration_seconds: Optional[float] = None
 
 
 @router.post("/editing-plan")
@@ -42,7 +43,8 @@ def generate_editing_plan(request: EditingPlanRequest, session: Session = Depend
         reference_text = "\n".join([c.get("text", "") for c in request.reference_captions])
 
     # 3. Context build karo Groq ke liye
-    duration = video.duration_seconds if video.duration_seconds else 45
+    duration = request.duration_seconds if request.duration_seconds else (video.duration_seconds if video and video.duration_seconds else 20)
+    word_count = int(duration * 2.5)
     word_count = int(duration * 2.5)
     context = f"""
 You are an AI video editing assistant and scriptwriter. Based on the information below, generate a structured editing plan and a Voiceover Script in JSON format.
@@ -50,7 +52,7 @@ You are an AI video editing assistant and scriptwriter. Based on the information
 Main Video duration: {duration} seconds
 Main Video Resolution: {video.width}x{video.height}
 """
-    duration_str = f"The video is {duration} seconds long. Write a naturally paced voiceover script. Do NOT force a specific word count, and do NOT repeat phrases just to fill time. The voiceover should be spoken at a NORMAL, professional, and clear speed."
+    duration_str = f"The video is {duration} seconds long. CRITICAL: You MUST write a script that takes exactly {duration} seconds to read aloud. To achieve this, your script MUST contain EXACTLY {word_count} words! Expand on the property details creatively, talk about the investment benefits, the location, and the future value to naturally fill the time without sounding repetitive."
 
     if reference_text:
         context += f"""
@@ -80,7 +82,6 @@ CRITICAL PUNCTUATION RULE: You MUST use proper punctuation (commas ',', full sto
 CRITICAL PURE GUJARATI RULE: Do NOT use any Hindi words (e.g. 'lekin', 'zaroor', 'dost'). Do NOT use English words or transliterated English words (e.g. do NOT write 'ટાઇટલ' for Title, 'વિડિયો' for Video, or 'લોકેશન' for Location). Use ONLY pure, authentic Gujarati words (e.g. 'શીર્ષક', 'દ્રશ્ય', 'જગ્યા'). It must sound exactly like a local Gujarati person.
 CRITICAL ANTI-HALLUCINATION RULE: Under NO circumstances should you repeat a word or phrase multiple times in a row (e.g. do NOT write "જી જી જી" or "છે છે છે"). Write clean, realistic text.
 DO NOT use English characters for the script.
-CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
     else:
         context += f"""
@@ -89,11 +90,11 @@ Write a highly engaging, professional voiceover script for the Main Video.
 The voiceover script MUST be written entirely in Native Gujarati Script (e.g. નમસ્તે, કેમ છો).
 CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instantly grabs attention and impresses the viewer!
 CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media.
-CRITICAL OUTRO INSTRUCTION: The script MUST ALWAYS end with this exact sentence: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." (Do not change this, always end the script with this phrase to match the JAMIN24 end screen branding).
 """
 
     context += f"""
-User's prompt: {request.prompt or "No specific prompt given"}
+User's Request/Prompt: {request.prompt or "No specific prompt given"}
+CRITICAL USER REQUIREMENT: You MUST strictly incorporate the User's Request/Prompt above into the voiceover script. (e.g. if they say "1.8 vigha, farmhouse, highway najik", you must include these details beautifully in the real estate script).
 Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
 
 Generate a JSON editing plan with this exact structure:

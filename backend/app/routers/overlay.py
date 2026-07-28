@@ -62,23 +62,30 @@ def render_overlay(request: OverlayRequest):
     color_bgr = hex_to_bgr(request.highlight_color)
     total_polygon_frames = len(request.polygon_per_frame)
 
-    frame_idx = 0
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
+    pil_font = None
+    if request.label:
+        from PIL import Image, ImageDraw, ImageFont
+        try:
+            pil_font = ImageFont.truetype("arialbd.ttf", int(max(40, width / 20.0)))
+        except IOError:
+            try:
+                pil_font = ImageFont.truetype("arial.ttf", int(max(40, width / 20.0)))
+            except IOError:
+                pil_font = ImageFont.load_default()
 
-        # Agar is frame ke liye polygon data available hai
-        if frame_idx < total_polygon_frames:
-            polygon_points = np.array(
-                request.polygon_per_frame[frame_idx], dtype=np.int32
-            )
-
-            # Animate the border drawing: first 25 frames (1 second at 25 fps)
-            ANIM_FRAMES = 25
-            FADE_FRAMES = 10
-            M = len(polygon_points)
-
+    success, first_frame = cap.read()
+    if success and len(request.polygon_per_frame) > 0:
+        polygon_points = np.array(request.polygon_per_frame[0], dtype=np.int32)
+        M = len(polygon_points)
+        
+        # We will freeze for 7.5 seconds (so it becomes exactly 5.0s after the 1.5x speedup in merge_clips)
+        freeze_frames_count = int(fps * 7.5)
+        ANIM_FRAMES = int(fps * 1.5) # Scale animation time up too
+        FADE_FRAMES = int(fps * 0.75)
+        
+        for frame_idx in range(freeze_frames_count):
+            frame = first_frame.copy()
+            
             if M >= 3:
                 if frame_idx < ANIM_FRAMES:
                     # Live tracing dynamic border drawing animation
@@ -104,56 +111,92 @@ def render_overlay(request: OverlayRequest):
                         p_start_tuple = tuple(p_start)
                         
                         cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                        cv2.line(frame, p_start_tuple, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
                 else:
                     # Border is complete, draw closed polygon outline with anti-aliasing
-                    pts = polygon_points.reshape((-1, 1, 2))
-                    overlay = frame.copy()
                     
-                    # Use a more subtle, realistic transparency (0.2 instead of 0.4)
-                    cv2.fillPoly(overlay, [polygon_points], color_bgr)
+                    # Smooth fade progress
+                    fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
                     
-                    # Apply transparency
-                    if frame_idx < ANIM_FRAMES + FADE_FRAMES:
-                        alpha = 0.2 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
+                    # 1. Dim the background smoothly (outside the plot)
+                    dim_factor = 1.0 - (0.5 * fade_progress) # Dims up to 50%
+                    dimmed_frame = cv2.convertScaleAbs(frame, alpha=dim_factor, beta=0)
+                    
+                    # 2. Polygon Mask
+                    mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+                    cv2.fillPoly(mask, [polygon_points], 255)
+                    mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                    
+                    # 3. Pulsing alpha for the plot fill
+                    import math
+                    if fade_progress < 1.0:
+                        alpha = 0.35 * fade_progress
                     else:
-                        alpha = 0.2
+                        # Gentle pulse between 0.20 and 0.40 for professional feel
+                        alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
                     
-                    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+                    # 4. Highlighted area (Original frame + Color tint)
+                    highlighted_area = frame.copy()
+                    color_overlay = np.zeros_like(frame)
+                    cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
+                    highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
+                    
+                    # 5. Combine using mask
+                    frame = np.where(mask_3ch == 255, highlighted_area, dimmed_frame)
 
-                    # Draw a sleek, anti-aliased border using the highlight color and white
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 2, lineType=cv2.LINE_AA)
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
+                    # 6. Draw glowing borders
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness + 1, lineType=cv2.LINE_AA)
                     
-                    # Draw plot name label (only after tracing outline completes)
-                    if request.label:
+                    # Draw plot name label
+                    if request.label and pil_font:
                         min_y_idx = np.argmin(polygon_points[:, 1])
-                        label_x = polygon_points[min_y_idx][0]
-                        
-                        # Calculate dynamic scale based on video width to make it highly legible
-                        font_scale = max(0.9, width / 750.0)
-                        font_thickness = max(2, int(width / 350.0))
                         
                         label_text = request.label
-                        (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+                        bbox = pil_font.getbbox(label_text)
+                        text_w = bbox[2] - bbox[0]
+                        text_h = bbox[3] - bbox[1]
                         
-                        # Space offset above the top point of the polygon
-                        label_y = polygon_points[min_y_idx][1] - 25
+                        label_x = polygon_points[min_y_idx][0] - text_w // 2
+                        label_y = polygon_points[min_y_idx][1] - text_h - 40
                         
-                        # Bounds check safety so it stays fully inside the frame
                         label_x = max(15, min(label_x, width - text_w - 20))
                         label_y = max(text_h + 20, min(label_y, height - 20))
-                        # Background box for the text label
-                        cv2.rectangle(frame, 
-                                      (label_x - 12, label_y - text_h - 12),
-                                      (label_x + text_w + 12, label_y + 12),
-                                      color_bgr, -1)
+
+                        TEXT_ANIM_FRAMES = 15
+                        frames_since_anim = frame_idx - ANIM_FRAMES
                         
-                        # Plot name text drawing
-                        cv2.putText(frame, label_text, (label_x, label_y),
-                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
+                        if frames_since_anim >= 0:
+                            if frames_since_anim < TEXT_ANIM_FRAMES:
+                                t = frames_since_anim / TEXT_ANIM_FRAMES
+                                y_offset = int((1.0 - t) * 50)
+                                opacity = int(t * 255)
+                            else:
+                                y_offset = 0
+                                opacity = 255
+                                
+                            label_y += y_offset
+                            
+                            img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                            txt_layer = Image.new('RGBA', img_pil.size, (255, 255, 255, 0))
+                            d = ImageDraw.Draw(txt_layer)
+                            
+                            shadow_offset = max(2, int(width / 350.0))
+                            d.text((label_x + shadow_offset, label_y + shadow_offset), label_text, font=pil_font, fill=(0, 0, 0, int(opacity * 0.7)))
+                            d.text((label_x, label_y), label_text, font=pil_font, fill=(255, 250, 240, opacity))
+                            
+                            img_pil = Image.alpha_composite(img_pil.convert('RGBA'), txt_layer).convert('RGB')
+                            frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            out.write(frame)
+
+        # Write first frame unhighlighted for smooth transition
+        out.write(first_frame)
+
+    # Now write the rest of the video
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
         out.write(frame)
-        frame_idx += 1
 
     cap.release()
     out.release()

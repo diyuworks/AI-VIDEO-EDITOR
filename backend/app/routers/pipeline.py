@@ -119,6 +119,12 @@ async def merge_clips(request: MergeClipsRequest):
     import ffmpeg
     from io import BytesIO
 
+    print(f"\n{'='*60}")
+    print(f"[MERGE] Received {len(request.clip_object_names)} clips to merge")
+    for i, name in enumerate(request.clip_object_names):
+        print(f"[MERGE]   Clip {i}: {name}")
+    print(f"{'='*60}")
+
     if not request.clip_object_names:
         raise HTTPException(status_code=400, detail="No clips provided for merging")
 
@@ -134,47 +140,72 @@ async def merge_clips(request: MergeClipsRequest):
             if os.path.exists(demo_p):
                 import shutil
                 shutil.copy(demo_p, local_p)
+                print(f"[MERGE] Clip {idx} ({name}): copied from demo_clips")
             else:
                 try:
                     minio_client.fget_object(MINIO_BUCKET, name, local_p)
+                    print(f"[MERGE] Clip {idx} ({name}): downloaded from MinIO")
                 except Exception as e:
+                    print(f"[MERGE] ERROR: Clip {idx} ({name}) not found: {e}")
                     raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
+            
+            # Verify file exists and has content
+            file_size = os.path.getsize(local_p)
+            print(f"[MERGE] Clip {idx} file size: {file_size} bytes")
             local_clip_paths.append(local_p)
+
+        print(f"[MERGE] Total clips downloaded: {len(local_clip_paths)}")
 
         # Build FFmpeg filter pipeline to normalize and concatenate all clips in one go
         streams = []
-        for p in local_clip_paths:
+        for clip_idx, p in enumerate(local_clip_paths):
             probe = ffmpeg.probe(p)
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             duration = float(probe['format']['duration'])
+            print(f"[MERGE] Clip {clip_idx}: duration={duration:.2f}s, has_audio={has_audio}")
             
-            # Normalize video to 9:16 (720x1280), 25fps
+            # Normalize video to 9:16 (720x1280), 25fps, yuv420p
             vid = (
                 ffmpeg.input(p).video
                 .filter('fps', fps=25)
                 .filter('scale', 720, 1280, force_original_aspect_ratio='decrease')
                 .filter('pad', 720, 1280, '(ow-iw)/2', '(oh-ih)/2')
                 .filter('setsar', '1')
+                .filter('format', 'yuv420p')
+                .filter('setpts', '0.666*PTS') # Speed up video by 1.5x for even shorter gaps between highlights
             )
             
-            # Normalize audio to 44.1kHz stereo, or generate silence if missing
+            # Normalize audio to 44.1kHz stereo, speed up 1.5x, or generate silence if missing
             if has_audio:
-                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo')
+                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atempo', '1.5')
             else:
-                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration).audio
+                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration * 0.666).audio
                 
             streams.append(vid)
             streams.append(aud)
 
+        print(f"[MERGE] Total streams built: {len(streams)} (should be {len(local_clip_paths)*2})")
+        print(f"[MERGE] n parameter for concat: {len(local_clip_paths)}")
+
         # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
-        joined = ffmpeg.concat(*streams, v=1, a=1).node
+        joined = ffmpeg.concat(*streams, v=1, a=1, n=len(local_clip_paths)).node
         out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
         
+        # Print the actual ffmpeg command for debugging
+        try:
+            cmd_args = ffmpeg.get_args(out)
+            print(f"[MERGE] FFmpeg command args: ffmpeg {' '.join(cmd_args)}")
+        except Exception:
+            pass
+
         try:
             out.overwrite_output().run(capture_stdout=True, capture_stderr=True)
+            merged_size = os.path.getsize(output_path)
+            print(f"[MERGE] SUCCESS! Merged file size: {merged_size} bytes")
         except ffmpeg.Error as e:
             error_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+            print(f"[MERGE] FFMPEG ERROR: {error_msg}")
             raise HTTPException(status_code=500, detail=f"FFmpeg concat filter failed: {error_msg}")
 
         # Upload merged output to MinIO
@@ -218,6 +249,26 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     generated_script = ""
     word_boundaries = []
     audio_path = None
+    outro_audio_path = None
+    
+    import uuid as _uuid
+    import ffmpeg
+    export_id = str(_uuid.uuid4())
+    
+    # Download highlighted video to tmp_exports EARLY so we can get its exact duration
+    from app.routers.export import TMP_DIR
+    video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")
+    srt_path = os.path.join(TMP_DIR, f"{export_id}_subs.srt")
+    output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
+    
+    try:
+        minio_client.fget_object(MINIO_BUCKET, request.highlighted_video_object_name, video_path)
+        probe_video = ffmpeg.probe(video_path)
+        video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
+        video_duration = float(probe_video['format']['duration'])
+        has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch or probe source video: {str(e)}")
 
     if not TEMPORARY_DISABLE_VOICEOVER:
         # ---- SUB-STEP A: AI Script Generate Karo ----
@@ -238,7 +289,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 reference_object_name=request.reference_object_name,
                 reference_captions=reference_captions,
                 prompt=request.prompt,
-                structured_options=request.structured_options
+                structured_options=request.structured_options,
+                duration_seconds=video_duration + 5.0  # Pass exact duration including the 5s end screen!
             )
             plan_req = generate_editing_plan(plan_req, session)
             generated_script = plan_req["editing_plan"]["generated_script"]
@@ -248,49 +300,54 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
 
         # ---- SUB-STEP B: TTS + Word Timestamps Generate Karo ----
         try:
-            # Call our actual TTS endpoint logic
+            import shutil
+            # 1. Main Script TTS
             tts_req = TTSRequest(text=generated_script)
             tts_res = await generate_tts(tts_req)
-            
-            # Copy TTS audio from local tts_output to temp dir
-            import shutil
             source_audio_path = os.path.join("tts_output", f"{tts_res['audio_id']}.mp3")
             audio_path = os.path.join(temp_dir, f"{tts_res['audio_id']}.mp3")
             shutil.copy(source_audio_path, audio_path)
             word_boundaries = tts_res["word_boundaries"]
+            
+            # 2. Outro Script TTS (Always exact)
+            outro_req = TTSRequest(text="જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
+            outro_res = await generate_tts(outro_req)
+            outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
+            outro_audio_path = os.path.join(temp_dir, f"outro_{outro_res['audio_id']}.mp3")
+            shutil.copy(outro_source, outro_audio_path)
         except Exception as e:
             with open("debug.log", "a", encoding="utf-8") as f: f.write(f"TTS Error: {str(e)} | Script: {generated_script}\n")
             raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
-    import uuid as _uuid
-    import ffmpeg
-
-    export_id = str(_uuid.uuid4())
-    
-    # Download highlighted video to tmp_exports
-    video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")
-    srt_path = os.path.join(TMP_DIR, f"{export_id}_subs.srt")
-    output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
     
     try:
-        minio_client.fget_object(MINIO_BUCKET, request.highlighted_video_object_name, video_path)
+        # Video is already downloaded and probed!
 
-        # Get video duration
-        probe_video = ffmpeg.probe(video_path)
-        video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
-        video_duration = float(probe_video['format']['duration'])
         
-        has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
+        # CRITICAL FIX: Always use the FULL video duration — never trim the merged video
+        # to match voiceover length. The voiceover is secondary; the video must play completely.
+        trim_duration = video_duration
         
+        audio_duration = 0.0
+        outro_duration = 0.0
+        print(f"[REEL] Video duration: {video_duration:.2f}s, has_audio: {has_audio}")
         if not TEMPORARY_DISABLE_VOICEOVER and audio_path:
             probe_audio = ffmpeg.probe(audio_path)
             audio_duration = float(probe_audio['format']['duration'])
-            # The end screen is 5 seconds long, so we trim the main video by 5 seconds
-            # so the total video length (main + end screen) exactly matches the audio duration.
-            trim_duration = max(0, audio_duration - 5)
-        else:
-            trim_duration = video_duration
+            print(f"[REEL] Main Audio duration: {audio_duration:.2f}s")
+            if outro_audio_path and os.path.exists(outro_audio_path):
+                probe_outro = ffmpeg.probe(outro_audio_path)
+                outro_duration = float(probe_outro['format']['duration'])
+                print(f"[REEL] Outro Audio duration: {outro_duration:.2f}s")
+            
+        # The outro starts either when the video ends (start of end screen) or when main audio ends (whichever is later)
+        outro_start_time = max(video_duration, audio_duration)
+        total_audio_needed = outro_start_time + outro_duration
+        
+        # Dynamically calculate end screen duration so the audio never gets cut off
+        end_screen_duration = max(5.0, total_audio_needed - video_duration)
+        total_final_duration = video_duration + end_screen_duration
         
         width = int(video_info['width'])
         height = int(video_info['height'])
@@ -314,10 +371,10 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         reel_width = int(min(width, height * 9 / 16))
         reel_height = int(min(height, width * 16 / 9))
         
-        # Setup end screen image stream (5 seconds)
+        # Setup end screen image stream (Dynamic duration so voiceover doesn't cut)
         end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
         if os.path.exists(end_screen_path):
-            image_stream = ffmpeg.input(end_screen_path, loop=1, t=5)
+            image_stream = ffmpeg.input(end_screen_path, loop=1, t=end_screen_duration)
             image_scaled = (
                 image_stream
                 .filter('fps', fps=25)
@@ -341,8 +398,23 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             # Captions removed — clean video without text overlay, sirf voiceover audio
             filtered_video = video_for_subs
             
-            input_audio = ffmpeg.input(audio_path)
-            audio_stream = input_audio.audio
+            # 1. Main audio (padded to full duration)
+            main_audio = ffmpeg.input(audio_path).audio.filter('apad').filter('atrim', duration=total_final_duration)
+            
+            if outro_audio_path and os.path.exists(outro_audio_path):
+                # 2. Outro audio (delayed exactly to when the end screen starts OR main audio ends)
+                delay_ms = int(outro_start_time * 1000)
+                outro_audio = (
+                    ffmpeg.input(outro_audio_path).audio
+                    .filter('adelay', f'{delay_ms}|{delay_ms}')
+                    .filter('apad')
+                    .filter('atrim', duration=total_final_duration)
+                )
+                # 3. Mix them together and boost volume (amix usually halves volume)
+                audio_stream = ffmpeg.filter([main_audio, outro_audio], 'amix', inputs=2, duration='longest').filter('volume', 2.0)
+            else:
+                audio_stream = main_audio
+                
             ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
         else:
             filtered_video = video_for_subs

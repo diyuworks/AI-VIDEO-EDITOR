@@ -158,6 +158,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       setMultiClipError(null);
       
       // Use highlighted clips instead of raw ones
+      // Preserve the exact order in which the user selected the clips
       const clipsToMerge = selectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
         return highlight && highlight.isDone && highlight.highlightedObjectName
@@ -166,6 +167,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       });
 
       setMultiClipStage("merging_clips");
+      
+      console.log("=== MERGE DEBUG ===");
+      console.log("selectedClips:", selectedClips);
+      console.log("clipHighlights:", clipHighlights);
+      console.log("clipsToMerge:", clipsToMerge);
+      console.log("===================");
+      
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
