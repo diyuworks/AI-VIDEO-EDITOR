@@ -22,8 +22,23 @@ minio_client = Minio(
 )
 
 import json
+import socket
+
+def is_minio_reachable():
+    try:
+        parts = MINIO_ENDPOINT.split(":")
+        host = parts[0]
+        port = int(parts[1]) if len(parts) > 1 else 9000
+        s = socket.create_connection((host, port), timeout=1.0)
+        s.close()
+        return True
+    except Exception:
+        return False
 
 def init_minio():
+    if not is_minio_reachable():
+        print("Notice: MinIO endpoint unreachable. Operating in local filesystem storage mode.")
+        return
     try:
         if not minio_client.bucket_exists(MINIO_BUCKET):
             minio_client.make_bucket(MINIO_BUCKET)

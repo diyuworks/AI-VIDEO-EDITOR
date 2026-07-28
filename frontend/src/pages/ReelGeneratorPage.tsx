@@ -387,7 +387,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto p-4 space-y-12">
       <div className="text-center">
-        <h1 className="text-3xl font-extrabold text-yellow-400">Real Estate AI Video Hub</h1>
+        <h1 className="text-3xl font-extrabold text-yellow-400">Jamin 24 AI video HUB</h1>
         <p className="text-gray-400 text-sm mt-1">Stitch and highlight multiple plot clips, or segment and track a single plot video.</p>
       </div>
 

@@ -175,19 +175,26 @@ def render_overlay(request: OverlayRequest):
         final_output_path
     ], check=True, capture_output=True)
 
-    # Step D: Result MinIO mein upload karo
+    # Step D: Save to local uploads first, then best-effort MinIO upload
     output_object_name = f"highlighted_{request.object_name}"
-    with open(final_output_path, "rb") as f:
-        file_data = f.read()
+    local_save_path = os.path.join("uploads", output_object_name)
+    
+    import shutil
+    shutil.copy(final_output_path, local_save_path)
 
-    from io import BytesIO
-    minio_client.put_object(
-        MINIO_BUCKET,
-        output_object_name,
-        data=BytesIO(file_data),
-        length=len(file_data),
-        content_type="video/mp4",
-    )
+    try:
+        with open(final_output_path, "rb") as f:
+            file_data = f.read()
+        from io import BytesIO
+        minio_client.put_object(
+            MINIO_BUCKET,
+            output_object_name,
+            data=BytesIO(file_data),
+            length=len(file_data),
+            content_type="video/mp4",
+        )
+    except Exception as e:
+        print(f"Notice: MinIO upload skipped for overlay, serving locally: {e}")
 
     # Cleanup temp files
     for f in [local_video_path, temp_video_path, final_output_path]:
@@ -264,19 +271,27 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
         # Agar original mein audio hi nahi tha, toh highlighted video hi final hai
         final_output_path = highlighted_local
 
-    # Step E: Result MinIO mein upload karo
+    # Step E: Save to local uploads first, then best-effort MinIO upload
     final_object_name = f"final_{highlighted_object_name}"
-    with open(final_output_path, "rb") as f:
-        file_data = f.read()
+    local_save_path = os.path.join("uploads", final_object_name)
+    
+    import shutil
+    shutil.copy(final_output_path, local_save_path)
 
-    from io import BytesIO
-    minio_client.put_object(
-        MINIO_BUCKET,
-        final_object_name,
-        data=BytesIO(file_data),
-        length=len(file_data),
-        content_type="video/mp4",
-    )
+    try:
+        with open(final_output_path, "rb") as f:
+            file_data = f.read()
+
+        from io import BytesIO
+        minio_client.put_object(
+            MINIO_BUCKET,
+            final_object_name,
+            data=BytesIO(file_data),
+            length=len(file_data),
+            content_type="video/mp4",
+        )
+    except Exception as e:
+        print(f"Notice: MinIO upload skipped for merged video, serving locally: {e}")
 
     # Cleanup
     for path in [highlighted_local, original_local, final_output_path]:

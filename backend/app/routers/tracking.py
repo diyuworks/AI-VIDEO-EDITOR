@@ -13,10 +13,10 @@ router = APIRouter()
 # ---- Tuning constants ----
 # Same base parameters as before (proven in segment_plot_precise.py:
 # test_precise_response.json - 0.91 confidence, clean 15s track).
-MAX_CORNERS = 200
-QUALITY_LEVEL = 0.01
+MAX_CORNERS = 1000
+QUALITY_LEVEL = 0.002
 MIN_DISTANCE = 7
-MIN_SURVIVING_FEATURES = 30
+MIN_SURVIVING_FEATURES = 50
 RESEED_EVERY_N_FRAMES = 15
 RANSAC_REPROJ_THRESHOLD = 5.0
 
@@ -24,7 +24,7 @@ RANSAC_REPROJ_THRESHOLD = 5.0
 # not cumulative drift from frame 0 - a real camera move accumulates large
 # total change over time, that's expected; what's implausible is a big jump
 # in ONE step).
-IMPLAUSIBLE_TRANSLATION_FRAC = 0.12
+IMPLAUSIBLE_TRANSLATION_FRAC = 0.25
 # A fixed scale-change cap breaks on a real, deliberate zoom (common in
 # reel edits) - a sustained zoom easily produces >15% per-frame scale
 # change, which used to get rejected as "implausible" and froze the
@@ -33,8 +33,8 @@ IMPLAUSIBLE_TRANSLATION_FRAC = 0.12
 # changes and set the effective cap relative to that trend: a frame is
 # only implausible if its scale jump is well outside what's already been
 # happening, not just outside some fixed number.
-BASE_IMPLAUSIBLE_SCALE_CHANGE = 0.15   # floor - always allow at least this much
-SCALE_TREND_MULTIPLIER = 4.0           # how many x the recent trend counts as "still plausible"
+BASE_IMPLAUSIBLE_SCALE_CHANGE = 0.30   # floor - always allow at least this much
+SCALE_TREND_MULTIPLIER = 6.0           # how many x the recent trend counts as "still plausible"
 SCALE_TREND_WINDOW = 12                # frames of history to judge the trend from
 IMPLAUSIBLE_AREA_RATIO_MIN = 0.25   # polygon shrank to <25% of previous area in one frame
 IMPLAUSIBLE_AREA_RATIO_MAX = 4.0    # polygon grew to >400% of previous area in one frame
@@ -54,7 +54,7 @@ DEBUG_LOG_REJECTIONS = True
 # boundary line itself (the boundary itself is often low-texture crop
 # interior). Falls back to whole-frame if the ROI has too little texture.
 ROI_PAD_FRAC = 0.35
-MIN_ROI_FEATURES = 40
+MIN_ROI_FEATURES = 100
 
 # Point (3) - no more hard wall-clock cutoff. Tracking continues as long as
 # it keeps passing the plausibility guards below; it only stops improving
