@@ -350,7 +350,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             isDone: true,
           },
         }));
-      }
     } catch (err: any) {
       console.error(`Failed to update label for ${clipName}:`, err);
       alert(`Failed to update plot label: ${err.message}`);
@@ -363,7 +362,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         },
       }));
     }
-  };
+  }
+};
 
   const handleDownload = (url: string) => {
     const a = document.createElement("a");
