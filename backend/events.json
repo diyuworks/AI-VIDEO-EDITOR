@@ -1,0 +1,14 @@
+[
+  {
+    "type": "SentenceBoundary",
+    "offset": 1000000,
+    "duration": 33750000,
+    "text": "નમસ્તે, આ એક ટેસ્ટ છે."
+  },
+  {
+    "type": "SentenceBoundary",
+    "offset": 34250000,
+    "duration": 18250000,
+    "text": "બીજી લાઈન."
+  }
+]

@@ -1,5 +1,4 @@
-import os
-import uuid
+﻿import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -21,46 +20,13 @@ minio_client = Minio(
     secure=MINIO_SECURE
 )
 
-import json
-import socket
-
-def is_minio_reachable():
-    try:
-        parts = MINIO_ENDPOINT.split(":")
-        host = parts[0]
-        port = int(parts[1]) if len(parts) > 1 else 9000
-        s = socket.create_connection((host, port), timeout=1.0)
-        s.close()
-        return True
-    except Exception:
-        return False
-
 def init_minio():
-    if not is_minio_reachable():
-        print("Notice: MinIO endpoint unreachable. Operating in local filesystem storage mode.")
-        return
     try:
         if not minio_client.bucket_exists(MINIO_BUCKET):
             minio_client.make_bucket(MINIO_BUCKET)
-        
-        policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": ["*"]},
-                    "Action": ["s3:*"],
-                    "Resource": [
-                        f"arn:aws:s3:::{MINIO_BUCKET}",
-                        f"arn:aws:s3:::{MINIO_BUCKET}/*"
-                    ]
-                }
-            ]
-        }
-        minio_client.set_bucket_policy(MINIO_BUCKET, json.dumps(policy))
-        print("MinIO bucket initialized and permissions set successfully.")
+        print("MinIO bucket initialized successfully.")
     except Exception as e:
-        print(f"Warning: MinIO init error: {e}")
+        print(f"Warning: Could not connect to MinIO during startup. {e}")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -74,30 +40,23 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"{uuid.uuid4().hex}{ext}"
-    # Save to local disk uploads/ directory using chunked streaming
-    os.makedirs("uploads", exist_ok=True)
-    local_path = os.path.join("uploads", object_name)
-    
-    import shutil
-    with open(local_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(status_code=400, detail="File too large")
 
-    # Best effort MinIO upload
     try:
-        if os.path.exists(local_path):
-            file_size = os.path.getsize(local_path)
-            with open(local_path, "rb") as f:
-                minio_client.put_object(
-                    MINIO_BUCKET,
-                    object_name,
-                    data=f,
-                    length=file_size,
-                    content_type=file.content_type,
-                )
+        minio_client.put_object(
+            MINIO_BUCKET,
+            object_name,
+            data=BytesIO(contents),
+            length=len(contents),
+            content_type=file.content_type,
+        )
     except Exception as e:
-        print(f"Notice: MinIO upload skipped/failed, serving locally: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed (MinIO might be down): {str(e)}")
 
-    file_url = f"http://localhost:8000/uploads/{object_name}"
+    file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,

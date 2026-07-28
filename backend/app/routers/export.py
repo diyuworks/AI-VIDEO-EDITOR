@@ -135,7 +135,7 @@ def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boun
 @router.post("/export")
 async def export_reel(request: ReelExportRequest):
     export_id = str(uuid.uuid4())
-    TEMPORARY_DISABLE_VOICEOVER = True  # Set to False to restore AI script, voiceover & captions
+    TEMPORARY_DISABLE_VOICEOVER = False  # Set to False to restore AI script, voiceover & captions
     
     # Paths
     audio_path = None

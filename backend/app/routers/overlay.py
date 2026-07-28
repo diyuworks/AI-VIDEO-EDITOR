@@ -28,35 +28,26 @@ def hex_to_bgr(hex_color: str):
 
 @router.post("/render-overlay")
 def render_overlay(request: OverlayRequest):
+    import traceback
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
-    import urllib.request
+    from typing import Optional
 
+    # Step A: Video ko local temp file me download karo
+    # (presigned URLs ke saath cv2.VideoCapture Windows pe fail hota hai)
     temp_dir = tempfile.mkdtemp()
-    local_video_path = os.path.join(temp_dir, "input_video.mp4")
+    source_local_path = os.path.join(temp_dir, "source_video.mp4")
+    try:
+        minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
+    except Exception as e:
+        print(f"[overlay] MinIO download failed for {request.object_name}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
-    # Step A: Local disk file check (uploads/ or demo_clips/) for 100% reliability
-    upload_disk_path = os.path.join("uploads", request.object_name)
-    demo_disk_path = os.path.join("demo_clips", request.object_name)
-
-    if os.path.exists(upload_disk_path):
-        import shutil
-        shutil.copy(upload_disk_path, local_video_path)
-    elif os.path.exists(demo_disk_path):
-        import shutil
-        shutil.copy(demo_disk_path, local_video_path)
-    else:
-        try:
-            video_url = minio_client.presigned_get_object(
-                MINIO_BUCKET, request.object_name, expires=timedelta(minutes=20)
-            )
-            urllib.request.urlretrieve(video_url, local_video_path)
-        except Exception as e:
-            raise HTTPException(status_code=404, detail=f"File not found on disk or MinIO: {str(e)}")
-
-    cap = cv2.VideoCapture(local_video_path)
+    cap = cv2.VideoCapture(source_local_path)
     if not cap.isOpened():
-        raise HTTPException(status_code=400, detail="Could not open video")
+        print(f"[overlay] cv2.VideoCapture failed to open: {source_local_path}")
+        raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -116,21 +107,23 @@ def render_overlay(request: OverlayRequest):
                         cv2.line(frame, p_start_tuple, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
                 else:
                     # Border is complete, draw closed polygon outline with anti-aliasing
-                    cv2.polylines(frame, [polygon_points], isClosed=True,
-                                  color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                    cv2.polylines(frame, [polygon_points], isClosed=True,
-                                  color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
-                    
-                    # Fade-in semi-transparent overlay fill
+                    pts = polygon_points.reshape((-1, 1, 2))
                     overlay = frame.copy()
+                    
+                    # Use a more subtle, realistic transparency (0.2 instead of 0.4)
                     cv2.fillPoly(overlay, [polygon_points], color_bgr)
                     
+                    # Apply transparency
                     if frame_idx < ANIM_FRAMES + FADE_FRAMES:
-                        alpha = 0.25 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
+                        alpha = 0.2 * ((frame_idx - ANIM_FRAMES) / FADE_FRAMES)
                     else:
-                        alpha = 0.25
-                        
+                        alpha = 0.2
+                    
                     frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+
+                    # Draw a sleek, anti-aliased border using the highlight color and white
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 2, lineType=cv2.LINE_AA)
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
                     
                     # Draw plot name label (only after tracing outline completes)
                     if request.label:
@@ -150,7 +143,6 @@ def render_overlay(request: OverlayRequest):
                         # Bounds check safety so it stays fully inside the frame
                         label_x = max(15, min(label_x, width - text_w - 20))
                         label_y = max(text_h + 20, min(label_y, height - 20))
-
                         # Background box for the text label
                         cv2.rectangle(frame, 
                                       (label_x - 12, label_y - text_h - 12),
@@ -160,48 +152,38 @@ def render_overlay(request: OverlayRequest):
                         # Plot name text drawing
                         cv2.putText(frame, label_text, (label_x, label_y),
                                     cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
-
         out.write(frame)
         frame_idx += 1
 
     cap.release()
     out.release()
 
-    # Step C: FFmpeg se re-encode karo with ultrafast preset for speed
+    # Step C: FFmpeg se re-encode karo (OpenCV ka codec browser-friendly nahi hota hamesha)
     final_output_path = os.path.join(temp_dir, "overlay_final.mp4")
     subprocess.run([
         "ffmpeg", "-y", "-i", temp_video_path,
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
         final_output_path
     ], check=True, capture_output=True)
 
-    # Step D: Save to local uploads first, then best-effort MinIO upload
+    # Step D: Result MinIO mein upload karo
     output_object_name = f"highlighted_{request.object_name}"
-    local_save_path = os.path.join("uploads", output_object_name)
-    
-    import shutil
-    shutil.copy(final_output_path, local_save_path)
+    with open(final_output_path, "rb") as f:
+        file_data = f.read()
 
-    try:
-        with open(final_output_path, "rb") as f:
-            file_data = f.read()
-        from io import BytesIO
-        minio_client.put_object(
-            MINIO_BUCKET,
-            output_object_name,
-            data=BytesIO(file_data),
-            length=len(file_data),
-            content_type="video/mp4",
-        )
-    except Exception as e:
-        print(f"Notice: MinIO upload skipped for overlay, serving locally: {e}")
+    from io import BytesIO
+    minio_client.put_object(
+        MINIO_BUCKET,
+        output_object_name,
+        data=BytesIO(file_data),
+        length=len(file_data),
+        content_type="video/mp4",
+    )
 
-    # Cleanup temp files
-    for f in [local_video_path, temp_video_path, final_output_path]:
-        try:
-            os.remove(f)
-        except Exception:
-            pass
+    # Cleanup
+    for path in [temp_video_path, final_output_path, source_local_path]:
+        if os.path.exists(path):
+            os.remove(path)
 
     output_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{output_object_name}"
 
@@ -223,26 +205,17 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
 
     temp_dir = tempfile.mkdtemp()
 
-    # Step A: Dono videos ke secure URLs nikalo
-    try:
-        highlighted_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, highlighted_object_name, expires=timedelta(minutes=20)
-        )
-        original_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, original_object_name, expires=timedelta(minutes=20)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
-
-    # Step B: Dono ko local temp files mein download karo
-    # (FFmpeg ko direct streaming URLs se kaam karne mein kabhi dikkat ho sakti hai, isliye safe side)
+    # Step A+B: Dono videos ko directly MinIO se local temp files mein download karo
+    # (presigned URLs + FFmpeg copy bhi Windows pe fail hota hai sometimes)
     highlighted_local = os.path.join(temp_dir, "highlighted.mp4")
     original_local = os.path.join(temp_dir, "original.mp4")
 
-    subprocess.run(["ffmpeg", "-y", "-i", highlighted_url, "-c", "copy", highlighted_local],
-                   check=True, capture_output=True)
-    subprocess.run(["ffmpeg", "-y", "-i", original_url, "-c", "copy", original_local],
-                   check=True, capture_output=True)
+    try:
+        minio_client.fget_object(MINIO_BUCKET, highlighted_object_name, highlighted_local)
+        minio_client.fget_object(MINIO_BUCKET, original_object_name, original_local)
+    except Exception as e:
+        print(f"[merge-audio] MinIO download failed: {e}")
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
     # Step C: Check karo original video mein audio stream hai bhi ya nahi
     probe = subprocess.run(
@@ -271,27 +244,19 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
         # Agar original mein audio hi nahi tha, toh highlighted video hi final hai
         final_output_path = highlighted_local
 
-    # Step E: Save to local uploads first, then best-effort MinIO upload
+    # Step E: Result MinIO mein upload karo
     final_object_name = f"final_{highlighted_object_name}"
-    local_save_path = os.path.join("uploads", final_object_name)
-    
-    import shutil
-    shutil.copy(final_output_path, local_save_path)
+    with open(final_output_path, "rb") as f:
+        file_data = f.read()
 
-    try:
-        with open(final_output_path, "rb") as f:
-            file_data = f.read()
-
-        from io import BytesIO
-        minio_client.put_object(
-            MINIO_BUCKET,
-            final_object_name,
-            data=BytesIO(file_data),
-            length=len(file_data),
-            content_type="video/mp4",
-        )
-    except Exception as e:
-        print(f"Notice: MinIO upload skipped for merged video, serving locally: {e}")
+    from io import BytesIO
+    minio_client.put_object(
+        MINIO_BUCKET,
+        final_object_name,
+        data=BytesIO(file_data),
+        length=len(file_data),
+        content_type="video/mp4",
+    )
 
     # Cleanup
     for path in [highlighted_local, original_local, final_output_path]:

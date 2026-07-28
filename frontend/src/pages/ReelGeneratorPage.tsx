@@ -350,84 +350,66 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             isDone: true,
           },
         }));
-      } catch (err: any) {
-        console.error(`Failed to update label for ${clipName}:`, err);
-        alert(`Failed to update plot label: ${err.message}`);
-        setClipHighlights((prev) => ({
-          ...prev,
-          [clipName]: {
-            ...prev[clipName],
-            isTracking: false,
-            isDone: true,
-          },
-        }));
-      }
+    } catch (err: any) {
+      console.error(`Failed to update label for ${clipName}:`, err);
+      alert(`Failed to update plot label: ${err.message}`);
+      setClipHighlights((prev) => ({
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          isTracking: false,
+          isDone: true,
+        },
+      }));
     }
-  };
+  }
+};
 
-  const handleDownload = async (url: string) => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = "Final_Reel.mp4";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-      console.error("Download failed:", error);
-      window.open(url, "_blank");
-    }
+  const handleDownload = (url: string) => {
+    const a = document.createElement("a");
+    a.href = url;
+    // Backend now provides Content-Disposition: attachment header to force download
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto font-sans space-y-10">
-      {/* 🌟 JAMIN24 HERO BANNER WITH AERIAL BACKDROP */}
-      <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-slate-950 p-6 sm:p-12 text-white border border-slate-800">
-        {/* Aerial Land Background Image Overlay */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-overlay scale-105"
-          style={{ backgroundImage: "url('/hero_bg.png')" }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/60 to-slate-950/90" />
+    <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
+      <div className="border-4 sm:border-[6px] border-[#0D473B] rounded-[28px] sm:rounded-[40px] p-4 sm:p-8 md:p-10 bg-[#f8fcfb] shadow-2xl relative space-y-6 sm:space-y-8 w-full overflow-hidden">
+        {/* 🌟 HERO HEADER */}
+        <div className="flex flex-col md:flex-row items-center justify-center gap-3 sm:gap-6 text-center md:text-left">
+          <img src="/logo.jpg" alt="Jamin24 Logo" className="w-28 sm:w-32 md:w-44 object-contain shrink-0 mix-blend-multiply" />
+          <div className="space-y-2 sm:space-y-3">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-[#0D473B] tracking-tight leading-tight">
+              Jamin <span className="text-amber-500">24</span> AI video HUB
+            </h1>
+            <p className="text-slate-600 text-[11px] sm:text-sm font-semibold max-w-2xl px-2 sm:px-0 leading-relaxed">
+              JAHAN JAMIN, WAHAN JAMIN24 — Stitch and highlight open land plot clips with AI motion tracking & voiceovers.
+            </p>
 
-        <div className="relative z-10 text-center space-y-4 max-w-3xl mx-auto">
-          <span className="inline-block bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
-            India's Leading Open Land Platform
-          </span>
-          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white drop-shadow-md">
-            JAHAN JAMIN, <br className="hidden sm:inline" />
-            <span className="text-amber-400">WAHAN JAMIN24</span>
-          </h1>
-          <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed max-w-xl mx-auto">
-            Explore verified open lands with 360° virtual tours, AI land boundary tracking, and automated promotional reel generation.
-          </p>
-
-          {/* Feature Badges */}
-          <div className="flex flex-wrap justify-center gap-2 pt-2 text-xs font-bold text-slate-200">
-            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
-              🧭 360° Virtual Tours
-            </span>
-            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
-              🛡️ Verified Listings
-            </span>
-            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
-              🤝 Trusted Network
-            </span>
-            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
-              ⚡ Smart AI Match
-            </span>
+            {/* Feature Pill Badges */}
+            <div className="flex flex-wrap justify-center md:justify-start gap-1.5 sm:gap-2 pt-1 sm:pt-2 text-[9px] sm:text-xs font-bold text-[#0D473B]">
+              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+                🧭 360° Virtual Tours
+              </span>
+              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+                🛡️ Verified Listings
+              </span>
+              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+                🤝 Trusted Network
+              </span>
+              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+                ⚡ Smart Match
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 🎬 SECTION 1: MULTI-CLIP REEL MERGER BOX (HIGH CONTRAST FLOATING CARD) */}
-      <section className="bg-white border-2 border-slate-200 shadow-2xl rounded-3xl p-6 sm:p-10 space-y-6 text-slate-800 ring-1 ring-slate-900/10">
-        <div className="border-b-2 border-slate-100 pb-4 flex justify-between items-center">
+      {/* 🎬 SECTION 1: MULTI-CLIP REAL ESTATE REEL MERGER */}
+      <section className="bg-white border border-slate-200 shadow-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 text-slate-800">
+        <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
           <div>
             <h2 className="text-xl sm:text-2xl font-black text-[#0D473B] flex items-center gap-2.5">
               🎬 Multi-Clip Reel Merger & Highlight Workflow
@@ -690,117 +672,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           </div>
         )}
       </section>
+      </div>
 
-      {/* 🎯 SECTION 2: SINGLE VIDEO SAM SEGMENTATION */}
-      <section className="bg-white border border-slate-200 shadow-xl rounded-3xl p-6 sm:p-8 space-y-6 text-slate-800">
-        <div className="border-b border-slate-100 pb-3">
-          <h2 className="text-xl font-black text-[#0D473B] flex items-center gap-2">
-            🎯 Single Video SAM Segmentation
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Outline and track a single plot in your main uploaded video to generate a dedicated promotion.
-          </p>
-        </div>
-
-        {singleVideoStage === "idle" && (
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col items-center gap-4 text-center">
-            <div className="text-3xl">🗺️</div>
-            <div>
-              <h4 className="font-bold text-slate-900 text-sm">Active Video: <span className="text-[#0D473B] font-mono">{rawVideoObjectName}</span></h4>
-              <p className="text-xs text-slate-500 mt-1">Click to mark points directly on the frame to outline the land boundary.</p>
-            </div>
-            <button
-              onClick={() => setSingleVideoStage("marking")}
-              className="px-6 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl text-sm transition shadow-md"
-            >
-              🎯 Start Plot Segmentation Canvas
-            </button>
-          </div>
-        )}
-
-        {singleVideoStage === "marking" && (
-          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 relative shadow-2xl">
-            <button 
-              onClick={() => setSingleVideoStage("idle")}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white font-bold text-sm bg-slate-800 px-3 py-1.5 rounded-lg"
-            >
-              Cancel
-            </button>
-            <h4 className="text-sm font-bold text-amber-400 mb-4">Click points to draw the land plot boundary:</h4>
-            <BoundaryMarker
-              objectName={rawVideoObjectName}
-              onBoundaryConfirmed={handleBoundaryConfirmed}
-            />
-          </div>
-        )}
-
-        {/* Loading display for single video */}
-        {["tracking", "rendering_overlay", "generating_reel"].includes(singleVideoStage) && (
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center space-y-4 text-center">
-            <div className="animate-spin h-12 w-12 border-4 border-[#0D473B] border-t-transparent rounded-full" />
-            <div>
-              <h3 className="text-lg font-bold text-[#0D473B]">
-                {singleVideoStage === "tracking" && "🎯 Tracking Plot Boundary with AI..."}
-                {singleVideoStage === "rendering_overlay" && "🎨 Rendering Highlight Overlay..."}
-                {singleVideoStage === "generating_reel" && "🗣️ Generating AI Voiceover & Timed Captions..."}
-              </h3>
-              <p className="text-slate-500 text-xs mt-1">
-                AI and FFmpeg are processing your single video reel...
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Done display for single video */}
-        {singleVideoStage === "done" && singleVideoUrl && (
-          <div className="bg-emerald-50/50 border border-emerald-200 rounded-3xl p-6 flex flex-col items-center space-y-6 text-slate-800 text-center">
-            <div>
-              <h2 className="text-2xl font-black text-[#0D473B]">🎉 Dedicated Plot Reel Ready!</h2>
-              <p className="text-slate-600 text-xs mt-1">
-                Includes the outline highlights, voiceover, and brand watermark overlay.
-              </p>
-            </div>
-
-            <video
-              src={singleVideoUrl}
-              controls
-              autoPlay
-              className="max-w-xs w-full rounded-2xl shadow-2xl border-2 border-[#0D473B]"
-            />
-
-            <div className="flex gap-4">
-              <button
-                onClick={() => handleDownload(singleVideoUrl)}
-                className="px-8 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl transition shadow-lg flex items-center gap-2"
-              >
-                ⬇️ Download Reel
-              </button>
-              <button
-                onClick={() => {
-                  setSingleVideoStage("idle");
-                  setSingleVideoUrl(null);
-                }}
-                className="px-6 py-3 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold rounded-xl transition"
-              >
-                🔄 Create Another
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Error state for single video */}
-        {singleVideoStage === "error" && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800 flex flex-col items-center gap-3 text-center">
-            <p className="font-semibold text-sm">Error: {singleVideoError}</p>
-            <button
-              onClick={() => setSingleVideoStage("idle")}
-              className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-bold rounded-lg text-xs transition"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-      </section>
+      {/* Single video segmentation section removed as per user request */}
 
       {/* Multi-clip individual boundary marking modal popup */}
       {activeMarkingClip && (

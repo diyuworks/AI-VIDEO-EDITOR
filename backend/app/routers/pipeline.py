@@ -127,41 +127,55 @@ async def merge_clips(request: MergeClipsRequest):
     local_clip_paths = []
 
     try:
-        # Download clips or copy local demo/uploaded clips
+        # Download clips or copy local demo clips
         for idx, name in enumerate(request.clip_object_names):
             local_p = os.path.join(temp_dir, f"clip_{idx}.mp4")
-            upload_p = os.path.join("uploads", name)
             demo_p = os.path.join("demo_clips", name)
-            if os.path.exists(upload_p):
-                import shutil
-                shutil.copy(upload_p, local_p)
-            elif os.path.exists(demo_p):
+            if os.path.exists(demo_p):
                 import shutil
                 shutil.copy(demo_p, local_p)
             else:
                 try:
                     minio_client.fget_object(MINIO_BUCKET, name, local_p)
                 except Exception as e:
-                    raise HTTPException(status_code=404, detail=f"Clip {name} not found on disk or MinIO: {str(e)}")
+                    raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
             local_clip_paths.append(local_p)
 
-        # Create FFmpeg concat list
-        concat_txt = os.path.join(temp_dir, "concat.txt")
-        with open(concat_txt, "w") as f:
-            for p in local_clip_paths:
-                clean_p = p.replace('\\', '/')
-                f.write(f"file '{clean_p}'\n")
+        # Build FFmpeg filter pipeline to normalize and concatenate all clips in one go
+        streams = []
+        for p in local_clip_paths:
+            probe = ffmpeg.probe(p)
+            has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
+            duration = float(probe['format']['duration'])
+            
+            # Normalize video to 9:16 (720x1280), 25fps
+            vid = (
+                ffmpeg.input(p).video
+                .filter('fps', fps=25)
+                .filter('scale', 720, 1280, force_original_aspect_ratio='decrease')
+                .filter('pad', 720, 1280, '(ow-iw)/2', '(oh-ih)/2')
+                .filter('setsar', '1')
+            )
+            
+            # Normalize audio to 44.1kHz stereo, or generate silence if missing
+            if has_audio:
+                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo')
+            else:
+                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration).audio
+                
+            streams.append(vid)
+            streams.append(aud)
 
+        # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
-        cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", concat_txt,
-            "-c", "copy",
-            output_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"FFmpeg concat failed: {res.stderr}")
+        joined = ffmpeg.concat(*streams, v=1, a=1).node
+        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
+        
+        try:
+            out.overwrite_output().run(capture_stdout=True, capture_stderr=True)
+        except ffmpeg.Error as e:
+            error_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+            raise HTTPException(status_code=500, detail=f"FFmpeg concat filter failed: {error_msg}")
 
         # Upload merged output to MinIO
         with open(output_path, "rb") as f:
@@ -173,7 +187,8 @@ async def merge_clips(request: MergeClipsRequest):
         )
 
         presigned_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, merged_id, expires=timedelta(days=7)
+            MINIO_BUCKET, merged_id, expires=timedelta(days=7),
+            response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
         )
 
         return {
@@ -197,7 +212,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
 
-    TEMPORARY_DISABLE_VOICEOVER = False  # Voiceover ON, captions will NOT be shown on screen
+    TEMPORARY_DISABLE_VOICEOVER = False  # Set to False to restore AI script, voiceover & captions
 
     temp_dir = tempfile.mkdtemp()
     generated_script = ""
@@ -259,11 +274,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
     
     try:
-        highlighted_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, request.highlighted_video_object_name, expires=timedelta(minutes=20)
-        )
-        subprocess.run(["ffmpeg", "-y", "-i", highlighted_url, "-c", "copy", video_path],
-                       check=True, capture_output=True)
+        minio_client.fget_object(MINIO_BUCKET, request.highlighted_video_object_name, video_path)
 
         # Get video duration
         probe_video = ffmpeg.probe(video_path)
@@ -275,7 +286,9 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         if not TEMPORARY_DISABLE_VOICEOVER and audio_path:
             probe_audio = ffmpeg.probe(audio_path)
             audio_duration = float(probe_audio['format']['duration'])
-            trim_duration = audio_duration
+            # The end screen is 5 seconds long, so we trim the main video by 5 seconds
+            # so the total video length (main + end screen) exactly matches the audio duration.
+            trim_duration = max(0, audio_duration - 5)
         else:
             trim_duration = video_duration
         
@@ -323,17 +336,21 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             logo_input = ffmpeg.input(logo_path)
             logo_scaled = logo_input.filter('scale', 120, -1)
             video_for_subs = ffmpeg.overlay(video_for_subs, logo_scaled, x='main_w-overlay_w-20', y='20')
-
-        # Voiceover audio ON but subtitles/captions NOT burned onto video (text stays off screen)
-        if audio_path:
+        
+        if not TEMPORARY_DISABLE_VOICEOVER:
+            # Captions removed — clean video without text overlay, sirf voiceover audio
+            filtered_video = video_for_subs
+            
             input_audio = ffmpeg.input(audio_path)
             audio_stream = input_audio.audio
-            ffmpeg_out = ffmpeg.output(video_for_subs, audio_stream, output_path, vcodec='libx264', acodec='aac')
-        elif has_audio:
-            audio_stream = input_video.audio
-            ffmpeg_out = ffmpeg.output(video_for_subs, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
         else:
-            ffmpeg_out = ffmpeg.output(video_for_subs, output_path, vcodec='libx264')
+            filtered_video = video_for_subs
+            if has_audio:
+                audio_stream = input_video.audio
+                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            else:
+                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264')
         
         (
             ffmpeg_out
@@ -362,7 +379,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     )
 
     final_url = minio_client.presigned_get_object(
-        MINIO_BUCKET, final_object_name, expires=timedelta(days=7)
+        MINIO_BUCKET, final_object_name, expires=timedelta(days=7),
+        response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
     )
 
     try:

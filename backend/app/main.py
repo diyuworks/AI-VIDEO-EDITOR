@@ -1,4 +1,3 @@
-import os
 from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI
@@ -12,7 +11,7 @@ app = FastAPI(title="AI Video Editor API", version="0.1.0")
 # Allow the frontend dev server to call this API during local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex="http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,10 +39,6 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # Serve backend/demo_clips as static files so user can download clean raw footage clips
 app.mount("/demo-videos", StaticFiles(directory="demo_clips"), name="demo-videos")
-
-# Serve backend/uploads as static files for reliable local file access
-os.makedirs("uploads", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.on_event("startup")
 def on_startup():

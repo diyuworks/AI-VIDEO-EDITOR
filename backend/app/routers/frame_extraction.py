@@ -19,26 +19,17 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET
 
-    # Step A: Local disk check for instant access
-    import os
-    upload_disk_path = os.path.join("uploads", object_name)
-    demo_disk_path = os.path.join("demo_clips", object_name)
+    # Step A: Video ko local temp file me download karo
+    # HTTP stream me OpenCV kabhi-kabhi starting frames skip kar deta hai
+    temp_dir = tempfile.mkdtemp()
+    local_video_path = os.path.join(temp_dir, "extract_source.mp4")
+    try:
+        minio_client.fget_object(MINIO_BUCKET, object_name, local_video_path)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
-    video_source = None
-    if os.path.exists(upload_disk_path):
-        video_source = upload_disk_path
-    elif os.path.exists(demo_disk_path):
-        video_source = demo_disk_path
-    else:
-        try:
-            video_source = minio_client.presigned_get_object(
-                MINIO_BUCKET, object_name, expires=timedelta(minutes=10)
-            )
-        except Exception as e:
-            raise HTTPException(status_code=404, detail=f"File not found on disk or MinIO: {str(e)}")
-
-    # OpenCV se video kholo (Local disk se 100x fast hoga)
-    cap = cv2.VideoCapture(video_source)
+    # Step B: OpenCV se local video kholo (guarantees frame parity with tracking)
+    cap = cv2.VideoCapture(local_video_path)
 
     if not cap.isOpened():
         raise HTTPException(status_code=400, detail="Could not open video for reading")
