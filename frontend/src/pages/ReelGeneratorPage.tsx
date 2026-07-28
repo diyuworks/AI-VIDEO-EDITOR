@@ -672,7 +672,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           </div>
         )}
       </section>
-      </div>
 
       {/* Single video segmentation section removed as per user request */}
 
