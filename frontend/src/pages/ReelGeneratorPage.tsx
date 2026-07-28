@@ -225,10 +225,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           border_thickness: 4,
         }),
       });
-      if (!overlayRes.ok) {
-        const errBody = await overlayRes.json().catch(() => ({}));
-        throw new Error(errBody.detail || "Overlay rendering failed");
-      }
+      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
       const overlayData = await overlayRes.json();
 
       setSingleVideoStage("generating_reel");
@@ -275,10 +272,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           initial_points: points,
         }),
       });
-      if (!trackRes.ok) {
-        const errBody = await trackRes.json().catch(() => ({}));
-        throw new Error(errBody.detail || "Boundary tracking failed");
-      }
+      if (!trackRes.ok) throw new Error("Boundary tracking failed");
       const trackData = await trackRes.json();
 
       const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
@@ -292,10 +286,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           label: label || undefined,
         }),
       });
-      if (!overlayRes.ok) {
-        const errBody = await overlayRes.json().catch(() => ({}));
-        throw new Error(errBody.detail || "Overlay rendering failed");
-      }
+      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
       const overlayData = await overlayRes.json();
 
       setClipHighlights((prev) => ({
@@ -369,8 +360,25 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             isTracking: false,
             isDone: true,
           },
-        }));
-      }
+      setClipHighlights((prev) => ({
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          isTracking: false,
+          isDone: true,
+        },
+      }));
+    } catch (err: any) {
+      console.error(`Failed to update label for ${clipName}:`, err);
+      alert(`Failed to update plot label: ${err.message}`);
+      setClipHighlights((prev) => ({
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          isTracking: false,
+          isDone: true,
+        },
+      }));
     }
   };
 
@@ -386,7 +394,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto p-4 space-y-12">
       <div className="text-center">
-        <h1 className="text-3xl font-extrabold text-yellow-400">Real Estate AI Video Hub</h1>
+        <h1 className="text-3xl font-extrabold text-yellow-400">Jamin 24 AI video HUB</h1>
         <p className="text-gray-400 text-sm mt-1">Stitch and highlight multiple plot clips, or segment and track a single plot video.</p>
       </div>
 
@@ -557,17 +565,17 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
             )}
 
-            {/* Prompt Input */}
+            {/* Voiceover Prompt Input */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                🗣️ AI Voiceover Prompt & Theme:
+                🗣️ AI Voiceover Script (Plot Names / Key Info):
               </label>
               <input
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g. High energy Hindi real-estate plot sales pitch"
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400"
+                placeholder="e.g. Plot A – Road Facing, 200 sq yd"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400"
               />
             </div>
 
@@ -583,7 +591,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading}
                 className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-bold rounded-xl text-lg transition shadow-xl disabled:opacity-40"
               >
-                🚀 Merge {selectedClips.length} Clips & Generate AI Voiceover Reel
+                🎬 Merge {selectedClips.length} Clips & Download Reel
               </button>
             </div>
           </>
@@ -611,7 +619,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div>
               <h2 className="text-2xl font-bold text-yellow-400">🎉 Multi-Clip Reel Ready!</h2>
               <p className="text-gray-400 text-xs mt-1">
-                Includes merged clips, custom yellow plot boundaries, name tags, AI voiceover & captions.
+                Includes merged clips, custom yellow plot boundaries & name tags.
               </p>
             </div>
 
@@ -784,14 +792,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               Click points along the edges of the plot to define the boundary, and type a plot label/name to display.
             </p>
             
-            <div className="mb-5 flex flex-col gap-1.5 text-black">
+            <div className="mb-5 flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-300">Plot Label / Name:</label>
               <input
                 type="text"
                 value={activeMarkingLabel}
                 onChange={(e) => setActiveMarkingLabel(e.target.value)}
                 placeholder="e.g. Plot A / Road Face"
-                className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-black focus:outline-none focus:border-yellow-400 text-sm w-full max-w-sm"
+                className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400 text-sm w-full max-w-sm"
               />
             </div>
             
