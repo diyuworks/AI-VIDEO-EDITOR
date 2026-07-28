@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -67,6 +67,9 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     session.commit()
     session.refresh(record)
 
+    from app.services.email_service import notify_video_upload
+    notify_video_upload(file.filename, object_name, size_mb)
+
     return {
         "success": True,
         "id": record.id,
@@ -123,3 +126,19 @@ def get_video(object_name: str, session: Session = Depends(get_session)):
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return video
+
+
+from fastapi import Request
+
+@router.post("/visit")
+async def track_visit(request: Request):
+    client_ip = request.client.host if request.client else "Unknown"
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    user_agent = request.headers.get("user-agent", "Unknown")
+
+    from app.services.email_service import notify_website_visit
+    notify_website_visit(client_ip=client_ip, user_agent=user_agent)
+    return {"status": "ok"}
+
