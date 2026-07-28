@@ -34,6 +34,10 @@ interface ClipHighlight {
   objectName: string;
   points?: Point[];
   label?: string;
+  price?: string;
+  size?: string;
+  roadInfo?: string;
+  highlightColor?: string;
   enableFarmhouse?: boolean;
   enableFountain?: boolean;
   textPosition?: string;
@@ -65,8 +69,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
   const [selectedClips, setSelectedClips] = useState<string[]>([]);
   const [clipHighlights, setClipHighlights] = useState<Record<string, ClipHighlight>>({});
-  const [activeMarkingClip, setActiveMarkingClip] = useState<string | null>(null);
-  const [activeMarkingLabel, setActiveMarkingLabel] = useState<string>("");
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
@@ -75,7 +77,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
   const [singleVideoError, setSingleVideoError] = useState<string | null>(null);
 
-  // New Real Estate Reel Effects Controls
+  // Multi-clip boundary marking modal state
+  const [activeMarkingClip, setActiveMarkingClip] = useState<string | null>(null);
+  const [activeMarkingLabel, setActiveMarkingLabel] = useState<string>("");
+  const [plotPrice, setPlotPrice] = useState<string>("");
+  const [plotSize, setPlotSize] = useState<string>("");
+  const [roadInfo, setRoadInfo] = useState<string>("");
+  const [highlightColor, setHighlightColor] = useState<string>("#FFEB3B");
   const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
@@ -276,7 +284,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     label: string,
     farmhouse: boolean = false,
     fountain: boolean = false,
-    txtPos: string = "middle"
+    txtPos: string = "middle",
+    priceVal: string = "",
+    sizeVal: string = "",
+    roadVal: string = "",
+    colorVal: string = "#FFEB3B"
   ) => {
     try {
       setClipHighlights((prev) => ({
@@ -285,6 +297,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           objectName: clipName,
           points,
           label,
+          price: priceVal,
+          size: sizeVal,
+          roadInfo: roadVal,
+          highlightColor: colorVal,
           enableFarmhouse: farmhouse,
           enableFountain: fountain,
           textPosition: txtPos,
@@ -310,12 +326,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: JSON.stringify({
           object_name: clipName,
           polygon_per_frame: trackData.polygon_per_frame,
-          highlight_color: "#FFEB3B",
+          highlight_color: colorVal || "#FFEB3B",
           border_thickness: 4,
           label: label || undefined,
           enable_farmhouse_overlay: farmhouse,
           enable_fountain_overlay: fountain,
           text_position: txtPos,
+          price: priceVal || undefined,
+          size: sizeVal || undefined,
+          road_info: roadVal || undefined,
         }),
       });
       if (!overlayRes.ok) throw new Error("Overlay rendering failed");
@@ -579,6 +598,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     onClick={() => {
                                       setActiveMarkingClip(clipName);
                                       setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                                      setPlotPrice(clipHighlights[clipName]?.price || "");
+                                      setPlotSize(clipHighlights[clipName]?.size || "");
+                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
+                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
                                       setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
@@ -593,6 +616,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     onClick={() => {
                                       setActiveMarkingClip(clipName);
                                       setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                                      setPlotPrice(clipHighlights[clipName]?.price || "");
+                                      setPlotSize(clipHighlights[clipName]?.size || "");
+                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
+                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
                                       setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
@@ -731,15 +758,63 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 Click points along the edges of the plot to define the boundary, and type a plot label/name to display.
               </p>
 
-              <div className="mb-5 flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-300">Plot Label / Name:</label>
-                <input
-                  type="text"
-                  value={activeMarkingLabel}
-                  onChange={(e) => setActiveMarkingLabel(e.target.value)}
-                  placeholder="e.g. Plot A / Road Face"
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 text-sm w-full max-w-sm"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-300">Plot Label / Name:</label>
+                  <input
+                    type="text"
+                    value={activeMarkingLabel}
+                    onChange={(e) => setActiveMarkingLabel(e.target.value)}
+                    placeholder="e.g. Plot A / Corner"
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-300">💰 Plot Price (Optional):</label>
+                  <input
+                    type="text"
+                    value={plotPrice}
+                    onChange={(e) => setPlotPrice(e.target.value)}
+                    placeholder="e.g. ₹25 Lakhs"
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-amber-300 placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-300">📐 Plot Size / Area (Optional):</label>
+                  <input
+                    type="text"
+                    value={plotSize}
+                    onChange={(e) => setPlotSize(e.target.value)}
+                    placeholder="e.g. 2000 SqFt / 1.5 Vigha"
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-emerald-300 placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-300">🛣️ Road / Highway Distance Badge:</label>
+                  <input
+                    type="text"
+                    value={roadInfo}
+                    onChange={(e) => setRoadInfo(e.target.value)}
+                    placeholder="e.g. 60FT Highway | 100m"
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-300">🎨 Highlight Border Color Theme:</label>
+                  <select
+                    value={highlightColor}
+                    onChange={(e) => setHighlightColor(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:border-amber-400 w-full"
+                  >
+                    <option value="#FFEB3B">🟡 Electric Yellow (Default)</option>
+                    <option value="#00E676">🟢 Cyber Neon Green</option>
+                    <option value="#FFD700">🪙 Luxury Gold</option>
+                    <option value="#00E5FF">🔵 Neon Cyan</option>
+                  </select>
+                </div>
               </div>
 
               {/* Per-Plot Visual Effects Controls */}
@@ -780,11 +855,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 onBoundaryConfirmed={async (points) => {
                   const clipName = activeMarkingClip;
                   const label = activeMarkingLabel;
+                  const pr = plotPrice;
+                  const sz = plotSize;
+                  const rd = roadInfo;
+                  const clr = highlightColor;
                   const fh = enableFarmhouse;
                   const ft = enableFountain;
                   const tp = textPosition;
                   setActiveMarkingClip(null);
-                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp);
+                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
                 }}
               />
             </div>

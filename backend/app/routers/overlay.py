@@ -20,6 +20,9 @@ class OverlayRequest(BaseModel):
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
     text_position: str = "middle"
+    price: Optional[str] = None  # e.g., ₹25 Lakhs
+    size: Optional[str] = None  # e.g., 2000 SqFt
+    road_info: Optional[str] = None  # e.g., 60FT Highway | 100m
 
 
 def hex_to_bgr(hex_color: str):
@@ -274,6 +277,50 @@ def render_overlay(request: OverlayRequest):
                                 # Main text with stroke
                                 d.text((lx, curr_y), line, font=pil_font, fill=(*text_rgb, opacity), stroke_width=3, stroke_fill=(0, 0, 0, opacity))
                                 curr_y += lh + 10
+
+                            # --- RENDER PLOT PRICE & SIZE BADGE ---
+                            badge_str = ""
+                            if request.price and request.price.strip():
+                                badge_str += request.price.strip().upper()
+                            if request.size and request.size.strip():
+                                badge_str += (" | " if badge_str else "") + request.size.strip().upper()
+
+                            if badge_str:
+                                try:
+                                    badge_font_size = max(26, int(font_size * 0.65))
+                                    b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fonts\ariblk.ttf') else pil_font
+                                    b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
+                                    bw = b_bbox[2] - b_bbox[0]
+                                    blx = int((width - bw) / 2) if request.text_position == "outro" else int(top_pt[0] - bw / 2)
+                                    blx = max(20, min(blx, width - bw - 20))
+                                    
+                                    # Gold (#FFD700) badge text with drop shadow
+                                    for offset in range(1, 3):
+                                        d.text((blx + offset, curr_y + offset), badge_str, font=b_font, fill=(0, 0, 0, shadow_alpha))
+                                    d.text((blx, curr_y), badge_str, font=b_font, fill=(255, 215, 0, opacity), stroke_width=2, stroke_fill=(0, 0, 0, opacity))
+                                except Exception as ex_b:
+                                    print(f"[overlay] Badge error: {ex_b}")
+
+                            # --- RENDER ROAD CONNECTIVITY & DISTANCE BADGE ---
+                            if request.road_info and request.road_info.strip():
+                                try:
+                                    road_str = "➔ " + request.road_info.strip().upper()
+                                    r_font_size = max(22, int(font_size * 0.55))
+                                    r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fonts\arialbd.ttf') else pil_font
+                                    r_bbox = d.textbbox((0, 0), road_str, font=r_font)
+                                    rw = r_bbox[2] - r_bbox[0]
+                                    rh = r_bbox[3] - r_bbox[1]
+                                    
+                                    rx = 25
+                                    ry = int(height - rh - 45)
+                                    
+                                    r_pad_x = 14
+                                    r_pad_y = 7
+                                    r_box = [rx - r_pad_x, ry - r_pad_y, rx + rw + r_pad_x, ry + rh + r_pad_y]
+                                    d.rounded_rectangle(r_box, radius=8, fill=(15, 23, 42, int(opacity * 0.85)), outline=(0, 229, 255, opacity), width=2)
+                                    d.text((rx, ry), road_str, font=r_font, fill=(255, 255, 255, opacity))
+                                except Exception as ex_r:
+                                    print(f"[overlay] Road info error: {ex_r}")
 
                             img_pil = Image.alpha_composite(img_pil.convert('RGBA'), txt_layer).convert('RGB')
                             frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
