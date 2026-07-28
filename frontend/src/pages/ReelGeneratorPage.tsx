@@ -385,43 +385,56 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
-      {/* 🌟 HERO HEADER */}
-      <div className="text-center space-y-3">
-        <h1 className="text-3xl sm:text-4xl font-black text-[#0D473B] tracking-tight">
-          Jamin <span className="text-amber-500">24</span> AI video HUB
-        </h1>
-        <p className="text-slate-600 text-sm font-semibold max-w-2xl mx-auto">
-          JAHAN JAMIN, WAHAN JAMIN24 — Stitch and highlight open land plot clips with AI motion tracking & voiceovers.
-        </p>
+    <div className="w-full max-w-5xl mx-auto font-sans space-y-10">
+      {/* 🌟 JAMIN24 HERO BANNER WITH AERIAL BACKDROP */}
+      <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-slate-950 p-6 sm:p-12 text-white border border-slate-800">
+        {/* Aerial Land Background Image Overlay */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-overlay scale-105"
+          style={{ backgroundImage: "url('/hero_bg.png')" }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/60 to-slate-950/90" />
 
-        {/* Feature Pill Badges */}
-        <div className="flex flex-wrap justify-center gap-2 pt-2 text-xs font-bold text-[#0D473B]">
-          <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-            🧭 360° Virtual Tours
+        <div className="relative z-10 text-center space-y-4 max-w-3xl mx-auto">
+          <span className="inline-block bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
+            India's Leading Open Land Platform
           </span>
-          <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-            🛡️ Verified Listings
-          </span>
-          <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-            🤝 Trusted Network
-          </span>
-          <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-            ⚡ Smart Match
-          </span>
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white drop-shadow-md">
+            JAHAN JAMIN, <br className="hidden sm:inline" />
+            <span className="text-amber-400">WAHAN JAMIN24</span>
+          </h1>
+          <p className="text-slate-300 text-xs sm:text-sm font-medium leading-relaxed max-w-xl mx-auto">
+            Explore verified open lands with 360° virtual tours, AI land boundary tracking, and automated promotional reel generation.
+          </p>
+
+          {/* Feature Badges */}
+          <div className="flex flex-wrap justify-center gap-2 pt-2 text-xs font-bold text-slate-200">
+            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+              🧭 360° Virtual Tours
+            </span>
+            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+              🛡️ Verified Listings
+            </span>
+            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+              🤝 Trusted Network
+            </span>
+            <span className="bg-slate-900/80 border border-slate-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+              ⚡ Smart AI Match
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* 🎬 SECTION 1: MULTI-CLIP REAL ESTATE REEL MERGER */}
-      <section className="bg-white border border-slate-200 shadow-xl rounded-3xl p-6 sm:p-8 space-y-6 text-slate-800">
-        <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
+      {/* 🎬 SECTION 1: MULTI-CLIP REEL MERGER BOX (HIGH CONTRAST FLOATING CARD) */}
+      <section className="bg-white border-2 border-slate-200 shadow-2xl rounded-3xl p-6 sm:p-10 space-y-6 text-slate-800 ring-1 ring-slate-900/10">
+        <div className="border-b-2 border-slate-100 pb-4 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-black text-[#0D473B] flex items-center gap-2">
+            <h2 className="text-xl sm:text-2xl font-black text-[#0D473B] flex items-center gap-2.5">
               🎬 Multi-Clip Reel Merger & Highlight Workflow
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Upload, select, highlight plots, and merge together into a custom reel.</p>
+            <p className="text-xs font-semibold text-slate-500 mt-1">Upload, select, highlight plot boundaries, and merge clips into a custom reel.</p>
           </div>
-          <span className="bg-emerald-50 text-[#0D473B] text-[11px] font-bold px-3 py-1 rounded-full border border-emerald-200">
+          <span className="bg-emerald-100 text-[#0D473B] text-[11px] font-extrabold px-3 py-1.5 rounded-full border border-emerald-300 shadow-sm">
             MAX 10 CLIPS
           </span>
         </div>
