@@ -34,6 +34,9 @@ interface ClipHighlight {
   objectName: string;
   points?: Point[];
   label?: string;
+  enableFarmhouse?: boolean;
+  enableFountain?: boolean;
+  textPosition?: string;
   highlightedObjectName?: string;
   polygonPerFrame?: number[][][]; // Cache tracked polygon for fast label updates
   isTracking?: boolean;
@@ -71,6 +74,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
   const [singleVideoError, setSingleVideoError] = useState<string | null>(null);
+
+  // New Real Estate Reel Effects Controls
+  const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
+  const [enableFountain, setEnableFountain] = useState<boolean>(false);
+  const [textPosition, setTextPosition] = useState<string>("middle");
 
   // Fetch uploaded clips on mount (disabled historical database fetch to start clean)
   useEffect(() => {
@@ -223,6 +231,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           polygon_per_frame: trackData.polygon_per_frame,
           highlight_color: "#FFEB3B",
           border_thickness: 4,
+          enable_farmhouse_overlay: enableFarmhouse,
+          enable_fountain_overlay: enableFountain,
+          text_position: textPosition,
         }),
       });
       if (!overlayRes.ok) throw new Error("Overlay rendering failed");
@@ -251,7 +262,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   };
 
   // Async tracking and rendering for an individual multi-clip
-  const handleMultiClipBoundaryConfirmed = async (clipName: string, points: Point[], label: string) => {
+  const handleMultiClipBoundaryConfirmed = async (
+    clipName: string,
+    points: Point[],
+    label: string,
+    farmhouse: boolean = false,
+    fountain: boolean = false,
+    txtPos: string = "middle"
+  ) => {
     try {
       setClipHighlights((prev) => ({
         ...prev,
@@ -259,6 +277,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           objectName: clipName,
           points,
           label,
+          enableFarmhouse: farmhouse,
+          enableFountain: fountain,
+          textPosition: txtPos,
           isTracking: true,
           isDone: false,
         },
@@ -284,6 +305,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           highlight_color: "#FFEB3B",
           border_thickness: 4,
           label: label || undefined,
+          enable_farmhouse_overlay: farmhouse,
+          enable_fountain_overlay: fountain,
+          text_position: txtPos,
         }),
       });
       if (!overlayRes.ok) throw new Error("Overlay rendering failed");
@@ -336,6 +360,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             highlight_color: "#FFEB3B",
             border_thickness: 4,
             label: newLabel || undefined,
+            enable_farmhouse_overlay: highlight.enableFarmhouse || false,
+            enable_fountain_overlay: highlight.enableFountain || false,
+            text_position: highlight.textPosition || "middle",
           }),
         });
         if (!overlayRes.ok) throw new Error("Overlay update failed");
@@ -405,6 +432,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             </div>
           </div>
         </div>
+
 
         {/* 🎬 SECTION 1: MULTI-CLIP REAL ESTATE REEL MERGER */}
         <section className="bg-white border border-slate-200 shadow-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 text-slate-800">
@@ -543,6 +571,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     onClick={() => {
                                       setActiveMarkingClip(clipName);
                                       setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
+                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
+                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
                                     className="w-full py-1 px-1 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-[10px] font-bold rounded-lg flex items-center justify-center truncate border border-emerald-300"
                                     title="Click to edit plot boundary"
@@ -554,6 +585,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     onClick={() => {
                                       setActiveMarkingClip(clipName);
                                       setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
+                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
+                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
+                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
                                     className="w-full py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-semibold rounded-lg flex items-center justify-center border border-slate-200"
                                   >
@@ -700,13 +734,49 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 />
               </div>
 
+              {/* Per-Plot Visual Effects Controls */}
+              <div className="mb-5 bg-slate-900/80 border border-slate-700 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">✨ Plot Visual Effects</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-800 rounded-lg px-3 py-2 border border-slate-700 hover:border-amber-500 transition">
+                    <input
+                      type="checkbox"
+                      checked={enableFarmhouse}
+                      onChange={(e) => setEnableFarmhouse(e.target.checked)}
+                      className="w-3.5 h-3.5 accent-amber-400"
+                    />
+                    <span className="text-white font-semibold">🏡 Farmhouse Overlay</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-800 rounded-lg px-3 py-2 border border-slate-700 hover:border-amber-500 transition">
+                    <input
+                      type="checkbox"
+                      checked={enableFountain}
+                      onChange={(e) => setEnableFountain(e.target.checked)}
+                      className="w-3.5 h-3.5 accent-amber-400"
+                    />
+                    <span className="text-white font-semibold">🚰 Water Fountain</span>
+                  </label>
+                  <select
+                    value={textPosition}
+                    onChange={(e) => setTextPosition(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 font-semibold text-xs focus:ring-1 focus:ring-amber-400 hover:border-amber-500 transition"
+                  >
+                    <option value="middle">📌 Text: Above Plot</option>
+                    <option value="outro">📌 Text: Outro Style</option>
+                  </select>
+                </div>
+              </div>
+
               <BoundaryMarker
                 objectName={activeMarkingClip}
                 onBoundaryConfirmed={async (points) => {
                   const clipName = activeMarkingClip;
                   const label = activeMarkingLabel;
+                  const fh = enableFarmhouse;
+                  const ft = enableFountain;
+                  const tp = textPosition;
                   setActiveMarkingClip(null);
-                  await handleMultiClipBoundaryConfirmed(clipName, points, label);
+                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp);
                 }}
               />
             </div>

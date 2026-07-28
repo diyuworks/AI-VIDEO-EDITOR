@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -67,12 +67,8 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     session.commit()
     session.refresh(record)
 
-    file_size_mb = 0.0
-    if os.path.exists(local_path):
-        file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
-
     from app.services.email_service import notify_video_upload
-    notify_video_upload(file.filename, object_name, file_size_mb)
+    notify_video_upload(file.filename, object_name, size_mb)
 
     return {
         "success": True,

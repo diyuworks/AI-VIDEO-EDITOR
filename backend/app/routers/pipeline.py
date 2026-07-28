@@ -169,7 +169,7 @@ async def merge_clips(request: MergeClipsRequest):
         # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
         joined = ffmpeg.concat(*streams, v=1, a=1).node
-        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
+        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', preset='superfast', acodec='aac', video_bitrate='2M', strict='experimental')
         
         try:
             out.overwrite_output().run(capture_stdout=True, capture_stderr=True)
@@ -283,14 +283,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         
         has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
         
-        if not TEMPORARY_DISABLE_VOICEOVER and audio_path:
-            probe_audio = ffmpeg.probe(audio_path)
-            audio_duration = float(probe_audio['format']['duration'])
-            # The end screen is 5 seconds long, so we trim the main video by 5 seconds
-            # so the total video length (main + end screen) exactly matches the audio duration.
-            trim_duration = max(0, audio_duration - 5)
-        else:
-            trim_duration = video_duration
+        # Keep full merged video duration so all uploaded clips play completely
+        trim_duration = video_duration
         
         width = int(video_info['width'])
         height = int(video_info['height'])
