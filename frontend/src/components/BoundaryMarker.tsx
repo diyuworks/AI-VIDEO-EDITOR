@@ -108,31 +108,31 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <h2 className="text-lg font-semibold">Plot ki Boundary Mark Karo</h2>
-      <p className="text-sm text-gray-500">
+    <div className="flex flex-col items-center gap-4 text-white">
+      <h2 className="text-lg font-bold text-amber-400">Plot ki Boundary Mark Karo</h2>
+      <p className="text-xs text-slate-300">
         Image pe click karke plot ke corners mark karo (kam se kam 3 points)
       </p>
 
-      {!imageLoaded && <p>Frame load ho raha hai...</p>}
+      {!imageLoaded && <p className="text-xs text-amber-300 font-mono animate-pulse">Frame load ho raha hai...</p>}
 
       <canvas
         ref={canvasRef}
         onClick={handleCanvasClick}
-        className="border rounded-lg cursor-crosshair max-w-full"
+        className="border-2 border-slate-700 rounded-2xl cursor-crosshair max-w-full shadow-2xl"
         style={{ maxHeight: "600px" }}
       />
 
       <div className="flex gap-3">
-        <button onClick={handleUndo} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg border border-gray-600 transition">
+        <button onClick={handleUndo} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl border border-slate-700 transition text-sm">
           ↩ Undo
         </button>
-        <button onClick={handleReset} className="px-4 py-2 bg-red-900/60 hover:bg-red-800 text-red-300 font-semibold rounded-lg border border-red-700/50 transition">
+        <button onClick={handleReset} className="px-4 py-2 bg-red-950/60 hover:bg-red-900 text-red-300 font-semibold rounded-xl border border-red-800/50 transition text-sm">
           🗑 Reset
         </button>
         <button
           onClick={handleConfirm}
-          className="px-4 py-2 bg-yellow-400 font-semibold rounded-lg"
+          className="px-6 py-2 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl shadow-md text-sm transition"
         >
           Confirm Boundary ({points.length} points)
         </button>

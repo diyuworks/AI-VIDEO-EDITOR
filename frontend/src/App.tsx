@@ -3,6 +3,7 @@ import UploadPage from './features/upload/UploadPage'
 import PromptInputPage from './features/prompt/PromptInputPage'
 import TimelineEditorPage from './features/timeline/TimelineEditorPage'
 import ReelGeneratorPage from './pages/ReelGeneratorPage'
+import { Jamin24Header } from './components/Jamin24Header'
 
 type Screen = 'upload' | 'prompt' | 'timeline' | 'reel'
 
@@ -19,76 +20,60 @@ function App() {
   const [promptData, setPromptData] = useState<PromptData | null>(null)
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', background: '#0F0F11' }}>
-      {/* Top Bar Quick Access Button for Live Demo */}
-      <button
-        onClick={() => setScreen(screen === 'reel' ? 'upload' : 'reel')}
-        style={{
-          position: 'fixed',
-          top: 14,
-          right: 14,
-          zIndex: 9999,
-          padding: '10px 18px',
-          background: '#FFEB3B',
-          color: '#000000',
-          borderRadius: 10,
-          fontWeight: 700,
-          fontSize: '14px',
-          cursor: 'pointer',
-          border: '2px solid #000',
-          boxShadow: '0 4px 12px rgba(255,235,59,0.4)',
-        }}
-      >
-        {screen === 'reel' ? '✏️ Go to Timeline Editor' : '🎬 Go to Reel Generator'}
-      </button>
+    <div className="min-h-screen bg-slate-100 font-sans text-slate-800 flex flex-col">
+      <Jamin24Header
+        onToggleTimeline={() => setScreen(screen === 'reel' ? 'upload' : 'reel')}
+        showTimelineToggle={true}
+      />
 
-      {screen === 'upload' && (
-        <UploadPage
-          onContinue={(data) => {
-            console.log('Backend upload result:', data.uploadResult)
-            if (data.sourceFile) {
-              setVideoUrl(URL.createObjectURL(data.sourceFile))
-            }
-            setReferenceResults(data.referenceUploadResults || [])
-            if (data.uploadResult?.object_name) {
-              setRawObjectName(data.uploadResult.object_name)
-            }
-            setScreen('prompt')
-          }}
-        />
-      )}
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
+        {screen === 'upload' && (
+          <UploadPage
+            onContinue={(data) => {
+              console.log('Backend upload result:', data.uploadResult)
+              if (data.sourceFile) {
+                setVideoUrl(URL.createObjectURL(data.sourceFile))
+              }
+              setReferenceResults(data.referenceUploadResults || [])
+              if (data.uploadResult?.object_name) {
+                setRawObjectName(data.uploadResult.object_name)
+              }
+              setScreen('prompt')
+            }}
+          />
+        )}
 
-      {screen === 'prompt' && (
-        <PromptInputPage
-          onContinue={(data) => {
-            console.log('Prompt submitted:', data)
-            setPromptData(data)
-            setScreen('timeline')
-          }}
-        />
-      )}
+        {screen === 'prompt' && (
+          <PromptInputPage
+            onContinue={(data) => {
+              console.log('Prompt submitted:', data)
+              setPromptData(data)
+              setScreen('timeline')
+            }}
+          />
+        )}
 
-      {screen === 'timeline' && (
-        <TimelineEditorPage
-          videoUrl={videoUrl || ''}
-          referenceResults={referenceResults}
-          rawObjectName={rawObjectName || undefined}
-        />
-      )}
+        {screen === 'timeline' && (
+          <TimelineEditorPage
+            videoUrl={videoUrl || ''}
+            referenceResults={referenceResults}
+            rawObjectName={rawObjectName || undefined}
+          />
+        )}
 
-      {screen === 'reel' && (
-        <div className="min-h-screen bg-[#0F0F11] flex flex-col items-center justify-center p-8">
-          <div className="bg-[#151518] border border-gray-800 p-6 rounded-2xl shadow-2xl w-full max-w-4xl flex justify-center text-white">
+        {screen === 'reel' && (
+          <div className="w-full flex justify-center py-4">
             <ReelGeneratorPage
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
               prompt={promptData?.prompt}
             />
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   )
 }
 
 export default App
+
