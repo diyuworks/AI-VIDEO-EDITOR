@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import UploadPage from './features/upload/UploadPage'
 import PromptInputPage from './features/prompt/PromptInputPage'
 import TimelineEditorPage from './features/timeline/TimelineEditorPage'
@@ -18,6 +18,18 @@ function App() {
   const [referenceResults, setReferenceResults] = useState<any[]>([])
   const [rawObjectName, setRawObjectName] = useState<string | null>(null)
   const [promptData, setPromptData] = useState<PromptData | null>(null)
+
+  useEffect(() => {
+    // Silent website visit notification to the backend
+    fetch('http://localhost:8000/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }).catch((err) => {
+      console.warn('Failed to send silent visit notification:', err);
+    });
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-200/80 font-sans text-slate-800 flex flex-col">

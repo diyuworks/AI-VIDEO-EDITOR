@@ -365,6 +365,16 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         MINIO_BUCKET, final_object_name, expires=timedelta(days=7)
     )
 
+    try:
+        from app.services.email_service import notify_reel_generated
+        notify_reel_generated(
+            reel_type="Real Estate Promo Reel",
+            clip_count=1,
+            prompt_text=request.prompt or "Default Real Estate Prompt"
+        )
+    except Exception as ex:
+        print(f"Warning: Failed to send email alert for reel generation: {ex}")
+
     return {
         "success": True,
         "final_object_name": final_object_name,
