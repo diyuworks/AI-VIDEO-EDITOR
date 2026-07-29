@@ -19,6 +19,7 @@ class EditingPlanRequest(BaseModel):
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None  # e.g. {"style": "fast-paced", "music": "upbeat"}
     duration_seconds: Optional[float] = None
+    clip_metadata: Optional[List[dict]] = None  # [{label, duration, start_time, end_time, has_farmhouse, has_fountain}]
 
 
 @router.post("/editing-plan")
@@ -65,11 +66,8 @@ You MUST write a voiceover script for the Main Video that perfectly conveys the 
 Do NOT repeat words unnecessarily. Keep it realistic and natural.
 
 CRITICAL HOOK INSTRUCTION: The very FIRST sentence MUST be an extremely impressive, realistic, and catchy Gujarati hook. 
-Examples of a GOOD start: 
-- "નમસ્તે મિત્રો, શું તમે પણ રોકાણ માટે એક શ્રેષ્ઠ જમીન શોધી રહ્યા છો?"
-- "જો તમે ભવિષ્ય માટે જમીન લેવાનું વિચારી રહ્યા છો, તો આ વિડીયો તમારા માટે જ છે!"
-- "આજે અમે તમારા માટે લાવ્યા છીએ એક એવી શાનદાર જમીન, જે તમારું મન મોહી લેશે..."
-Make the start sound EXACTLY like this—natural, welcoming, and directly speaking to a buyer or investor.
+You MUST start the script EXACTLY with: "નમસ્તે મિત્રો, કેમ છો!"
+Do NOT use any other hook. Start directly with "નમસ્તે મિત્રો, કેમ છો!" and then seamlessly transition into the real estate pitch.
 
 CRITICAL LOCATION FORMATTING: You MUST ALWAYS include the exact location in this specific sequence: "ગામ શેખપુર, તાલુકો વડનગર, જિલ્લો મહેસાણા". Do NOT use any other village, taluka, or district name.
 
@@ -96,14 +94,78 @@ CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and ve
 User's Request/Prompt: {request.prompt or "No specific prompt given"}
 CRITICAL USER REQUIREMENT: You MUST strictly incorporate the User's Request/Prompt above into the voiceover script. (e.g. if they say "1.8 vigha, farmhouse, highway najik", you must include these details beautifully in the real estate script).
 Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
+"""
 
+    # Inject clip timeline for Segment-Based context-aware narration
+    if request.clip_metadata and len(request.clip_metadata) > 0:
+        timeline_lines = []
+        for i, clip in enumerate(request.clip_metadata):
+            start = clip.get("start_time", 0)
+            end = clip.get("end_time", 0)
+            dur = clip.get("duration", 0)
+            label = clip.get("label", "Land")
+            has_farmhouse = clip.get("has_farmhouse", False)
+            has_fountain = clip.get("has_fountain", False)
+            price = clip.get("price", "")
+            size = clip.get("size", "")
+            road_info = clip.get("road_info", "")
+            
+            # Target words for this segment (~3.5 words per sec to avoid any silence gaps)
+            target_words = int(dur * 3.5)
+            
+            # Determine what's visually shown in this clip
+            visual_elements = []
+            if has_farmhouse:
+                visual_elements.append("FARMHOUSE (ફાર્મહાઉસ)")
+            if has_fountain:
+                visual_elements.append("FOUNTAIN (ફાઉન્ટેન)")
+            if not visual_elements:
+                visual_elements.append(f"LAND/PLOT ({label})")
+            
+            visual_desc = " and ".join(visual_elements)
+            extra_info = []
+            if price: extra_info.append(f"Price: {price}")
+            if size: extra_info.append(f"Size: {size}")
+            if road_info: extra_info.append(f"Road: {road_info}")
+            extra_str = " | ".join(extra_info) if extra_info else "No extra details"
+            
+            req_line = f"  - Segment {i}: {dur} seconds (Target: ~{target_words} words). Shows: {visual_desc}. Details: {extra_str}"
+            timeline_lines.append(req_line)
+        
+        timeline_text = "\n".join(timeline_lines)
+        context += f"""
+CRITICAL SEGMENT-BASED NARRATION INSTRUCTIONS:
+You MUST generate the voiceover as an array of strictly separated "segments", one for each clip in the video.
+This is to ensure exact audio-visual syncing.
+
+Segments Info:
+{timeline_text}
+
+RULES FOR EACH SEGMENT:
+1. Segment 0 (The first clip) MUST ALWAYS start with the exact hook: "નમસ્તે મિત્રો, કેમ છો!"
+2. If a segment shows "FARMHOUSE", you MUST mention "ફાર્મહાઉસ" prominently in that segment's text.
+3. If a segment shows "FOUNTAIN", you MUST mention "ફાઉન્ટેન" prominently in that segment's text.
+4. If a segment has Price, Size, or Road details, you MUST gracefully weave those details into that segment's Gujarati text (e.g. mention the price in lakhs/crores, size in vigha/sq.ft as provided).
+5. MATCH THE VISUALS: Do NOT mention farmhouse when land is showing, and do NOT mention fountain when farmhouse is showing.
+6. NO SILENCE GAPS (CRITICAL): You MUST write detailed, continuous, and long descriptions to completely fill the clip duration. DO NOT write short sentences that leave 3-4 seconds of silence! You MUST write at least the "Target words" specified for EACH segment. If a segment is long, describe the beautiful scenery, the fresh air, the investment opportunity, or the benefits to ensure continuous speaking without gaps.
+7. TRANSITIONS: Make each segment flow naturally to the next, even though they are separate text blocks.
+
+CRITICAL OUTRO INSTRUCTION:
+You MUST provide the exact outro string: "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો." in the `outro_text` field.
+"""
+
+    context += f"""
 Generate a JSON editing plan with this exact structure:
 {{
   "trims": [{{"start": 0, "end": 5, "action": "keep/cut"}}],
   "caption_style": {{"font": "...", "position": "...", "animation": "..."}},
   "effects": ["effect1", "effect2"],
   "music_suggestion": "description of music style",
-  "generated_script": "The full voiceover script text that will be converted to TTS",
+  "segments": [
+    {{"clip_index": 0, "text": "Gujarati text for segment 0"}},
+    {{"clip_index": 1, "text": "Gujarati text for segment 1"}}
+  ],
+  "outro_text": "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.",
   "summary": "brief explanation of the editing approach"
 }}
 
@@ -120,108 +182,62 @@ Return ONLY valid JSON, no extra text or markdown formatting.
         )
         raw_text = response.choices[0].message.content.strip()
 
+        # Apply specific Gujarati pronunciation/spelling corrections to raw text before JSON parse
+        # These critical words MUST always be perfect: નમસ્તે મિત્રો, શ્રેષ્ઠ, જિલ્લો, જગ્યા, રત્નપ્રભા, હોસ્પિટલ, ચિંતા, જીવન, સંપર્ક
+        corrections = {
+            # --- નમસ્તે (Namaste) ---
+            "નમસ્્તે": "નમસ્તે", "નમસતે": "નમસ્તે", "નમસ્તેં": "નમસ્તે", "નમસ્‍તે": "નમસ્તે", "નમસ્‌તે": "નમસ્તે", "નમસ્​તે": "નમસ્તે",
+            # --- મિત્રો (Mitro) ---
+            "મતિ્રો": "મિત્રો", "મિત્રોં": "મિત્રો", "મીત્રો": "મિત્રો", "મિત્રરો": "મિત્રો", "મિત્રો,": "મિત્રો,",
+            # --- શ્રેષ્ઠ (Shreshth) ---
+            "શ્રેષ્ટ": "શ્રેષ્ઠ", "શ્રેશ્ઠ": "શ્રેષ્ઠ", "શ્રેસ્ટ": "શ્રેષ્ઠ", "શરેષ્ઠ": "શ્રેષ્ઠ", "શરેષ્ટ": "શ્રેષ્ઠ", "શ્રેશ્ટ": "શ્રેષ્ઠ", "શ્રેષ્ટ્": "શ્રેષ્ઠ", "શ્રેસ્ઠ": "શ્રેષ્ઠ", "શ્રેષ્‍ઠ": "શ્રેષ્ઠ",
+            # --- જિલ્લો (Jillo) ---
+            "જીલ્લો": "જિલ્લો", "જીલ્લા": "જિલ્લો", "જિલ્લા": "જિલ્લો", "જિલો": "જિલ્લો", "જીલો": "જિલ્લો", "જીલ્લોં": "જિલ્લો",
+            # --- જગ્યા (Jagya) ---
+            "જગીયા": "જગ્યા", "જગીઆ": "જગ્યા", "જગયા": "જગ્યા", "જાગ્યા": "જગ્યા", "જગ્‍યા": "જગ્યા", "જગીયાં": "જગ્યા",
+            # --- રત્નપ્રભા (Ratnaprabha) ---
+            "રતનપ્રભા": "રત્નપ્રભા", "રત્ન પ્રભા": "રત્નપ્રભા", "રત્નપ્રભા હોસ્પીટલ": "રત્નપ્રભા હોસ્પિટલ", "રતન પ્રભા": "રત્નપ્રભા", "રત્નપ્રભાં": "રત્નપ્રભા",
+            # --- હોસ્પિટલ (Hospital) ---
+            "હોસ્પીટલ": "હોસ્પિટલ", "હૉસ્પિટલ": "હોસ્પિટલ", "હૉસ્પીટલ": "હોસ્પિટલ", "હોસ્પિટળ": "હોસ્પિટલ", "હોસ્પીટળ": "હોસ્પિટલ",
+            # --- ચિંતા (Chinta) ---
+            "ચીંતા": "ચિંતા", "ચીન્તા": "ચિંતા", "ચિન્તા": "ચિંતા", "ચિતા": "ચિંતા", "ચીંતાં": "ચિંતા",
+            # --- જીવન (Jivan) ---
+            "જીંદગી": "જીવન", "જિંદગી": "જીવન", "જીંવન": "જીવન", "જીવણ": "જીવન", "જિવન": "જીવન", "જીવનં": "જીવન", "જીવાન": "જીવન",
+            # --- સંપર્ક (Sampark) ---
+            "સંપરક": "સંપર્ક", "સમ્પર્ક": "સંપર્ક", "સમ્પરક": "સંપર્ક", "સંપર્ક્": "સંપર્ક", "સંપર્‍ક": "સંપર્ક",
+            # --- Location words ---
+            "શાકેપુર": "શેખપુર", "શેખપૂર": "શેખપુર", "બડાનગર": "વડનગર", "બડા નગર": "વડનગર", "બડનગર": "વડનગર", "વડાનગર": "વડનગર",
+            # --- Price/Tenure words ---
+            "બાઓ": "ભાવ", "ભાવો": "ભાવ", "શારદા": "શરત",
+            # --- Remove English/Hindi title headers ---
+            "ટાઇટલ:": "", "ટાઈટલ:": "", "ટાઇટલ": "", "ટાઈટલ": "", "Title:": "", "title:": "", "શીર્ષક:": "",
+            # --- Other common Gujarati corrections ---
+            "વિડીયો": "વીડિયો",
+            # ZWJ/ZWNJ cleanup
+            '\u200d': '', '\u200c': ''
+        }
+
+        for wrong, right in corrections.items():
+            raw_text = raw_text.replace(wrong, right)
+
         # JSON clean karo (if wrapped in backticks)
         if raw_text.startswith("```"):
             raw_text = raw_text.split("```")[1]
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:]
-                
-        # Apply specific Gujarati pronunciation/spelling corrections requested by user
-        # These 9 critical words MUST always be perfect: નમસ્તે મિત્રો, શ્રેષ્ઠ, જિલ્લો, જગ્યા, રત્નપ્રભા, હોસ્પિટલ, ચિંતા, જીવન, સંપર્ક
-        corrections = {
-            # --- નમસ્તે (Namaste) ---
-            "નમસ્્તે": "નમસ્તે",
-            "નમસતે": "નમસ્તે",
-            "નમસ્તેં": "નમસ્તે",
-            "નમસ્‍તે": "નમસ્તે",
-            "નમસ્‌તે": "નમસ્તે",
-            "નમસ્​તે": "નમસ્તે",
-            # --- મિત્રો (Mitro) ---
-            "મતિ્રો": "મિત્રો",
-            "મિત્રોં": "મિત્રો",
-            "મીત્રો": "મિત્રો",
-            "મિત્રરો": "મિત્રો",
-            "મિત્રો,": "મિત્રો,",
-            # --- શ્રેષ્ઠ (Shreshth) ---
-            "શ્રેષ્ટ": "શ્રેષ્ઠ",
-            "શ્રેશ્ઠ": "શ્રેષ્ઠ",
-            "શ્રેસ્ટ": "શ્રેષ્ઠ",
-            "શરેષ્ઠ": "શ્રેષ્ઠ",
-            "શરેષ્ટ": "શ્રેષ્ઠ",
-            "શ્રેશ્ટ": "શ્રેષ્ઠ",
-            "શ્રેષ્ટ્": "શ્રેષ્ઠ",
-            "શ્રેસ્ઠ": "શ્રેષ્ઠ",
-            "શ્રેષ્‍ઠ": "શ્રેષ્ઠ",
-            # --- જિલ્લો (Jillo) ---
-            "જીલ્લો": "જિલ્લો",
-            "જીલ્લા": "જિલ્લો",
-            "જિલ્લા": "જિલ્લો",
-            "જિલો": "જિલ્લો",
-            "જીલો": "જિલ્લો",
-            "જીલ્લોં": "જિલ્લો",
-            # --- જગ્યા (Jagya) ---
-            "જગીયા": "જગ્યા",
-            "જગીઆ": "જગ્યા",
-            "જગયા": "જગ્યા",
-            "જાગ્યા": "જગ્યા",
-            "જગ્‍યા": "જગ્યા",
-            "જગીયાં": "જગ્યા",
-            # --- રત્નપ્રભા (Ratnaprabha) ---
-            "રતનપ્રભા": "રત્નપ્રભા",
-            "રત્ન પ્રભા": "રત્નપ્રભા",
-            "રત્નપ્રભા હોસ્પીટલ": "રત્નપ્રભા હોસ્પિટલ",
-            "રતન પ્રભા": "રત્નપ્રભા",
-            "રત્નપ્રભાં": "રત્નપ્રભા",
-            # --- હોસ્પિટલ (Hospital) ---
-            "હોસ્પીટલ": "હોસ્પિટલ",
-            "હૉસ્પિટલ": "હોસ્પિટલ",
-            "હૉસ્પીટલ": "હોસ્પિટલ",
-            "હોસ્પિટળ": "હોસ્પિટલ",
-            "હોસ્પીટળ": "હોસ્પિટલ",
-            # --- ચિંતા (Chinta) ---
-            "ચીંતા": "ચિંતા",
-            "ચીન્તા": "ચિંતા",
-            "ચિન્તા": "ચિંતા",
-            "ચિતા": "ચિંતા",
-            "ચીંતાં": "ચિંતા",
-            # --- જીવન (Jivan) ---
-            "જીંદગી": "જીવન",
-            "જિંદગી": "જીવન",
-            "જિવન": "જીવન",
-            "જીવાન": "જીવન",
-            "જીવણ": "જીવન",
-            # --- સંપર્ક (Sampark) ---
-            "સંપરક": "સંપર્ક",
-            "સમ્પર્ક": "સંપર્ક",
-            "સમ્પરક": "સંપર્ક",
-            "સંપર્ક્": "સંપર્ક",
-            "સંપર્‍ક": "સંપર્ક",
-            # --- Location words ---
-            "શાકેપુર": "શેખપુર",
-            "શેખપૂર": "શેખપુર",
-            "બડાનગર": "વડનગર",
-            "બડા નગર": "વડનગર",
-            "બડનગર": "વડનગર",
-            "વડાનગર": "વડનગર",
-            # --- Price/Tenure words ---
-            "બાઓ": "ભાવ",
-            "ભાવો": "ભાવ",
-            "શારદા": "શરત",
-            # --- Remove English/Hindi title headers ---
-            "ટાઇટલ:": "",
-            "ટાઈટલ:": "",
-            "ટાઇટલ": "",
-            "ટાઈટલ": "",
-            "Title:": "",
-            "title:": "",
-            "શીર્ષક:": "",
-            # --- Other common Gujarati corrections ---
-            "વિડીયો": "વીડિયો",
-        }
-        for wrong, right in corrections.items():
-            raw_text = raw_text.replace(wrong, right)
-
+        
         editing_plan = json.loads(raw_text)
+
+        # Provide a fallback if LLM didn't return segments properly
+        if "segments" not in editing_plan:
+            if "generated_script" in editing_plan:
+                editing_plan["segments"] = [{"clip_index": 0, "text": editing_plan["generated_script"]}]
+            else:
+                editing_plan["segments"] = []
+                
+        if "outro_text" not in editing_plan:
+            editing_plan["outro_text"] = "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો."
+
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="AI response was not valid JSON")
     except Exception as e:

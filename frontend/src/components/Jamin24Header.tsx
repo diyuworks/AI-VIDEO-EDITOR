@@ -14,19 +14,19 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         
         {/* LOGO */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-[#0D473B] text-white shadow-md border-2 border-amber-400">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#0D473B] text-white shadow-md border-2 border-amber-400">
             {/* Compass Symbol */}
-            <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-5 h-5 sm:w-7 sm:h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" stroke="#EAB308" strokeWidth="1.5" />
               <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="#EAB308" stroke="#0D473B" strokeWidth="1" />
             </svg>
           </div>
           <div>
-            <span className="text-2xl font-black tracking-tight text-[#0D473B] uppercase font-sans">
+            <span className="text-xl sm:text-2xl font-black tracking-tight text-[#0D473B] uppercase font-sans">
               Jamin<span className="text-amber-500">24</span>
             </span>
-            <span className="block text-[10px] uppercase font-bold tracking-widest text-slate-500 -mt-1">
+            <span className="block text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-slate-500 -mt-1">
               AI Video HUB
             </span>
           </div>
@@ -55,7 +55,7 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
         </nav>
 
         {/* ACTION BUTTONS */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700">
             <span>🎙️</span>
             <span>🌐 EN</span>
@@ -64,14 +64,14 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
           {showTimelineToggle && onToggleTimeline && (
             <button
               onClick={onToggleTimeline}
-              className="px-4 py-2 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-full text-xs sm:text-sm shadow-md transition flex items-center gap-1.5"
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-full text-[10px] sm:text-xs md:text-sm shadow-md transition flex items-center gap-1.5"
             >
-              <span>✨</span> Timeline Editor
+              <span className="hidden sm:inline">✨</span> <span className="sm:hidden">✨</span> <span className="hidden sm:inline">Timeline Editor</span><span className="sm:hidden">Timeline</span>
             </button>
           )}
 
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0D473B] font-bold text-sm cursor-pointer hover:bg-emerald-100 transition">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0D473B] font-bold text-xs sm:text-sm cursor-pointer hover:bg-emerald-100 transition">
               👤
             </div>
           </div>

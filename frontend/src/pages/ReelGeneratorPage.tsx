@@ -54,6 +54,11 @@ interface UploadedClip {
   url: string;
 }
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> origin/jay
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -77,6 +82,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> origin/jay
   // Single Video States
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
@@ -99,6 +109,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     setSelectedClips([]);
   }, []);
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> origin/jay
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const moveClipUp = (index: number) => {
     if (index <= 0) return;
@@ -208,7 +223,28 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       setProgressPercent(5);
       setProgressMessage("Starting multi-clip reel pipeline...");
       setMultiClipStage("merging_clips");
+      
+      console.log("=== MERGE DEBUG ===");
+      console.log("selectedClips:", selectedClips);
+      console.log("clipHighlights:", clipHighlights);
+      console.log("clipsToMerge:", clipsToMerge);
+      console.log("===================");
+      
+      // Build clip_info with metadata for context-aware voiceover
+      const clipInfoForMerge = selectedClips.map((clip) => {
+        const highlight = clipHighlights[clip];
+        return {
+          object_name: clip,
+          label: highlight?.label || "",
+          has_farmhouse: highlight?.enableFarmhouse || false,
+          has_fountain: highlight?.enableFountain || false,
+          price: highlight?.price || "",
+          size: highlight?.size || "",
+          road_info: highlight?.roadInfo || "",
+        };
+      });
 
+      // Polling for progress
       const progressInterval = setInterval(async () => {
         try {
           const res = await fetch(`${API_BASE_URL}/progress/${jobId}`);
@@ -224,12 +260,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           // silent catch
         }
       }, 400);
-
+      
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clip_object_names: clipsToMerge,
+          clip_info: clipInfoForMerge,
           job_id: jobId,
         }),
       });
@@ -245,6 +282,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           raw_video_object_name: mergeData.merged_object_name,
           highlighted_video_object_name: mergeData.merged_object_name,
           prompt: prompt,
+          clip_metadata: mergeData.clip_metadata || null,
           job_id: jobId,
         }),
       });
@@ -754,7 +792,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               {/* Real-Time Step Message */}
-              <p className="text-slate-700 text-xs sm:text-sm font-bold bg-white px-5 py-2 rounded-full border border-emerald-200/80 shadow-sm animate-pulse">
+              <p className="text-slate-700 text-[10px] sm:text-xs md:text-sm font-bold bg-white px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border border-emerald-200/80 shadow-sm animate-pulse max-w-full truncate">
                 ⚡ {progressMessage}
               </p>
             </div>
@@ -762,10 +800,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
           {/* Done display for multi-clip result */}
           {multiClipStage === "done" && multiClipVideoUrl && (
-            <div className="bg-emerald-50/50 border border-emerald-200 rounded-3xl p-6 flex flex-col items-center space-y-6 text-slate-800 text-center">
+            <div className="bg-emerald-50/50 border border-emerald-200 rounded-3xl p-4 sm:p-6 flex flex-col items-center space-y-4 sm:space-y-6 text-slate-800 text-center">
               <div>
-                <h2 className="text-2xl font-black text-[#0D473B]">🎉 Multi-Clip Reel Ready!</h2>
-                <p className="text-slate-600 text-xs mt-1">
+                <h2 className="text-xl sm:text-2xl font-black text-[#0D473B]">🎉 Multi-Clip Reel Ready!</h2>
+                <p className="text-slate-600 text-[10px] sm:text-xs mt-1 px-2">
                   Includes merged clips, custom yellow plot boundaries & name tags.
                 </p>
               </div>
@@ -774,13 +812,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 src={multiClipVideoUrl}
                 controls
                 autoPlay
-                className="max-w-xs w-full rounded-2xl shadow-2xl border-2 border-[#0D473B]"
+                className="max-w-[280px] sm:max-w-xs w-full rounded-2xl shadow-2xl border-2 border-[#0D473B]"
               />
 
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
                 <button
                   onClick={() => handleDownload(multiClipVideoUrl)}
-                  className="px-8 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl transition shadow-lg flex items-center gap-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-sm"
                 >
                   ⬇️ Download Reel
                 </button>
@@ -789,7 +827,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     setMultiClipStage("idle");
                     setMultiClipVideoUrl(null);
                   }}
-                  className="px-6 py-3 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold rounded-xl transition"
+                  className="w-full sm:w-auto px-4 sm:px-6 py-3 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold rounded-xl transition text-sm"
                 >
                   🔄 Create Another
                 </button>
@@ -800,7 +838,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           {/* Error state for multi-clip */}
           {multiClipStage === "error" && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800 flex flex-col items-center gap-3 text-center">
-              <p className="font-semibold text-sm">Error: {multiClipError}</p>
+              <p className="font-semibold text-xs sm:text-sm">Error: {multiClipError}</p>
               <button
                 onClick={() => setMultiClipStage("idle")}
                 className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-bold rounded-lg text-xs transition"
