@@ -54,11 +54,6 @@ interface UploadedClip {
   url: string;
 }
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> origin/jay
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -82,11 +77,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> origin/jay
   // Single Video States
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
@@ -109,11 +99,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     setSelectedClips([]);
   }, []);
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> origin/jay
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const moveClipUp = (index: number) => {
     if (index <= 0) return;
