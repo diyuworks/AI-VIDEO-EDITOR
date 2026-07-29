@@ -63,9 +63,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [prompt, setPrompt] = useState<string>(initialPrompt || "Real estate plot sales reel in Hindi");
 
   // Multi-Clip States (Always start empty for a clean workspace)
-  const [multiClipStage, setMultiClipStage] = useState<MultiClipStage>("idle");
+  const [multiClipStage, setMultiClipStage] = useState<"idle" | "merging_clips" | "generating_reel" | "done" | "error">("idle");
   const [multiClipVideoUrl, setMultiClipVideoUrl] = useState<string | null>(null);
   const [multiClipError, setMultiClipError] = useState<string | null>(null);
+
+  // Real-time progress tracking state
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [progressMessage, setProgressMessage] = useState<string>("Initializing job...");
+  const [progressStage, setProgressStage] = useState<string>("idle");
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
   const [selectedClips, setSelectedClips] = useState<string[]>([]);
   const [clipHighlights, setClipHighlights] = useState<Record<string, ClipHighlight>>({});
@@ -200,19 +205,33 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           : clip;
       });
 
+      const jobId = `job_${Date.now()}`;
+      setProgressPercent(5);
+      setProgressMessage("Starting multi-clip reel pipeline...");
       setMultiClipStage("merging_clips");
-      
-      console.log("=== MERGE DEBUG ===");
-      console.log("selectedClips:", selectedClips);
-      console.log("clipHighlights:", clipHighlights);
-      console.log("clipsToMerge:", clipsToMerge);
-      console.log("===================");
-      
+
+      const progressInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/progress/${jobId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.progress !== undefined) {
+              setProgressPercent(data.progress);
+              if (data.message) setProgressMessage(data.message);
+              if (data.stage) setProgressStage(data.stage);
+            }
+          }
+        } catch (e) {
+          // silent catch
+        }
+      }, 400);
+
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clip_object_names: clipsToMerge,
+          job_id: jobId,
         }),
       });
 
@@ -227,12 +246,16 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           raw_video_object_name: mergeData.merged_object_name,
           highlighted_video_object_name: mergeData.merged_object_name,
           prompt: prompt,
+          job_id: jobId,
         }),
       });
 
       if (!reelRes.ok) throw new Error("AI Reel generation failed");
       const reelData = await reelRes.json();
 
+      clearInterval(progressInterval);
+      setProgressPercent(100);
+      setProgressMessage("Reel generation complete!");
       setMultiClipVideoUrl(reelData.url);
       setMultiClipStage("done");
     } catch (err: any) {
@@ -712,19 +735,28 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             </>
           )}
 
-          {/* Loading display for multi-clip stages */}
+          {/* Real-Time Percentage Progress Bar Card */}
           {["merging_clips", "generating_reel"].includes(multiClipStage) && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center space-y-4 text-center">
-              <div className="animate-spin h-12 w-12 border-4 border-[#0D473B] border-t-transparent rounded-full" />
-              <div>
-                <h3 className="text-lg font-bold text-[#0D473B]">
-                  {multiClipStage === "merging_clips" && "🔄 Merging Selected Land Plot Clips..."}
-                  {multiClipStage === "generating_reel" && "🗣️ Generating AI Voiceover & Timed Captions..."}
+            <div className="bg-[#f0f9f6] border-2 border-[#0D473B]/20 rounded-3xl p-8 sm:p-12 flex flex-col items-center justify-center space-y-6 text-center shadow-xl relative overflow-hidden">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin h-8 w-8 border-4 border-[#0D473B] border-t-transparent rounded-full" />
+                <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B]">
+                  Rendering Real-Estate Reel... <span className="font-mono text-emerald-700">{progressPercent}%</span>
                 </h3>
-                <p className="text-slate-500 text-xs mt-1">
-                  FFmpeg & Sarvam AI are rendering your brand-watermarked real-estate reel...
-                </p>
               </div>
+
+              {/* Progress Bar Track */}
+              <div className="w-full max-w-xl bg-slate-200 rounded-full h-5 p-1 shadow-inner relative overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-[#0D473B] via-emerald-500 to-amber-400 h-full rounded-full transition-all duration-500 ease-out shadow-md"
+                  style={{ width: `${Math.max(5, progressPercent)}%` }}
+                />
+              </div>
+
+              {/* Real-Time Step Message */}
+              <p className="text-slate-700 text-xs sm:text-sm font-bold bg-white px-5 py-2 rounded-full border border-emerald-200/80 shadow-sm animate-pulse">
+                ⚡ {progressMessage}
+              </p>
             </div>
           )}
 
@@ -784,71 +816,72 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
         {/* Multi-clip individual boundary marking modal popup */}
         {activeMarkingClip && (
-          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto">
-            <div className="w-full max-w-4xl bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl relative text-white">
+          <div className="fixed inset-0 z-50 bg-[#0D473B]/40 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <div className="w-full max-w-4xl bg-white p-6 sm:p-8 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto">
               <button
                 onClick={() => setActiveMarkingClip(null)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white font-bold text-xl px-2 py-1"
+                className="absolute top-5 right-5 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm transition"
+                title="Close modal"
               >
                 ✕
               </button>
-              <h3 className="text-xl font-bold text-amber-400 mb-2">
-                Mark Land Plot Boundary for {activeMarkingClip}
+              <h3 className="text-xl font-black text-[#0D473B] mb-1 flex items-center gap-2">
+                🎯 Mark Land Plot Boundary for <span className="text-emerald-700 font-mono text-base font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{activeMarkingClip}</span>
               </h3>
-              <p className="text-slate-400 text-xs mb-5">
-                Click points along the edges of the plot to define the boundary, and type a plot label/name to display.
+              <p className="text-slate-500 text-xs mb-5">
+                Click points along the edges of the plot to define the boundary, and set plot prices, badges & visual effects.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-300">Plot Label / Name:</label>
+                  <label className="text-xs font-bold text-slate-700">Plot Label / Name:</label>
                   <input
                     type="text"
                     value={activeMarkingLabel}
                     onChange={(e) => setActiveMarkingLabel(e.target.value)}
                     placeholder="e.g. Plot A / Corner"
-                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-semibold w-full"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-300">💰 Plot Price (Optional):</label>
+                  <label className="text-xs font-bold text-slate-700">💰 Plot Price (Optional):</label>
                   <input
                     type="text"
                     value={plotPrice}
                     onChange={(e) => setPlotPrice(e.target.value)}
                     placeholder="e.g. ₹25 Lakhs"
-                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-amber-300 placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-bold w-full"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-300">📐 Plot Size / Area (Optional):</label>
+                  <label className="text-xs font-bold text-slate-700">📐 Plot Size / Area (Optional):</label>
                   <input
                     type="text"
                     value={plotSize}
                     onChange={(e) => setPlotSize(e.target.value)}
                     placeholder="e.g. 2000 SqFt / 1.5 Vigha"
-                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-emerald-300 placeholder-slate-500 focus:outline-none focus:border-amber-400 text-xs w-full"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-bold w-full"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-300">🛣️ Road / Highway Distance Badge:</label>
+                  <label className="text-xs font-bold text-slate-700">🛣️ Road / Highway Distance Badge:</label>
                   <input
                     type="text"
                     value={roadInfo}
                     onChange={(e) => setRoadInfo(e.target.value)}
                     placeholder="e.g. 60FT Highway | 100m"
-                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs w-full"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-cyan-800 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-semibold w-full"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-300">🎨 Highlight Border Color Theme:</label>
+                  <label className="text-xs font-bold text-slate-700">🎨 Highlight Border Color Theme:</label>
                   <select
                     value={highlightColor}
                     onChange={(e) => setHighlightColor(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:border-amber-400 w-full"
+                    className="bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-3 py-2 text-xs font-semibold focus:border-[#0D473B] w-full"
                   >
                     <option value="#FFEB3B">🟡 Electric Yellow (Default)</option>
                     <option value="#00E676">🟢 Cyber Neon Green</option>
@@ -859,31 +892,31 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               {/* Per-Plot Visual Effects Controls */}
-              <div className="mb-5 bg-slate-900/80 border border-slate-700 rounded-xl p-4 space-y-3">
-                <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">✨ Plot Visual Effects</p>
+              <div className="mb-5 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
+                <p className="text-xs font-black text-[#0D473B] uppercase tracking-wider">✨ Plot Visual Effects</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer bg-slate-800 rounded-lg px-3 py-2 border border-slate-700 hover:border-amber-500 transition">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white rounded-xl px-3 py-2 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFarmhouse}
                       onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                      className="w-3.5 h-3.5 accent-amber-400"
+                      className="w-4 h-4 accent-[#0D473B]"
                     />
-                    <span className="text-white font-semibold">🏡 Farmhouse Overlay</span>
+                    <span className="text-slate-800 font-bold">🏡 Farmhouse Overlay</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer bg-slate-800 rounded-lg px-3 py-2 border border-slate-700 hover:border-amber-500 transition">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white rounded-xl px-3 py-2 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFountain}
                       onChange={(e) => setEnableFountain(e.target.checked)}
-                      className="w-3.5 h-3.5 accent-amber-400"
+                      className="w-4 h-4 accent-[#0D473B]"
                     />
-                    <span className="text-white font-semibold">🚰 Water Fountain</span>
+                    <span className="text-slate-800 font-bold">🚰 Water Fountain</span>
                   </label>
                   <select
                     value={textPosition}
                     onChange={(e) => setTextPosition(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 font-semibold text-xs focus:ring-1 focus:ring-amber-400 hover:border-amber-500 transition"
+                    className="bg-white border border-slate-200 text-slate-900 rounded-xl px-3 py-2 font-bold text-xs focus:ring-1 focus:ring-[#0D473B] hover:border-[#0D473B] transition shadow-sm"
                   >
                     <option value="middle">📌 Text: Above Plot</option>
                     <option value="outro">📌 Text: Outro Style</option>

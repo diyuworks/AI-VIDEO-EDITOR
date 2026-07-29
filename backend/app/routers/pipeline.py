@@ -92,6 +92,8 @@ def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boun
             f.write(f"{format_time(start_time)} --> {format_time(end_time)}\n")
             f.write(f"{chunk}\n\n")
 
+from app.routers.progress import update_progress
+
 router = APIRouter()
 
 
@@ -101,10 +103,12 @@ class GenerateReelRequest(BaseModel):
     reference_object_name: Optional[str] = None  # Style-reference video (agar hai)
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None
+    job_id: Optional[str] = None
 
 
 class MergeClipsRequest(BaseModel):
     clip_object_names: list  # e.g. ["clip_1.mp4", "clip_2.mp4", ...]
+    job_id: Optional[str] = None
 
 
 @router.post("/merge-clips")
@@ -118,6 +122,9 @@ async def merge_clips(request: MergeClipsRequest):
     import uuid
     import ffmpeg
     from io import BytesIO
+
+    if request.job_id:
+        update_progress(request.job_id, 5, "downloading", "Downloading raw footage clips from MinIO storage...")
 
     print(f"\n{'='*60}")
     print(f"[MERGE] Received {len(request.clip_object_names)} clips to merge")
@@ -156,6 +163,9 @@ async def merge_clips(request: MergeClipsRequest):
 
         print(f"[MERGE] Total clips downloaded: {len(local_clip_paths)}")
 
+        if request.job_id:
+            update_progress(request.job_id, 20, "normalizing", "Applying 1080p resolution scaling & clip normalization...")
+
         # Build FFmpeg filter pipeline to normalize and concatenate all clips in one go
         streams = []
         for clip_idx, p in enumerate(local_clip_paths):
@@ -186,6 +196,9 @@ async def merge_clips(request: MergeClipsRequest):
 
         print(f"[MERGE] Total streams built: {len(streams)} (should be {len(local_clip_paths)*2})")
         print(f"[MERGE] n parameter for concat: {len(local_clip_paths)}")
+
+        if request.job_id:
+            update_progress(request.job_id, 35, "merging", "Merging multi-clip video streams with FFmpeg...")
 
         # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
@@ -222,6 +235,9 @@ async def merge_clips(request: MergeClipsRequest):
             response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
         )
 
+        if request.job_id:
+            update_progress(request.job_id, 45, "merged", "Clips merged successfully! Preparing AI Reel pipeline...")
+
         return {
             "success": True,
             "merged_object_name": merged_id,
@@ -244,6 +260,9 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
 
     TEMPORARY_DISABLE_VOICEOVER = False  # Set to False to restore AI script, voiceover & captions
+
+    if request.job_id:
+        update_progress(request.job_id, 50, "scripting", "Generating Gujarati AI voiceover script with Gemini...")
 
     temp_dir = tempfile.mkdtemp()
     generated_script = ""
@@ -411,6 +430,9 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         raise HTTPException(status_code=500, detail=f"Export pipeline failed: {str(e)}")
 
     # ---- SUB-STEP E: Final Video Upload Karo ----
+    if request.job_id:
+        update_progress(request.job_id, 95, "uploading", "Uploading final HD reel MP4 to storage...")
+
     final_object_name = f"reel_{request.raw_video_object_name}"
     with open(final_output_path, "rb") as f:
         file_data = f.read()
@@ -421,14 +443,18 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         data=BytesIO(file_data), length=len(file_data), content_type="video/mp4",
     )
 
-    final_url = minio_client.presigned_get_object(
+    presigned_url = minio_client.presigned_get_object(
         MINIO_BUCKET, final_object_name, expires=timedelta(days=7),
         response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
     )
 
+    if request.job_id:
+        update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")
+
     return {
         "success": True,
-        "final_object_name": final_object_name,
-        "url": final_url,
-        "script_used": generated_script,
+        "message": "Multi-clip reel generated successfully!",
+        "video_url": presigned_url,
+        "script": generated_script,
+        "object_name": final_object_name
     }

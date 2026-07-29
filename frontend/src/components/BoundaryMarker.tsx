@@ -10,7 +10,7 @@ interface BoundaryMarkerProps {
   onBoundaryConfirmed: (points: Point[]) => void;
 }
 
-const API_BASE_URL = "http://localhost:8000"; // baad mein .env se lenge
+const API_BASE_URL = "http://localhost:8000";
 
 const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryConfirmed }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,7 +18,6 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
   const [points, setPoints] = useState<Point[]>([]);
   const [imageLoaded, setImageLoaded] = useState(false);
 
-  // Step A: Backend se frame image load karo
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -30,7 +29,6 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     };
   }, [objectName]);
 
-  // Step B: Canvas pe image + points draw karo
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const img = imageRef.current;
@@ -42,14 +40,12 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Image draw karo
     ctx.drawImage(img, 0, 0);
 
-    // Points aur connecting lines draw karo
     if (points.length > 0) {
-      ctx.strokeStyle = "#FFEB3B"; // yellow, jaisa reference video mein tha
+      ctx.strokeStyle = "#FFEB3B";
       ctx.lineWidth = 4;
-      ctx.fillStyle = "rgba(255, 235, 59, 0.3)"; // semi-transparent fill
+      ctx.fillStyle = "rgba(255, 235, 59, 0.35)";
 
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
@@ -58,12 +54,14 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
       ctx.stroke();
       if (points.length > 2) ctx.fill();
 
-      // Har point pe ek chhota circle dikhao
       points.forEach((point) => {
         ctx.beginPath();
-        ctx.arc(point.x, point.y, 6, 0, 2 * Math.PI);
+        ctx.arc(point.x, point.y, 7, 0, 2 * Math.PI);
         ctx.fillStyle = "#FFEB3B";
         ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
       });
     }
   };
@@ -72,13 +70,11 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     drawCanvas();
   }, [points]);
 
-  // Step C: Click handler — naya point add karo
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    // Scale factor, kyunki canvas display size aur actual image size alag ho sakti hai
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
@@ -88,17 +84,14 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     setPoints((prev) => [...prev, { x, y }]);
   };
 
-  // Step D: Last point undo karo
   const handleUndo = () => {
     setPoints((prev) => prev.slice(0, -1));
   };
 
-  // Step E: Sab clear karo
   const handleReset = () => {
     setPoints([]);
   };
 
-  // Step F: Confirm karo aur parent ko bhejo
   const handleConfirm = () => {
     if (points.length < 3) {
       alert("Kam se kam 3 points chahiye ek boundary banane ke liye");
@@ -108,33 +101,50 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 text-white">
-      <h2 className="text-lg font-bold text-amber-400">Plot ki Boundary Mark Karo</h2>
-      <p className="text-xs text-slate-300">
-        Image pe click karke plot ke corners mark karo (kam se kam 3 points)
-      </p>
+    <div className="flex flex-col items-center gap-4 w-full">
+      <div className="text-center space-y-1">
+        <h4 className="text-xs font-black text-[#0D473B] uppercase tracking-wider">
+          📍 Click Corners to Mark Boundary
+        </h4>
+        <p className="text-[11px] text-slate-500 font-medium">
+          Click corners along the edges of the land plot (minimum 3 points required)
+        </p>
+      </div>
 
-      {!imageLoaded && <p className="text-xs text-amber-300 font-mono animate-pulse">Frame load ho raha hai...</p>}
+      {!imageLoaded && (
+        <div className="flex items-center gap-2 text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl animate-pulse">
+          <div className="animate-spin h-3.5 w-3.5 border-2 border-[#0D473B] border-t-transparent rounded-full" />
+          Loading video frame image...
+        </div>
+      )}
 
-      <canvas
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        className="border-2 border-slate-700 rounded-2xl cursor-crosshair max-w-full shadow-2xl"
-        style={{ maxHeight: "600px" }}
-      />
+      <div className="relative rounded-2xl overflow-hidden border-2 border-[#0D473B]/20 shadow-2xl bg-slate-900 w-full flex justify-center">
+        <canvas
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          className="cursor-crosshair max-w-full rounded-xl"
+          style={{ maxHeight: "480px" }}
+        />
+      </div>
 
-      <div className="flex gap-3">
-        <button onClick={handleUndo} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl border border-slate-700 transition text-sm">
-          ↩ Undo
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={handleUndo}
+          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl border border-slate-200 transition text-xs flex items-center gap-1.5 shadow-sm"
+        >
+          ↩ Undo Point
         </button>
-        <button onClick={handleReset} className="px-4 py-2 bg-red-950/60 hover:bg-red-900 text-red-300 font-semibold rounded-xl border border-red-800/50 transition text-sm">
-          🗑 Reset
+        <button
+          onClick={handleReset}
+          className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-xl border border-rose-200 transition text-xs flex items-center gap-1.5 shadow-sm"
+        >
+          🗑 Reset All
         </button>
         <button
           onClick={handleConfirm}
-          className="px-6 py-2 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl shadow-md text-sm transition"
+          className="px-6 py-2.5 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl shadow-lg shadow-[#0D473B]/20 text-xs transition flex items-center gap-2"
         >
-          Confirm Boundary ({points.length} points)
+          ✅ Confirm Boundary ({points.length} Points Marked)
         </button>
       </div>
     </div>
