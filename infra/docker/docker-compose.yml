@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ai_video_editor
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -28,7 +28,7 @@ services:
     build: ../../backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "4005:4005"
     environment:
       DATABASE_URL: postgresql+pg8000://postgres:postgres@postgres:5432/ai_video_editor
       MINIO_ENDPOINT: minio:9000

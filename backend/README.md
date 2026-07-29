@@ -8,7 +8,7 @@ pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
-Visit http://localhost:8000/health to confirm it is running.
+Visit http://localhost:4005/health to confirm it is running.
 
 ## Local dev (with Docker Compose)
 See ../../infra/docker/docker-compose.yml — run from repo root:

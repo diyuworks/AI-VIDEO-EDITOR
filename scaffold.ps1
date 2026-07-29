@@ -71,7 +71,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4005", "--reload"]
 '@ | Set-Content -Path "apps\api\Dockerfile"
 
 @'
@@ -92,7 +92,7 @@ pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
-Visit http://localhost:8000/health to confirm it is running.
+Visit http://localhost:4005/health to confirm it is running.
 
 ## Local dev (with Docker Compose)
 See ../../infra/docker/docker-compose.yml — run from repo root:
@@ -223,7 +223,7 @@ function App() {
   const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "unreachable">("checking")
 
   useEffect(() => {
-    fetch("http://localhost:8000/health")
+    fetch("http://localhost:4005/health")
       .then((res) => res.json())
       .then(() => setApiStatus("connected"))
       .catch(() => setApiStatus("unreachable"))
@@ -262,7 +262,7 @@ export default App
 npm install
 npm run dev
 ```
-Visit http://localhost:5173 — it should show "Backend status: connected" if the API is running on port 8000.
+Visit http://localhost:5173 — it should show "Backend status: connected" if the API is running on port 4005.
 '@ | Set-Content -Path "apps\web\README.md"
 
 # ---------------- infra/docker ----------------
@@ -298,7 +298,7 @@ services:
     build: ../../apps/api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "4005:4005"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_video_editor
       MINIO_ENDPOINT: minio:9000
@@ -326,7 +326,7 @@ docker compose -f infra/docker/docker-compose.yml up
 This starts:
 - Postgres on :5432
 - MinIO on :9000 (API) and :9001 (web console — login minioadmin/minioadmin)
-- FastAPI backend on :8000
+- FastAPI backend on :4005
 
 Run the frontend separately (not containerized yet, for fast dev reload):
 ```bash
