@@ -691,11 +691,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                 )}
                               </div>
                             )}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+              )}
 
               {/* Voiceover Prompt / Editable Script Input */}
               <div className="space-y-2.5">
