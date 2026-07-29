@@ -31,7 +31,7 @@ services:
       - "4005:4005"
     environment:
       DATABASE_URL: DATABASE_URL=postgresql+pg8000://postgres:postgres@127.0.0.1:5433/ai_video_editor
-      MINIO_ENDPOINT: minio:9000
+      MINIO_ENDPOINT: 127.0.0.1:9000
       MINIO_ACCESS_KEY: admin
       MINIO_SECRET_KEY: admin12345
     depends_on:
