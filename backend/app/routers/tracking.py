@@ -50,7 +50,7 @@ def track_boundary(request: TrackingRequest):
         raise HTTPException(status_code=400, detail="Could not read video frames for tracking.")
 
     orig_h, orig_w = prev_frame.shape[:2]
-    MAX_W, MAX_H = 1080, 1920
+    MAX_W, MAX_H = 480, 854
     scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
 
     if scale_factor < 1.0:

@@ -66,8 +66,8 @@ def render_overlay(request: OverlayRequest):
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Normalize resolution to max 1080x1920 to prevent RAM exhaustion on 4K/60fps video clips
-    MAX_W, MAX_H = 1080, 1920
+    # Normalize resolution to max 720x1280 for fast processing and optimal reel quality
+    MAX_W, MAX_H = 720, 1280
     scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
     width = int(orig_w * scale_factor)
     height = int(orig_h * scale_factor)
@@ -269,72 +269,84 @@ def render_overlay(request: OverlayRequest):
                             else:
                                 text_rgb = (255, 255, 255)  # Crisp White
 
-                            img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                            txt_layer = Image.new('RGBA', img_pil.size, (255, 255, 255, 0))
-                            d = ImageDraw.Draw(txt_layer)
-                            
-                            curr_y = start_y
-                            for idx_l, line in enumerate(lines):
-                                lw = line_widths[idx_l]
-                                lh = line_heights[idx_l]
-                                lx = int((width - lw) / 2) if request.text_position == "outro" else int(top_pt[0] - lw / 2)
-                                lx = max(20, min(lx, width - lw - 20))
+                            if opacity == 255 and 'cached_txt_bgr' in locals() and cached_txt_bgr is not None:
+                                # Reuse fast cached text overlay for stationary frames
+                                mask_alpha = cached_txt_alpha[:, :, np.newaxis]
+                                frame = (cached_txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
+                            else:
+                                txt_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+                                d = ImageDraw.Draw(txt_layer)
                                 
-                                # Drop shadow
-                                shadow_alpha = int(opacity * 0.7)
-                                for offset in range(1, 4):
-                                    d.text((lx + offset, curr_y + offset), line, font=pil_font, fill=(0, 0, 0, shadow_alpha))
-                                
-                                # Main text with stroke
-                                d.text((lx, curr_y), line, font=pil_font, fill=(*text_rgb, opacity), stroke_width=3, stroke_fill=(0, 0, 0, opacity))
-                                curr_y += lh + 10
-
-                            # --- RENDER PLOT PRICE & SIZE BADGE ---
-                            badge_str = ""
-                            if request.price and request.price.strip():
-                                badge_str += request.price.strip().upper()
-                            if request.size and request.size.strip():
-                                badge_str += (" | " if badge_str else "") + request.size.strip().upper()
-
-                            if badge_str:
-                                try:
-                                    badge_font_size = max(26, int(font_size * 0.65))
-                                    b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fonts\ariblk.ttf') else pil_font
-                                    b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
-                                    bw = b_bbox[2] - b_bbox[0]
-                                    blx = int((width - bw) / 2) if request.text_position == "outro" else int(top_pt[0] - bw / 2)
-                                    blx = max(20, min(blx, width - bw - 20))
+                                curr_y = start_y
+                                for idx_l, line in enumerate(lines):
+                                    lw = line_widths[idx_l]
+                                    lh = line_heights[idx_l]
+                                    lx = int((width - lw) / 2) if request.text_position == "outro" else int(top_pt[0] - lw / 2)
+                                    lx = max(20, min(lx, width - lw - 20))
                                     
-                                    # Gold (#FFD700) badge text with drop shadow
-                                    for offset in range(1, 3):
-                                        d.text((blx + offset, curr_y + offset), badge_str, font=b_font, fill=(0, 0, 0, shadow_alpha))
-                                    d.text((blx, curr_y), badge_str, font=b_font, fill=(255, 215, 0, opacity), stroke_width=2, stroke_fill=(0, 0, 0, opacity))
-                                except Exception as ex_b:
-                                    print(f"[overlay] Badge error: {ex_b}")
-
-                            # --- RENDER ROAD CONNECTIVITY & DISTANCE BADGE ---
-                            if request.road_info and request.road_info.strip():
-                                try:
-                                    road_str = "➔ " + request.road_info.strip().upper()
-                                    r_font_size = max(22, int(font_size * 0.55))
-                                    r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fonts\arialbd.ttf') else pil_font
-                                    r_bbox = d.textbbox((0, 0), road_str, font=r_font)
-                                    rw = r_bbox[2] - r_bbox[0]
-                                    rh = r_bbox[3] - r_bbox[1]
+                                    # Drop shadow
+                                    shadow_alpha = int(opacity * 0.7)
+                                    for offset in range(1, 4):
+                                        d.text((lx + offset, curr_y + offset), line, font=pil_font, fill=(0, 0, 0, shadow_alpha))
                                     
-                                    rx = 25
-                                    ry = int(height - rh - 45)
-                                    
-                                    r_pad_x = 14
-                                    r_pad_y = 7
-                                    r_box = [rx - r_pad_x, ry - r_pad_y, rx + rw + r_pad_x, ry + rh + r_pad_y]
-                                    d.rounded_rectangle(r_box, radius=8, fill=(15, 23, 42, int(opacity * 0.85)), outline=(0, 229, 255, opacity), width=2)
-                                    d.text((rx, ry), road_str, font=r_font, fill=(255, 255, 255, opacity))
-                                except Exception as ex_r:
-                                    print(f"[overlay] Road info error: {ex_r}")
+                                    # Main text with stroke
+                                    d.text((lx, curr_y), line, font=pil_font, fill=(*text_rgb, opacity), stroke_width=3, stroke_fill=(0, 0, 0, opacity))
+                                    curr_y += lh + 10
 
-                            img_pil = Image.alpha_composite(img_pil.convert('RGBA'), txt_layer).convert('RGB')
-                            frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+                                # --- RENDER PLOT PRICE & SIZE BADGE ---
+                                badge_str = ""
+                                if request.price and request.price.strip():
+                                    badge_str += request.price.strip().upper()
+                                if request.size and request.size.strip():
+                                    badge_str += (" | " if badge_str else "") + request.size.strip().upper()
+
+                                if badge_str:
+                                    try:
+                                        badge_font_size = max(26, int(font_size * 0.65))
+                                        b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fonts\ariblk.ttf') else pil_font
+                                        b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
+                                        bw = b_bbox[2] - b_bbox[0]
+                                        blx = int((width - bw) / 2) if request.text_position == "outro" else int(top_pt[0] - bw / 2)
+                                        blx = max(20, min(blx, width - bw - 20))
+                                        
+                                        # Gold (#FFD700) badge text with drop shadow
+                                        for offset in range(1, 3):
+                                            d.text((blx + offset, curr_y + offset), badge_str, font=b_font, fill=(0, 0, 0, shadow_alpha))
+                                        d.text((blx, curr_y), badge_str, font=b_font, fill=(255, 215, 0, opacity), stroke_width=2, stroke_fill=(0, 0, 0, opacity))
+                                    except Exception as ex_b:
+                                        print(f"[overlay] Badge error: {ex_b}")
+
+                                # --- RENDER ROAD CONNECTIVITY & DISTANCE BADGE ---
+                                if request.road_info and request.road_info.strip():
+                                    try:
+                                        road_str = "➔ " + request.road_info.strip().upper()
+                                        r_font_size = max(22, int(font_size * 0.55))
+                                        r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fonts\arialbd.ttf') else pil_font
+                                        r_bbox = d.textbbox((0, 0), road_str, font=r_font)
+                                        rw = r_bbox[2] - r_bbox[0]
+                                        rh = r_bbox[3] - r_bbox[1]
+                                        
+                                        rx = 25
+                                        ry = int(height - rh - 45)
+                                        
+                                        r_pad_x = 14
+                                        r_pad_y = 7
+                                        r_box = [rx - r_pad_x, ry - r_pad_y, rx + rw + r_pad_x, ry + rh + r_pad_y]
+                                        d.rounded_rectangle(r_box, radius=8, fill=(15, 23, 42, int(opacity * 0.85)), outline=(0, 229, 255, opacity), width=2)
+                                        d.text((rx, ry), road_str, font=r_font, fill=(255, 255, 255, opacity))
+                                    except Exception as ex_r:
+                                        print(f"[overlay] Road info error: {ex_r}")
+
+                                txt_np = np.array(txt_layer)
+                                txt_alpha = (txt_np[:, :, 3] / 255.0)
+                                txt_bgr = cv2.cvtColor(txt_np[:, :, :3], cv2.COLOR_RGB2BGR)
+
+                                if opacity == 255:
+                                    cached_txt_bgr = txt_bgr
+                                    cached_txt_alpha = txt_alpha
+
+                                mask_alpha = txt_alpha[:, :, np.newaxis]
+                                frame = (txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
 
             out.write(frame)
 
@@ -358,7 +370,7 @@ def render_overlay(request: OverlayRequest):
     try:
         subprocess.run([
             "ffmpeg", "-y", "-i", temp_video_path,
-            "-c:v", "libx264", "-preset", "superfast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
             final_output_path
         ], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
@@ -366,19 +378,27 @@ def render_overlay(request: OverlayRequest):
         print(f"[overlay] FFmpeg re-encode warning: {err_msg}")
         final_output_path = temp_video_path
 
-    # Step D: Result MinIO mein upload karo
+    # Step D: Result local storage & MinIO mein upload/copy karo
     output_object_name = f"highlighted_{request.object_name}"
-    with open(final_output_path, "rb") as f:
-        file_data = f.read()
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    local_highlight_path = os.path.join(demo_dir, output_object_name)
+    import shutil
+    shutil.copy(final_output_path, local_highlight_path)
 
-    from io import BytesIO
-    minio_client.put_object(
-        MINIO_BUCKET,
-        output_object_name,
-        data=BytesIO(file_data),
-        length=len(file_data),
-        content_type="video/mp4",
-    )
+    try:
+        with open(final_output_path, "rb") as f:
+            file_data = f.read()
+        from io import BytesIO
+        minio_client.put_object(
+            MINIO_BUCKET,
+            output_object_name,
+            data=BytesIO(file_data),
+            length=len(file_data),
+            content_type="video/mp4",
+        )
+    except Exception as e:
+        print(f"[overlay warning] MinIO upload threw {e}, using local storage copy...")
 
     # Cleanup
     for path in [temp_video_path, final_output_path, source_local_path]:
@@ -405,17 +425,33 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
 
     temp_dir = tempfile.mkdtemp()
 
-    # Step A+B: Dono videos ko directly MinIO se local temp files mein download karo
-    # (presigned URLs + FFmpeg copy bhi Windows pe fail hota hai sometimes)
+    # Step A+B: Try local demo_clips first, then fall back to MinIO
     highlighted_local = os.path.join(temp_dir, "highlighted.mp4")
     original_local = os.path.join(temp_dir, "original.mp4")
 
-    try:
-        minio_client.fget_object(MINIO_BUCKET, highlighted_object_name, highlighted_local)
-        minio_client.fget_object(MINIO_BUCKET, original_object_name, original_local)
-    except Exception as e:
-        print(f"[merge-audio] MinIO download failed: {e}")
-        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
+    import shutil
+    demo_highlighted = os.path.join("demo_clips", highlighted_object_name)
+    demo_original = os.path.join("demo_clips", original_object_name)
+
+    # Highlighted video
+    if os.path.exists(demo_highlighted) and os.path.getsize(demo_highlighted) > 0:
+        shutil.copy(demo_highlighted, highlighted_local)
+    else:
+        try:
+            minio_client.fget_object(MINIO_BUCKET, highlighted_object_name, highlighted_local)
+        except Exception as e:
+            print(f"[merge-audio] MinIO download failed for highlighted: {e}")
+            raise HTTPException(status_code=404, detail=f"Highlighted file not found: {str(e)}")
+
+    # Original video
+    if os.path.exists(demo_original) and os.path.getsize(demo_original) > 0:
+        shutil.copy(demo_original, original_local)
+    else:
+        try:
+            minio_client.fget_object(MINIO_BUCKET, original_object_name, original_local)
+        except Exception as e:
+            print(f"[merge-audio] MinIO download failed for original: {e}")
+            raise HTTPException(status_code=404, detail=f"Original file not found: {str(e)}")
 
     # Step C: Check karo original video mein audio stream hai bhi ya nahi
     probe = subprocess.run(
@@ -444,24 +480,34 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
         # Agar original mein audio hi nahi tha, toh highlighted video hi final hai
         final_output_path = highlighted_local
 
-    # Step E: Result MinIO mein upload karo
+    # Step E: Save result locally first, then try MinIO
     final_object_name = f"final_{highlighted_object_name}"
-    with open(final_output_path, "rb") as f:
-        file_data = f.read()
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    local_final_path = os.path.join(demo_dir, final_object_name)
+    shutil.copy(final_output_path, local_final_path)
 
-    from io import BytesIO
-    minio_client.put_object(
-        MINIO_BUCKET,
-        final_object_name,
-        data=BytesIO(file_data),
-        length=len(file_data),
-        content_type="video/mp4",
-    )
+    try:
+        with open(final_output_path, "rb") as f:
+            file_data = f.read()
+        from io import BytesIO
+        minio_client.put_object(
+            MINIO_BUCKET,
+            final_object_name,
+            data=BytesIO(file_data),
+            length=len(file_data),
+            content_type="video/mp4",
+        )
+    except Exception as e:
+        print(f"[merge-audio warning] MinIO upload threw {e}, using local storage copy...")
 
-    # Cleanup
+    # Cleanup temp files
     for path in [highlighted_local, original_local, final_output_path]:
         if os.path.exists(path):
-            os.remove(path)
+            try:
+                os.remove(path)
+            except Exception:
+                pass
 
     output_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{final_object_name}"
 

@@ -19,24 +19,27 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET
 
-    # Step A: Video ko local temp file me download karo
-    # HTTP stream me OpenCV kabhi-kabhi starting frames skip kar deta hai
-    temp_dir = tempfile.mkdtemp()
-    local_video_path = os.path.join(temp_dir, "extract_source.mp4")
-    try:
-        minio_client.fget_object(MINIO_BUCKET, object_name, local_video_path)
-    except Exception as e:
-        demo_p = os.path.join("demo_clips", object_name)
-        if os.path.exists(demo_p):
-            import shutil
-            shutil.copy(demo_p, local_video_path)
-        else:
-            raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
+    # Step A: Try local demo_clips DIRECTLY (zero-copy, instant), then fall back to MinIO
+    demo_p = os.path.join("demo_clips", object_name)
+    temp_path = None
 
-    # Step B: OpenCV se local video kholo (guarantees frame parity with tracking)
-    cap = cv2.VideoCapture(local_video_path)
+    if os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
+        video_path = demo_p  # Read directly — no copy needed!
+    else:
+        temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(temp_dir, "extract_source.mp4")
+        try:
+            minio_client.fget_object(MINIO_BUCKET, object_name, temp_path)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+        video_path = temp_path
+
+    # Step B: OpenCV se video kholo
+    cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not open video for reading")
 
     # Step C: Sahi timestamp pe jump karo if needed
@@ -49,11 +52,19 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     success, frame = cap.read()
     cap.release()
 
+    # Cleanup temp file if used
+    if temp_path and os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+            os.rmdir(os.path.dirname(temp_path))
+        except Exception:
+            pass
+
     if not success:
         raise HTTPException(status_code=400, detail="Could not read frame from video")
 
     # Step E: Frame ko JPEG image mein encode karo
-    success, encoded_image = cv2.imencode(".jpg", frame)
+    success, encoded_image = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not success:
         raise HTTPException(status_code=500, detail="Failed to encode frame as image")
 
@@ -62,3 +73,4 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
         io.BytesIO(encoded_image.tobytes()),
         media_type="image/jpeg"
     )
+

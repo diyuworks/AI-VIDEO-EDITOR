@@ -103,17 +103,17 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
   return (
     <div className="flex flex-col items-center gap-4 w-full">
       <div className="text-center space-y-1">
-        <h4 className="text-xs font-black text-[#0D473B] uppercase tracking-wider">
+        <h4 className="text-sm sm:text-base font-black text-[#0D473B] uppercase tracking-wider">
           📍 Click Corners to Mark Land Plot Boundary
         </h4>
-        <p className="text-[11px] text-slate-500 font-medium">
+        <p className="text-xs sm:text-sm text-slate-600 font-semibold">
           Click corners along the edges of the land plot (minimum 3 points required)
         </p>
       </div>
 
       {!imageLoaded && (
-        <div className="flex items-center gap-2 text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl animate-pulse">
-          <div className="animate-spin h-3.5 w-3.5 border-2 border-[#0D473B] border-t-transparent rounded-full" />
+        <div className="flex items-center gap-2 text-sm text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-5 py-3 rounded-2xl animate-pulse">
+          <div className="animate-spin h-4 w-4 border-2 border-[#0D473B] border-t-transparent rounded-full" />
           Loading video frame image...
         </div>
       )}
@@ -127,22 +127,22 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <button
           onClick={handleUndo}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl border border-slate-200 transition text-xs flex items-center gap-1.5 shadow-sm"
+          className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-2xl border border-slate-300 transition text-sm flex items-center gap-2 shadow-sm"
         >
           ↩ Undo Point
         </button>
         <button
           onClick={handleReset}
-          className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-xl border border-rose-200 transition text-xs flex items-center gap-1.5 shadow-sm"
+          className="px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-2xl border border-rose-200 transition text-sm flex items-center gap-2 shadow-sm"
         >
           🗑 Reset All
         </button>
         <button
           onClick={handleConfirm}
-          className="px-6 py-2.5 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl shadow-lg shadow-[#0D473B]/20 text-xs transition flex items-center gap-2"
+          className="px-7 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex items-center gap-2.5"
         >
           ✅ Confirm Boundary ({points.length} Points Marked)
         </button>

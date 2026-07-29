@@ -480,22 +480,22 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-[#0D473B] tracking-tight leading-tight">
               Jamin <span className="text-amber-500">24</span> AI video HUB
             </h1>
-            <p className="text-slate-600 text-[11px] sm:text-sm font-semibold max-w-2xl px-2 sm:px-0 leading-relaxed">
+            <p className="text-slate-600 text-sm sm:text-base font-semibold max-w-2xl px-2 sm:px-0 leading-relaxed">
               JAHAN JAMIN, WAHAN JAMIN24 — Stitch and highlight open land plot clips with AI motion tracking & voiceovers.
             </p>
 
             {/* Feature Pill Badges */}
-            <div className="flex flex-wrap justify-center md:justify-start gap-1.5 sm:gap-2 pt-1 sm:pt-2 text-[9px] sm:text-xs font-bold text-[#0D473B]">
-              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+            <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-1 sm:pt-2 text-xs sm:text-sm font-bold text-[#0D473B]">
+              <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                 🧭 360° Virtual Tours
               </span>
-              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+              <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                 🛡️ Verified Listings
               </span>
-              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+              <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                 🤝 Trusted Network
               </span>
-              <span className="bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 sm:px-3.5 sm:py-1 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-sm">
+              <span className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                 ⚡ Smart Match
               </span>
             </div>
@@ -505,14 +505,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
         {/* 🎬 SECTION 1: MULTI-CLIP REAL ESTATE REEL MERGER */}
         <section className="bg-white border border-slate-200 shadow-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 text-slate-800">
-          <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
+          <div className="border-b border-slate-100 pb-4 flex justify-between items-center flex-wrap gap-2">
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-[#0D473B] flex items-center gap-2.5">
                 🎬 Multi-Clip Reel Merger & Highlight Workflow
               </h2>
-              <p className="text-xs font-semibold text-slate-500 mt-1">Upload, select, highlight plot boundaries, and merge clips into a custom reel.</p>
+              <p className="text-sm font-semibold text-slate-500 mt-1">Upload, select, highlight plot boundaries, and merge clips into a custom reel.</p>
             </div>
-            <span className="bg-emerald-100 text-[#0D473B] text-[11px] font-extrabold px-3 py-1.5 rounded-full border border-emerald-300 shadow-sm">
+            <span className="bg-emerald-100 text-[#0D473B] text-xs font-extrabold px-3.5 py-1.5 rounded-full border border-emerald-300 shadow-sm">
               MAX 10 CLIPS
             </span>
           </div>
@@ -522,8 +522,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               {/* Upload Section */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                  <h3 className="font-extrabold text-[#0D473B] text-sm">📤 Upload Raw Footage Clips</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Upload clips from your computer ({uploadedClips.length}/10 uploaded).</p>
+                  <h3 className="font-extrabold text-[#0D473B] text-base">📤 Upload Raw Footage Clips</h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Upload clips from your computer ({uploadedClips.length}/10 uploaded).</p>
                 </div>
                 <div className="relative">
                   <input
@@ -537,9 +537,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   />
                   <label
                     htmlFor="raw-clip-upload"
-                    className={`px-6 py-3 font-bold rounded-xl text-sm transition cursor-pointer flex items-center gap-2 ${isUploading
+                    className={`px-6 py-3.5 font-bold rounded-2xl text-sm transition cursor-pointer flex items-center gap-2 shadow-md ${isUploading
                         ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-                        : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-md shadow-emerald-950/20"
+                        : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-emerald-950/20"
                       }`}
                   >
                     {isUploading ? "⏳ Uploading..." : "📂 Select Video Files"}
@@ -548,20 +548,20 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               {uploadProgress && (
-                <div className="bg-emerald-50 border border-emerald-200 text-[#0D473B] px-4 py-2 rounded-xl text-xs font-mono animate-pulse">
+                <div className="bg-emerald-50 border border-emerald-200 text-[#0D473B] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-mono animate-pulse">
                   {uploadProgress}
                 </div>
               )}
 
               {/* Selection Grid */}
               {uploadedClips.length === 0 ? (
-                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-sm bg-slate-50/50">
+                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-500 font-semibold text-sm sm:text-base bg-slate-50/50">
                   📁 No raw footage clips uploaded yet. Upload up to 10 clips to start your merge workflow.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Clips and Highlight Each Plot:</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  <label className="text-xs sm:text-sm font-bold text-slate-600 uppercase tracking-wider">Select Clips and Highlight Each Plot:</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {uploadedClips.map((clip, clipIndex) => {
                       const clipName = clip.object_name;
                       const isSelected = selectedClips.includes(clipName);
@@ -569,17 +569,17 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       return (
                         <div
                           key={clip.id}
-                          className={`p-4 pb-3 rounded-2xl border flex flex-col items-center justify-between transition relative min-h-[175px] ${isSelected
+                          className={`p-4 pb-4 rounded-2xl border flex flex-col items-center justify-between transition relative min-h-[190px] ${isSelected
                               ? "border-[#0D473B] bg-emerald-50/60 shadow-md ring-2 ring-[#0D473B]/20"
                               : "border-slate-200 bg-white hover:border-slate-300"
                             }`}
                         >
                           {/* Re-order & Remove buttons */}
-                          <div className="flex items-center gap-1 absolute top-2 left-2">
+                          <div className="flex items-center gap-1.5 absolute top-2.5 left-2.5">
                             <button
                               onClick={() => moveClipUp(clipIndex)}
                               disabled={clipIndex === 0}
-                              className="text-slate-500 hover:text-[#0D473B] text-[10px] font-bold px-1 rounded bg-slate-100 border disabled:opacity-30"
+                              className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30"
                               title="Move clip up in sequence"
                             >
                               ⬆️
@@ -587,7 +587,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             <button
                               onClick={() => moveClipDown(clipIndex)}
                               disabled={clipIndex === uploadedClips.length - 1}
-                              className="text-slate-500 hover:text-[#0D473B] text-[10px] font-bold px-1 rounded bg-slate-100 border disabled:opacity-30"
+                              className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30"
                               title="Move clip down in sequence"
                             >
                               ⬇️
@@ -595,21 +595,21 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                           </div>
                           <button
                             onClick={() => handleRemoveClip(clipName)}
-                            className="absolute top-2 right-2 text-slate-400 hover:text-red-500 transition text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200"
+                            className="absolute top-2.5 right-2.5 text-slate-400 hover:text-red-500 transition text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200"
                             title="Remove clip"
                           >
                             ✕
                           </button>
 
-                          <div className="flex flex-col items-center text-center w-full mt-2">
-                            <div className="text-xl">📍</div>
-                            <span className="font-bold text-xs text-[#0D473B] mt-1 truncate w-full" title={label}>
+                          <div className="flex flex-col items-center text-center w-full mt-4">
+                            <div className="text-2xl">📍</div>
+                            <span className="font-bold text-sm text-[#0D473B] mt-1.5 truncate w-full" title={label}>
                               {label}
                             </span>
                           </div>
 
                           {/* Distinct Sibling Action Buttons */}
-                          <div className="w-full mt-3 pt-2 border-t border-slate-200/60 flex flex-col gap-2">
+                          <div className="w-full mt-4 pt-3 border-t border-slate-200/80 flex flex-col gap-2.5">
                             <button
                               onClick={() => {
                                 if (isSelected) {
@@ -618,9 +618,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   setSelectedClips([...selectedClips, clipName]);
                                 }
                               }}
-                              className={`w-full py-1.5 text-[10px] font-bold rounded-lg flex items-center justify-center transition border ${isSelected
+                              className={`w-full py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center transition border ${isSelected
                                   ? "bg-[#0D473B] text-white border-[#0D473B] hover:bg-[#09352C]"
-                                  : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                                  : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
                                 }`}
                             >
                               {isSelected ? "✅ Selected" : "⬜ Select Clip"}
@@ -629,8 +629,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             {isSelected && (
                               <div className="w-full space-y-2">
                                 {/* Plot name input directly inside the card */}
-                                <div className="flex flex-col text-left gap-0.5">
-                                  <span className="text-[9px] font-bold text-slate-500">Plot Name:</span>
+                                <div className="flex flex-col text-left gap-1">
+                                  <span className="text-xs font-bold text-slate-600">Plot Name:</span>
                                   <input
                                     type="text"
                                     value={clipHighlights[clipName]?.label || label.split(".")[0]}
@@ -647,12 +647,12 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     }}
                                     onBlur={(e) => handleLabelBlur(clipName, e.target.value)}
                                     placeholder="e.g. Plot A"
-                                    className="bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 text-[10px] w-full focus:outline-none focus:border-[#0D473B]"
+                                    className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-slate-800 text-xs sm:text-sm font-semibold w-full focus:outline-none focus:border-[#0D473B]"
                                   />
                                 </div>
 
                                 {clipHighlights[clipName]?.isTracking ? (
-                                  <span className="text-[10px] text-[#0D473B] animate-pulse font-mono flex items-center justify-center py-1 font-bold">⏳ Tracking AI...</span>
+                                  <span className="text-xs text-[#0D473B] animate-pulse font-mono flex items-center justify-center py-1.5 font-bold">⏳ Tracking AI...</span>
                                 ) : clipHighlights[clipName]?.isDone ? (
                                   <button
                                     onClick={() => {
@@ -666,7 +666,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
-                                    className="w-full py-1 px-1 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-[10px] font-bold rounded-lg flex items-center justify-center truncate border border-emerald-300"
+                                    className="w-full py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-xs font-bold rounded-xl flex items-center justify-center truncate border border-emerald-300"
                                     title="Click to edit plot boundary"
                                   >
                                     ✏️ Edit Plot: {clipHighlights[clipName]?.label}
@@ -684,28 +684,26 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
-                                    className="w-full py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-semibold rounded-lg flex items-center justify-center border border-slate-200"
+                                    className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200"
                                   >
                                     ✏️ Highlight Plot
                                   </button>
                                 )}
                               </div>
                             )}
-                          </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              )}
 
               {/* Voiceover Prompt / Editable Script Input */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
                     🗣️ AI Voiceover Script & Custom Text (Editable):
                   </label>
-                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <span className="text-xs sm:text-sm text-emerald-800 font-bold bg-emerald-50 border border-emerald-200/80 px-3 py-1 rounded-full shadow-sm">
                     ⚡ Audio auto-fades at end of footage (5s logo silent)
                   </span>
                 </div>
@@ -714,21 +712,21 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={3}
                   placeholder="e.g. 1.5 Vigha luxury plot with 3D Water Fountain and Farmhouse layout."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-xs font-medium resize-y"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm sm:text-base font-medium resize-y shadow-sm"
                 />
               </div>
 
               {/* Merge Action Button */}
-              <div className="space-y-2 pt-2">
+              <div className="space-y-3 pt-2">
                 {selectedClips.length > 0 && !areAllSelectedClipsHighlighted() && (
-                  <p className="text-amber-800 text-xs font-semibold flex items-center gap-1.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200">
+                  <p className="text-amber-900 text-sm font-bold flex items-center gap-2 bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm">
                     ⚠️ Validation Guard: Please mark the plot boundary for all selected clips before merging. ({selectedClips.filter(c => clipHighlights[c]?.isDone).length} of {selectedClips.length} highlighted)
                   </p>
                 )}
                 <button
                   onClick={handleGenerateMultiClipReel}
                   disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading}
-                  className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-extrabold rounded-2xl text-lg transition shadow-xl shadow-emerald-950/20 disabled:opacity-40"
+                  className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40"
                 >
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
@@ -817,111 +815,92 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
         {/* Multi-clip individual boundary marking modal popup */}
         {activeMarkingClip && (
-          <div className="fixed inset-0 z-50 bg-[#0D473B]/40 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
-            <div className="w-full max-w-4xl bg-white p-6 sm:p-8 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto">
+          <div className="fixed inset-0 z-50 bg-[#0D473B]/50 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <div className="w-full max-w-4xl bg-white p-6 sm:p-8 md:p-10 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto space-y-6">
               <button
                 onClick={() => setActiveMarkingClip(null)}
-                className="absolute top-5 right-5 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm transition"
+                className="absolute top-5 right-5 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition"
                 title="Close modal"
               >
                 ✕
               </button>
-              <h3 className="text-xl font-black text-[#0D473B] mb-1 flex items-center gap-2">
-                🎯 Mark Land Plot Boundary for <span className="text-emerald-700 font-mono text-base font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{activeMarkingClip}</span>
-              </h3>
-              <p className="text-slate-500 text-xs mb-5">
-                Click points along the edges of the plot to define the boundary, and set plot prices, badges & visual effects.
-              </p>
+              <div>
+                <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-1.5 flex flex-wrap items-center gap-2">
+                  🎯 Mark Land Plot Boundary for <span className="text-emerald-700 font-mono text-lg sm:text-xl font-bold bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">{activeMarkingClip}</span>
+                </h3>
+                <p className="text-slate-600 text-sm font-semibold">
+                  Click points along the edges of the plot to define the boundary, and set plot prices, badges & visual effects.
+                </p>
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">Plot Label / Name:</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-bold text-slate-800">Plot Label / Name:</label>
                   <input
                     type="text"
                     value={activeMarkingLabel}
                     onChange={(e) => setActiveMarkingLabel(e.target.value)}
                     placeholder="e.g. Plot A / Corner"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-semibold w-full"
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-sm sm:text-base font-semibold w-full shadow-sm"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">💰 Plot Price (Optional):</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-bold text-slate-800">💰 Plot Price (Optional):</label>
                   <input
                     type="text"
                     value={plotPrice}
                     onChange={(e) => setPlotPrice(e.target.value)}
                     placeholder="e.g. ₹25 Lakhs"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-bold w-full"
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-sm sm:text-base font-bold w-full shadow-sm"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">📐 Plot Size / Area (Optional):</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-bold text-slate-800">📐 Plot Size / Area (Optional):</label>
                   <input
                     type="text"
                     value={plotSize}
                     onChange={(e) => setPlotSize(e.target.value)}
                     placeholder="e.g. 2000 SqFt / 1.5 Vigha"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-bold w-full"
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-sm sm:text-base font-bold w-full shadow-sm"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">🛣️ Road / Highway Distance Badge:</label>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-bold text-slate-800">🛣️ Road / Highway Distance Badge:</label>
                   <input
                     type="text"
                     value={roadInfo}
                     onChange={(e) => setRoadInfo(e.target.value)}
                     placeholder="e.g. 60FT Highway | 100m"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-cyan-800 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-xs font-semibold w-full"
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-cyan-800 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] text-sm sm:text-base font-semibold w-full shadow-sm"
                   />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">🎨 Highlight Border Color Theme:</label>
-                  <select
-                    value={highlightColor}
-                    onChange={(e) => setHighlightColor(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-3 py-2 text-xs font-semibold focus:border-[#0D473B] w-full"
-                  >
-                    <option value="#FFEB3B">🟡 Electric Yellow (Default)</option>
-                    <option value="#00E676">🟢 Cyber Neon Green</option>
-                    <option value="#FFD700">🪙 Luxury Gold</option>
-                    <option value="#00E5FF">🔵 Neon Cyan</option>
-                  </select>
                 </div>
               </div>
 
               {/* Per-Plot Visual Effects Controls */}
-              <div className="mb-5 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
-                <p className="text-xs font-black text-[#0D473B] uppercase tracking-wider">✨ Plot Visual Effects</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer bg-white rounded-xl px-3 py-2 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-sm">
+                <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider">✨ Plot Visual Effects</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer bg-white rounded-2xl px-4 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFarmhouse}
                       onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                      className="w-4 h-4 accent-[#0D473B]"
+                      className="w-5 h-5 accent-[#0D473B]"
                     />
-                    <span className="text-slate-800 font-bold">🏡 Farmhouse Overlay</span>
+                    <span className="text-slate-800 font-bold text-sm sm:text-base">🏡 Farmhouse Overlay</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer bg-white rounded-xl px-3 py-2 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
+                  <label className="flex items-center gap-3 cursor-pointer bg-white rounded-2xl px-4 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFountain}
                       onChange={(e) => setEnableFountain(e.target.checked)}
-                      className="w-4 h-4 accent-[#0D473B]"
+                      className="w-5 h-5 accent-[#0D473B]"
                     />
-                    <span className="text-slate-800 font-bold">🚰 Water Fountain</span>
+                    <span className="text-slate-800 font-bold text-sm sm:text-base">🚰 Water Fountain</span>
                   </label>
-                  <select
-                    value={textPosition}
-                    onChange={(e) => setTextPosition(e.target.value)}
-                    className="bg-white border border-slate-200 text-slate-900 rounded-xl px-3 py-2 font-bold text-xs focus:ring-1 focus:ring-[#0D473B] hover:border-[#0D473B] transition shadow-sm"
-                  >
-                    <option value="middle">📌 Text: Above Plot</option>
-                    <option value="outro">📌 Text: Outro Style</option>
-                  </select>
                 </div>
               </div>
 
@@ -933,10 +912,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   const pr = plotPrice;
                   const sz = plotSize;
                   const rd = roadInfo;
-                  const clr = highlightColor;
+                  const clr = "#FFEB3B"; // Default Electric Yellow
                   const fh = enableFarmhouse;
                   const ft = enableFountain;
-                  const tp = textPosition;
+                  const tp = "middle"; // Default Above Plot
                   setActiveMarkingClip(null);
                   await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
                 }}

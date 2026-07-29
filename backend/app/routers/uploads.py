@@ -23,12 +23,22 @@ minio_client = Minio(
 )
 
 def init_minio():
-    try:
-        if not minio_client.bucket_exists(MINIO_BUCKET):
-            minio_client.make_bucket(MINIO_BUCKET)
-        print("MinIO bucket initialized successfully.")
-    except Exception as e:
-        print(f"Warning: Could not connect to MinIO during startup. {e}")
+    """Initialize MinIO bucket with a timeout so app startup never hangs."""
+    import threading
+
+    def _try_init():
+        try:
+            if not minio_client.bucket_exists(MINIO_BUCKET):
+                minio_client.make_bucket(MINIO_BUCKET)
+            print("MinIO bucket initialized successfully.")
+        except Exception as e:
+            print(f"Warning: Could not connect to MinIO during startup. {e}")
+
+    t = threading.Thread(target=_try_init, daemon=True)
+    t.start()
+    t.join(timeout=5)  # Wait max 5 seconds, then proceed regardless
+    if t.is_alive():
+        print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -47,33 +57,39 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
-    temp_dir = tempfile.mkdtemp()
-    temp_upload_path = os.path.join(temp_dir, object_name)
-    with open(temp_upload_path, "wb") as f:
-        f.write(contents)
-
     # Always save a local copy in demo_clips for guaranteed 100% offline & fast processing
     demo_dir = "demo_clips"
     os.makedirs(demo_dir, exist_ok=True)
     import shutil
-    shutil.copy(temp_upload_path, os.path.join(demo_dir, object_name))
+    local_path = os.path.join(demo_dir, object_name)
+    with open(local_path, "wb") as f:
+        f.write(contents)
 
-    try:
-        minio_client.fput_object(
-            MINIO_BUCKET,
-            object_name,
-            temp_upload_path,
-            content_type=file.content_type or "video/mp4",
-        )
-    except Exception as e:
-        print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
-    finally:
+    # Try MinIO upload in background thread with 3s timeout (local copy is already safe)
+    import threading
+    def _minio_upload():
+        temp_dir = tempfile.mkdtemp()
+        temp_upload_path = os.path.join(temp_dir, object_name)
         try:
-            if os.path.exists(temp_upload_path):
-                os.remove(temp_upload_path)
-            os.rmdir(temp_dir)
-        except Exception:
-            pass
+            shutil.copy(local_path, temp_upload_path)
+            minio_client.fput_object(
+                MINIO_BUCKET,
+                object_name,
+                temp_upload_path,
+                content_type=file.content_type or "video/mp4",
+            )
+        except Exception as e:
+            print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
+        finally:
+            try:
+                if os.path.exists(temp_upload_path):
+                    os.remove(temp_upload_path)
+                os.rmdir(temp_dir)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_minio_upload, daemon=True)
+    t.start()
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
@@ -110,6 +126,13 @@ async def upload_reference_video(file: UploadFile = File(...)):
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
+    # Always save a local copy in demo_clips for guaranteed offline processing
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    local_ref_path = os.path.join(demo_dir, object_name)
+    with open(local_ref_path, "wb") as f:
+        f.write(contents)
+
     try:
         # Calculate optimal part_size to avoid S3 multipart upload timeouts
         part_size = max(10 * 1024 * 1024, len(contents) // 100) if len(contents) > 10 * 1024 * 1024 else 0
@@ -122,17 +145,7 @@ async def upload_reference_video(file: UploadFile = File(...)):
             part_size=part_size
         )
     except Exception as e:
-        print(f"[upload warning] Multipart upload threw {e}, trying direct stream...")
-        try:
-            minio_client.put_object(
-                MINIO_BUCKET,
-                object_name,
-                data=BytesIO(contents),
-                length=len(contents),
-                content_type=file.content_type,
-            )
-        except Exception as retry_err:
-            raise HTTPException(status_code=500, detail=f"Upload failed (MinIO error): {str(retry_err)}")
+        print(f"[upload-reference warning] MinIO upload threw {e}, using local storage copy...")
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
