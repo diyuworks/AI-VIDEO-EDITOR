@@ -204,6 +204,23 @@ def list_past_reels():
     return reels
 
 
+@router.delete("/past-reels/{filename}")
+def delete_past_reel(filename: str):
+    """Deletes a past generated reel file from local storage."""
+    safe_filename = os.path.basename(filename)
+    demo_dir = "demo_clips"
+    filepath = os.path.join(demo_dir, safe_filename)
+
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+            return {"success": True, "message": f"Deleted {safe_filename}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not delete file: {str(e)}")
+    else:
+        raise HTTPException(status_code=404, detail="Reel file not found")
+
+
 from fastapi import Request
 
 @router.post("/visit")
