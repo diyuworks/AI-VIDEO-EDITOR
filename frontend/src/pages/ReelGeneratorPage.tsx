@@ -96,6 +96,24 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   }, []);
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
+  const moveClipUp = (index: number) => {
+    if (index <= 0) return;
+    const updated = [...uploadedClips];
+    const temp = updated[index];
+    updated[index] = updated[index - 1];
+    updated[index - 1] = temp;
+    setUploadedClips(updated);
+  };
+
+  const moveClipDown = (index: number) => {
+    if (index >= uploadedClips.length - 1) return;
+    const updated = [...uploadedClips];
+    const temp = updated[index];
+    updated[index] = updated[index + 1];
+    updated[index + 1] = temp;
+    setUploadedClips(updated);
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -520,7 +538,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Clips and Highlight Each Plot:</label>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    {uploadedClips.map((clip) => {
+                    {uploadedClips.map((clip, clipIndex) => {
                       const clipName = clip.object_name;
                       const isSelected = selectedClips.includes(clipName);
                       const label = clip.filename;
@@ -532,7 +550,25 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                               : "border-slate-200 bg-white hover:border-slate-300"
                             }`}
                         >
-                          {/* Remove clip button */}
+                          {/* Re-order & Remove buttons */}
+                          <div className="flex items-center gap-1 absolute top-2 left-2">
+                            <button
+                              onClick={() => moveClipUp(clipIndex)}
+                              disabled={clipIndex === 0}
+                              className="text-slate-500 hover:text-[#0D473B] text-[10px] font-bold px-1 rounded bg-slate-100 border disabled:opacity-30"
+                              title="Move clip up in sequence"
+                            >
+                              ⬆️
+                            </button>
+                            <button
+                              onClick={() => moveClipDown(clipIndex)}
+                              disabled={clipIndex === uploadedClips.length - 1}
+                              className="text-slate-500 hover:text-[#0D473B] text-[10px] font-bold px-1 rounded bg-slate-100 border disabled:opacity-30"
+                              title="Move clip down in sequence"
+                            >
+                              ⬇️
+                            </button>
+                          </div>
                           <button
                             onClick={() => handleRemoveClip(clipName)}
                             className="absolute top-2 right-2 text-slate-400 hover:text-red-500 transition text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200"
@@ -639,17 +675,22 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               )}
 
-              {/* Voiceover Prompt Input */}
+              {/* Voiceover Prompt / Editable Script Input */}
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                  🗣️ AI Voiceover Script (Plot Names / Key Info):
-                </label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    🗣️ AI Voiceover Script & Custom Text (Editable):
+                  </label>
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    ⚡ Audio auto-fades at end of footage (5s logo silent)
+                  </span>
+                </div>
+                <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g. Plot A – Road Facing, 200 sq yd"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-medium"
+                  rows={3}
+                  placeholder="e.g. 1.5 Vigha luxury plot with 3D Water Fountain and Farmhouse layout."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-xs font-medium resize-y"
                 />
               </div>
 

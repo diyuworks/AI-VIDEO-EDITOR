@@ -282,14 +282,14 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 except Exception as e:
                     with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
 
-            # Call our actual editing_plan endpoint logic
+            # 1. Target script duration to main video clips duration (leaving 5s logo screen silent/clean)
             plan_req = EditingPlanRequest(
                 object_name=request.raw_video_object_name,
                 reference_object_name=request.reference_object_name,
                 reference_captions=reference_captions,
                 prompt=request.prompt,
                 structured_options=request.structured_options,
-                duration_seconds=video_duration + 5.0  # Pass exact duration including the 5s end screen!
+                duration_seconds=video_duration  # Target voiceover script to main video clips duration
             )
             plan_req = generate_editing_plan(plan_req, session)
             generated_script = plan_req["editing_plan"]["generated_script"]
@@ -308,7 +308,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             shutil.copy(source_audio_path, audio_path)
             word_boundaries = tts_res["word_boundaries"]
             
-            # 2. Outro Script TTS (Always exact)
+            # 2. Outro Script TTS (Optional logo outro)
             outro_req = TTSRequest(text="જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
             outro_res = await generate_tts(outro_req)
             outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
@@ -322,30 +322,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     
     try:
         # Video is already downloaded and probed!
-
-        
-        # CRITICAL FIX: Always use the FULL video duration — never trim the merged video
-        # to match voiceover length. The voiceover is secondary; the video must play completely.
         trim_duration = video_duration
-        
-        audio_duration = 0.0
-        outro_duration = 0.0
-        print(f"[REEL] Video duration: {video_duration:.2f}s, has_audio: {has_audio}")
-        if not TEMPORARY_DISABLE_VOICEOVER and audio_path:
-            probe_audio = ffmpeg.probe(audio_path)
-            audio_duration = float(probe_audio['format']['duration'])
-            print(f"[REEL] Main Audio duration: {audio_duration:.2f}s")
-            if outro_audio_path and os.path.exists(outro_audio_path):
-                probe_outro = ffmpeg.probe(outro_audio_path)
-                outro_duration = float(probe_outro['format']['duration'])
-                print(f"[REEL] Outro Audio duration: {outro_duration:.2f}s")
-            
-        # The outro starts either when the video ends (start of end screen) or when main audio ends (whichever is later)
-        outro_start_time = max(video_duration, audio_duration)
-        total_audio_needed = outro_start_time + outro_duration
-        
-        # Dynamically calculate end screen duration so the audio never gets cut off
-        end_screen_duration = max(5.0, total_audio_needed - video_duration)
+        end_screen_duration = 5.0  # Fixed 5s logo end screen
         total_final_duration = video_duration + end_screen_duration
         
         width = int(video_info['width'])
@@ -366,11 +344,11 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             .filter('format', 'yuv420p')
         )
         
-        # We need to get the new width/height for the end screen based on 9:16
+        # Width/height for end screen
         reel_width = int(min(width, height * 9 / 16))
         reel_height = int(min(height, width * 16 / 9))
         
-        # Setup end screen image stream (Dynamic duration so voiceover doesn't cut)
+        # Setup end screen image stream (5 seconds logo card)
         end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
         if os.path.exists(end_screen_path):
             image_stream = ffmpeg.input(end_screen_path, loop=1, t=end_screen_duration)
@@ -400,11 +378,17 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             video_for_subs = ffmpeg.overlay(video_for_subs, scaled_logo, x='(main_w-overlay_w)/2', y='main_h-overlay_h-40')
         
         if not TEMPORARY_DISABLE_VOICEOVER:
-            # Captions removed — clean video without text overlay, sirf voiceover audio
             filtered_video = video_for_subs
             
-            # 1. Main audio (padded to full duration)
-            main_audio = ffmpeg.input(audio_path).audio.filter('apad').filter('atrim', duration=total_final_duration)
+            # Main audio trimmed to video_duration with 1s smooth fade-out right before logo appears!
+            fade_start = max(0.0, video_duration - 1.0)
+            main_audio = (
+                ffmpeg.input(audio_path).audio
+                .filter('atrim', duration=video_duration)
+                .filter('afade', type='out', start_time=fade_start, duration=1.0)
+                .filter('apad')
+                .filter('atrim', duration=total_final_duration)
+            )
             
             if outro_audio_path and os.path.exists(outro_audio_path):
                 # 2. Outro audio (delayed exactly to when the end screen starts OR main audio ends)
