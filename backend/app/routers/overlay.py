@@ -15,11 +15,11 @@ class OverlayRequest(BaseModel):
     object_name: str
     polygon_per_frame: List[List[List[float]]]  # Step 3 ka output
     highlight_color: str = "#FFEB3B"  # yellow, default
-    border_thickness: int = 4
+    border_thickness: int = 8
     label: Optional[str] = None  # plot name / label text
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
-    text_position: str = "middle"
+    text_position: str = "middle"  # "middle" or "outro"
     price: Optional[str] = None  # e.g., ₹25 Lakhs
     size: Optional[str] = None  # e.g., 2000 SqFt
     road_info: Optional[str] = None  # e.g., 60FT Highway | 100m
@@ -112,24 +112,53 @@ def render_overlay(request: OverlayRequest):
         if pil_font is None:
             pil_font = ImageFont.load_default()
 
-    success, first_frame = cap.read()
-    if success and len(request.polygon_per_frame) > 0:
-        if scale_factor < 1.0:
-            first_frame = cv2.resize(first_frame, (width, height), interpolation=cv2.INTER_AREA)
+    # Load 3D assets if enabled
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+    farmhouse_img = None
+    if request.enable_farmhouse_overlay:
+        fh_path = os.path.join(assets_dir, "farmhouse_render.png")
+        if os.path.exists(fh_path):
+            farmhouse_img = cv2.imread(fh_path, cv2.IMREAD_UNCHANGED)
 
-        raw_pts = np.array(request.polygon_per_frame[0], dtype=np.float32)
-        if scale_factor < 1.0:
-            raw_pts = raw_pts * scale_factor
-        polygon_points = raw_pts.astype(np.int32)
-        M = len(polygon_points)
+    fountain_img = None
+    if request.enable_fountain_overlay:
+        ft_path = os.path.join(assets_dir, "fountain.png")
+        if os.path.exists(ft_path):
+            fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
+
+    if len(request.polygon_per_frame) > 0:
+        # Set Animation Timings (Draw-in ~0.4s)
+        ANIM_FRAMES = int(fps * 0.4) 
+        FADE_FRAMES = int(fps * 0.25)
         
-        # Freeze for 7.5 seconds
-        freeze_frames_count = int(fps * 7.5)
-        ANIM_FRAMES = int(fps * 1.5)
-        FADE_FRAMES = int(fps * 0.75)
-        
-        for frame_idx in range(freeze_frames_count):
-            frame = first_frame.copy()
+        frame_idx = 0
+        total_tracked_frames = len(request.polygon_per_frame)
+
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
+
+            if scale_factor < 1.0:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+            # Get tracked polygon for current frame
+            if frame_idx < total_tracked_frames:
+                raw_pts = np.array(request.polygon_per_frame[frame_idx], dtype=np.float32)
+            elif total_tracked_frames > 0:
+                raw_pts = np.array(request.polygon_per_frame[-1], dtype=np.float32)
+            else:
+                raw_pts = None
+
+            if raw_pts is None or len(raw_pts) == 0:
+                out.write(frame)
+                frame_idx += 1
+                continue
+                
+            if scale_factor < 1.0:
+                raw_pts = raw_pts * scale_factor
+            polygon_points = raw_pts.astype(np.int32)
+            M = len(polygon_points)
             
             if M >= 3:
                 if frame_idx < ANIM_FRAMES:
@@ -187,7 +216,7 @@ def render_overlay(request: OverlayRequest):
                     frame = dimmed_frame.copy()
                     frame[mask == 255] = highlighted_area[mask == 255]
 
-                    # 5b. 3D Farmhouse perspective overlay
+                    # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
                     if farmhouse_img is not None and M >= 4:
                         try:
                             fh_h, fh_w = farmhouse_img.shape[:2]
@@ -195,6 +224,7 @@ def render_overlay(request: OverlayRequest):
                             dst_pts = polygon_points[:4].astype(np.float32)
                             M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
                             warped_fh = cv2.warpPerspective(farmhouse_img, M_persp, (width, height))
+                            # Alpha blend warped farmhouse onto frame
                             if warped_fh.shape[2] == 4:
                                 alpha_mask = (warped_fh[:, :, 3] / 255.0)[:, :, np.newaxis]
                                 frame = (warped_fh[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
@@ -203,7 +233,7 @@ def render_overlay(request: OverlayRequest):
                         except Exception as ex_fh:
                             print(f"[overlay] Farmhouse warp error: {ex_fh}")
 
-                    # 5c. 3D Fountain perspective overlay
+                    # --- 3D FOUNTAIN PERSPECTIVE WARP OVERLAY ---
                     if fountain_img is not None and M >= 4:
                         try:
                             ft_h, ft_w = fountain_img.shape[:2]
@@ -211,6 +241,7 @@ def render_overlay(request: OverlayRequest):
                             dst_pts = polygon_points[:4].astype(np.float32)
                             M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
                             warped_ft = cv2.warpPerspective(fountain_img, M_persp, (width, height))
+                            # Alpha blend warped fountain onto frame
                             if warped_ft.shape[2] == 4:
                                 alpha_mask = (warped_ft[:, :, 3] / 255.0)[:, :, np.newaxis]
                                 frame = (warped_ft[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
@@ -219,9 +250,9 @@ def render_overlay(request: OverlayRequest):
                         except Exception as ex_ft:
                             print(f"[overlay] Fountain warp error: {ex_ft}")
 
-                    # 6. Draw solid vibrant yellow border with black contrast outline
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 1, lineType=cv2.LINE_AA)
+                    # 6. Draw glowing borders
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness + 1, lineType=cv2.LINE_AA)
                     
                     # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
                     if request.label and pil_font:
@@ -349,18 +380,16 @@ def render_overlay(request: OverlayRequest):
                                 frame = (txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
 
             out.write(frame)
-
-        # Write first frame unhighlighted for smooth transition
-        out.write(first_frame)
-
-    # Write remaining video frames
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-        if scale_factor < 1.0:
-            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
-        out.write(frame)
+            frame_idx += 1
+    else:
+        # Write remaining video frames (or all frames if no polygon)
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
+            if scale_factor < 1.0:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+            out.write(frame)
 
     cap.release()
     out.release()

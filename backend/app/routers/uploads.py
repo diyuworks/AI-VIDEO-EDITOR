@@ -46,13 +46,13 @@ MAX_FILE_SIZE_MB = 500
 
 
 @router.post("/upload")
-async def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
+def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
     ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"{uuid.uuid4().hex}{ext}"
-    contents = await file.read()
+    contents = file.file.read()
     size_mb = len(contents) / (1024 * 1024)
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
@@ -115,13 +115,13 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
 
 
 @router.post("/upload-reference")
-async def upload_reference_video(file: UploadFile = File(...)):
+def upload_reference_video(file: UploadFile = File(...)):
     ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"ref_{uuid.uuid4().hex}{ext}"
-    contents = await file.read()
+    contents = file.file.read()
     size_mb = len(contents) / (1024 * 1024)
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
