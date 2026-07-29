@@ -208,11 +208,26 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       console.log("clipsToMerge:", clipsToMerge);
       console.log("===================");
       
+      // Build clip_info with metadata for context-aware voiceover
+      const clipInfoForMerge = selectedClips.map((clip) => {
+        const highlight = clipHighlights[clip];
+        return {
+          object_name: clip,
+          label: highlight?.label || "",
+          has_farmhouse: highlight?.enableFarmhouse || false,
+          has_fountain: highlight?.enableFountain || false,
+          price: highlight?.price || "",
+          size: highlight?.size || "",
+          road_info: highlight?.roadInfo || "",
+        };
+      });
+      
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clip_object_names: clipsToMerge,
+          clip_info: clipInfoForMerge,
         }),
       });
 
@@ -227,6 +242,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           raw_video_object_name: mergeData.merged_object_name,
           highlighted_video_object_name: mergeData.merged_object_name,
           prompt: prompt,
+          clip_metadata: mergeData.clip_metadata || null,
         }),
       });
 

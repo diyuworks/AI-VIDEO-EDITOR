@@ -2,7 +2,7 @@ import os
 import tempfile
 import subprocess
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session
@@ -95,16 +95,29 @@ def generate_srt(script_text: str, duration_sec: float, filepath: str, word_boun
 router = APIRouter()
 
 
+class ClipInfo(BaseModel):
+    object_name: str
+    label: Optional[str] = None          # e.g. "Plot 1", "Farmhouse Area"
+    has_farmhouse: bool = False
+    has_fountain: bool = False
+    price: Optional[str] = None
+    size: Optional[str] = None
+    road_info: Optional[str] = None
+    duration: Optional[float] = None     # clip duration in seconds (filled by backend)
+
+
 class GenerateReelRequest(BaseModel):
     raw_video_object_name: str        # Original upload
     highlighted_video_object_name: str  # Step 4 ka output (visual-only, no audio)
     reference_object_name: Optional[str] = None  # Style-reference video (agar hai)
     prompt: Optional[str] = None
     structured_options: Optional[dict] = None
+    clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
 
 
 class MergeClipsRequest(BaseModel):
     clip_object_names: list  # e.g. ["clip_1.mp4", "clip_2.mp4", ...]
+    clip_info: Optional[List[dict]] = None  # [{object_name, label, has_farmhouse, has_fountain}]
 
 
 @router.post("/merge-clips")
@@ -158,10 +171,12 @@ async def merge_clips(request: MergeClipsRequest):
 
         # Build FFmpeg filter pipeline to normalize and concatenate all clips in one go
         streams = []
+        clip_durations = []  # Track each clip's duration for voiceover sync
         for clip_idx, p in enumerate(local_clip_paths):
             probe = ffmpeg.probe(p)
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             duration = float(probe['format']['duration'])
+            clip_durations.append(duration)
             print(f"[MERGE] Clip {clip_idx}: duration={duration:.2f}s, has_audio={has_audio}")
             
             # Normalize video to 9:16 (720x1280), 25fps, yuv420p
@@ -221,11 +236,34 @@ async def merge_clips(request: MergeClipsRequest):
             response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
         )
 
+        # Build clip_metadata for voiceover sync
+        clip_metadata = []
+        cumulative_time = 0.0
+        for idx, dur in enumerate(clip_durations):
+            info = {}
+            if request.clip_info and idx < len(request.clip_info):
+                info = request.clip_info[idx]
+            clip_metadata.append({
+                "index": idx,
+                "label": info.get("label", f"Clip {idx+1}"),
+                "has_farmhouse": info.get("has_farmhouse", False),
+                "has_fountain": info.get("has_fountain", False),
+                "price": info.get("price", ""),
+                "size": info.get("size", ""),
+                "road_info": info.get("road_info", ""),
+                "duration": round(dur, 2),
+                "start_time": round(cumulative_time, 2),
+                "end_time": round(cumulative_time + dur, 2),
+            })
+            cumulative_time += dur
+
         return {
             "success": True,
             "merged_object_name": merged_id,
             "url": presigned_url,
-            "clips_count": len(request.clip_object_names)
+            "clips_count": len(request.clip_object_names),
+            "clip_durations": clip_durations,
+            "clip_metadata": clip_metadata,
         }
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -282,41 +320,93 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 except Exception as e:
                     with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
 
-            # 1. Target script duration to main video clips duration (leaving 5s logo screen silent/clean)
+            # 1. Target script duration to main video clips duration + 5s logo screen
             plan_req = EditingPlanRequest(
                 object_name=request.raw_video_object_name,
                 reference_object_name=request.reference_object_name,
                 reference_captions=reference_captions,
                 prompt=request.prompt,
                 structured_options=request.structured_options,
-                duration_seconds=video_duration  # Target voiceover script to main video clips duration
+                duration_seconds=video_duration + 5.0,  # Now includes 5s end screen for seamless outro
+                clip_metadata=request.clip_metadata  # Timeline info for context-aware narration
             )
             plan_req = generate_editing_plan(plan_req, session)
-            generated_script = plan_req["editing_plan"]["generated_script"]
+            # 'generated_script' is removed, we directly use segments below
         except Exception as e:
             with open("debug.log", "a") as f: f.write(f"Script Error: {str(e)}\n")
             raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
 
-        # ---- SUB-STEP B: TTS + Word Timestamps Generate Karo ----
+        # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
         try:
             import shutil
-            # 1. Main Script TTS
-            tts_req = TTSRequest(text=generated_script)
-            tts_res = await generate_tts(tts_req)
-            source_audio_path = os.path.join("tts_output", f"{tts_res['audio_id']}.mp3")
-            audio_path = os.path.join(temp_dir, f"{tts_res['audio_id']}.mp3")
-            shutil.copy(source_audio_path, audio_path)
-            word_boundaries = tts_res["word_boundaries"]
+            segments = plan_req["editing_plan"].get("segments", [])
+            outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
             
-            # 2. Outro Script TTS (Optional logo outro)
-            outro_req = TTSRequest(text="જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
-            outro_res = await generate_tts(outro_req)
-            outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
-            outro_audio_path = os.path.join(temp_dir, f"outro_{outro_res['audio_id']}.mp3")
-            shutil.copy(outro_source, outro_audio_path)
+            segment_audio_streams = []
+            word_boundaries = []
+            clip_metadata_list = request.clip_metadata or []
+            
+            # Process each video clip segment
+            for idx, seg in enumerate(segments):
+                seg_text = seg.get("text", "").strip()
+                if not seg_text: continue
+                
+                # Fetch target duration and start time for this segment
+                if idx < len(clip_metadata_list):
+                    target_dur = clip_metadata_list[idx].get("duration", 0)
+                    clip_start = clip_metadata_list[idx].get("start_time", 0)
+                else:
+                    target_dur = 5.0 # fallback
+                    clip_start = 0.0
+                
+                # Generate TTS for segment
+                tts_req = TTSRequest(text=seg_text)
+                tts_res = await generate_tts(tts_req)
+                
+                seg_source_path = os.path.join("tts_output", f"{tts_res['audio_id']}.mp3")
+                seg_audio_path = os.path.join(temp_dir, f"seg_{idx}_{tts_res['audio_id']}.mp3")
+                shutil.copy(seg_source_path, seg_audio_path)
+                
+                # Shift word boundaries so subtitles appear at the right time
+                for wb in tts_res["word_boundaries"]:
+                    wb["start"] = round(wb["start"] + clip_start, 3)
+                    wb["end"] = round(wb["end"] + clip_start, 3)
+                    word_boundaries.append(wb)
+                
+                # Pad/Trim to exact target_dur to guarantee perfect clip sync!
+                audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
+                segment_audio_streams.append(audio_padded)
+
+            # Generate Outro TTS
+            if outro_text:
+                outro_req = TTSRequest(text=outro_text)
+                outro_res = await generate_tts(outro_req)
+                outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
+                outro_audio_path = os.path.join(temp_dir, f"outro_{outro_res['audio_id']}.mp3")
+                shutil.copy(outro_source, outro_audio_path)
+                
+                outro_start = video_duration
+                for wb in outro_res["word_boundaries"]:
+                    wb["start"] = round(wb["start"] + outro_start, 3)
+                    wb["end"] = round(wb["end"] + outro_start, 3)
+                    word_boundaries.append(wb)
+                    
+                # Pad outro to 5 seconds (end screen duration)
+                outro_audio_stream = ffmpeg.input(outro_audio_path).audio.filter('apad').filter('atrim', duration=5.0)
+                segment_audio_streams.append(outro_audio_stream)
+
+            # Concat all audio streams into a single perfect timeline
+            if len(segment_audio_streams) > 1:
+                final_audio_stream = ffmpeg.concat(*segment_audio_streams, v=0, a=1)
+            elif len(segment_audio_streams) == 1:
+                final_audio_stream = segment_audio_streams[0]
+            else:
+                # Fallback empty audio
+                final_audio_stream = ffmpeg.input('anullsrc', f='lavfi', t=total_final_duration).audio
+
         except Exception as e:
-            with open("debug.log", "a", encoding="utf-8") as f: f.write(f"TTS Error: {str(e)} | Script: {generated_script}\n")
-            raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
+            with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Segment TTS Error: {str(e)}\n")
+            raise HTTPException(status_code=500, detail=f"Segment TTS generation failed: {str(e)}")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
     
@@ -325,6 +415,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         trim_duration = video_duration
         end_screen_duration = 5.0  # Fixed 5s logo end screen
         total_final_duration = video_duration + end_screen_duration
+        outro_start_time = video_duration
         
         width = int(video_info['width'])
         height = int(video_info['height'])
@@ -380,31 +471,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         if not TEMPORARY_DISABLE_VOICEOVER:
             filtered_video = video_for_subs
             
-            # Main audio trimmed to video_duration with 1s smooth fade-out right before logo appears!
-            fade_start = max(0.0, video_duration - 1.0)
-            main_audio = (
-                ffmpeg.input(audio_path).audio
-                .filter('atrim', duration=video_duration)
-                .filter('afade', type='out', start_time=fade_start, duration=1.0)
-                .filter('apad')
-                .filter('atrim', duration=total_final_duration)
-            )
-            
-            if outro_audio_path and os.path.exists(outro_audio_path):
-                # 2. Outro audio (delayed exactly to when the end screen starts OR main audio ends)
-                delay_ms = int(outro_start_time * 1000)
-                outro_audio = (
-                    ffmpeg.input(outro_audio_path).audio
-                    .filter('adelay', f'{delay_ms}|{delay_ms}')
-                    .filter('apad')
-                    .filter('atrim', duration=total_final_duration)
-                )
-                # 3. Mix them together and boost volume (amix usually halves volume)
-                audio_stream = ffmpeg.filter([main_audio, outro_audio], 'amix', inputs=2, duration='longest').filter('volume', 2.0)
-            else:
-                audio_stream = main_audio
-                
-            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
+            # Use the already concatenated and precisely synced segment audio stream
+            ffmpeg_out = ffmpeg.output(filtered_video, final_audio_stream, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
         else:
             filtered_video = video_for_subs
             if has_audio:
