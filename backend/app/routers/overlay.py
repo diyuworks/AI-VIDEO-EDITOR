@@ -173,8 +173,9 @@ def render_overlay(request: OverlayRequest):
                     cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
                     highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
                     
-                    # 5. Combine using mask
-                    frame = np.where(mask_3ch == 255, highlighted_area, dimmed_frame)
+                    # 5. Combine using mask (zero temporary memory allocation)
+                    frame = dimmed_frame.copy()
+                    frame[mask == 255] = highlighted_area[mask == 255]
 
                     # 5b. 3D Farmhouse perspective overlay
                     if farmhouse_img is not None and M >= 4:

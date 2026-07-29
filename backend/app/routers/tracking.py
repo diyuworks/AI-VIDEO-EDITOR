@@ -38,19 +38,30 @@ def track_boundary(request: TrackingRequest):
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     initial_poly = np.array([[p.x, p.y] for p in request.initial_points], dtype=np.float32)
-    current_poly = initial_poly.copy()
-    tracked_polygons: List[list] = []
 
     ret, prev_frame = cap.read()
     if not ret or prev_frame is None:
         cap.release()
         raise HTTPException(status_code=400, detail="Could not read video frames for tracking.")
 
-    prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-    tracked_polygons.append(current_poly.tolist())
+    orig_h, orig_w = prev_frame.shape[:2]
+    MAX_W, MAX_H = 1080, 1920
+    scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
+
+    if scale_factor < 1.0:
+        prev_frame_proc = cv2.resize(prev_frame, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
+    else:
+        prev_frame_proc = prev_frame
+
+    initial_poly_scaled = initial_poly * scale_factor
+    current_poly_scaled = initial_poly_scaled.copy()
+    tracked_polygons: List[list] = []
+
+    prev_gray = cv2.cvtColor(prev_frame_proc, cv2.COLOR_BGR2GRAY)
+    tracked_polygons.append(initial_poly.tolist())
 
     # Build mask around initial polygon to collect feature points
-    poly_pts_int = np.array(initial_poly, dtype=np.int32)
+    poly_pts_int = np.array(initial_poly_scaled, dtype=np.int32)
     mask = np.zeros_like(prev_gray)
     cv2.fillPoly(mask, [poly_pts_int], 255)
     
@@ -59,7 +70,7 @@ def track_boundary(request: TrackingRequest):
     mask = cv2.dilate(mask, kernel, iterations=1)
 
     # Combine polygon vertices and internal features
-    vertex_pts = initial_poly.reshape(-1, 1, 2)
+    vertex_pts = initial_poly_scaled.reshape(-1, 1, 2)
     extra_features = cv2.goodFeaturesToTrack(prev_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=mask)
     
     if extra_features is not None:
@@ -72,10 +83,15 @@ def track_boundary(request: TrackingRequest):
     for _ in range(1, total_frames):
         ret, curr_frame = cap.read()
         if not ret or curr_frame is None:
-            tracked_polygons.append(current_poly.tolist())
+            tracked_polygons.append((current_poly_scaled / scale_factor).tolist())
             continue
 
-        curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
+        if scale_factor < 1.0:
+            curr_frame_proc = cv2.resize(curr_frame, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
+        else:
+            curr_frame_proc = curr_frame
+
+        curr_gray = cv2.cvtColor(curr_frame_proc, cv2.COLOR_BGR2GRAY)
 
         if len(prev_pts) >= 4:
             next_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, None, **lk_params)
@@ -88,22 +104,24 @@ def track_boundary(request: TrackingRequest):
                     H, inlier_mask = cv2.findHomography(good_prev, good_next, cv2.RANSAC, 3.0)
                     
                     if H is not None and not np.isnan(H).any() and abs(np.linalg.det(H)) > 0.01:
-                        # Warp polygon using Homography matrix
-                        poly_3d = current_poly.reshape(-1, 1, 2)
-                        warped_poly = cv2.perspectiveTransform(poly_3d, H).reshape(-1, 2)
+                        ones = np.ones((len(current_poly_scaled), 1), dtype=np.float32)
+                        pts_homo = np.hstack([current_poly_scaled, ones])
+                        transformed_pts = (H @ pts_homo.T).T
                         
-                        # Apply subtle Exponential Moving Average for jitter reduction
-                        current_poly = 0.8 * warped_poly + 0.2 * current_poly
-                        prev_pts = good_next.reshape(-1, 1, 2)
-                    else:
+                        if not np.isnan(transformed_pts).any():
+                            w_coords = transformed_pts[:, 2:3]
+                            w_coords[w_coords == 0] = 1.0
+                            current_poly_scaled = transformed_pts[:, :2] / w_coords
+
                         prev_pts = good_next.reshape(-1, 1, 2)
 
-        tracked_polygons.append(current_poly.tolist())
+        prev_gray = curr_gray
+        tracked_polygons.append((current_poly_scaled / scale_factor).tolist())
         prev_gray = curr_gray
 
         # Re-detect features if tracking points drop below threshold
         if len(prev_pts) < 10:
-            current_poly_int = np.array(current_poly, dtype=np.int32)
+            current_poly_int = np.array(current_poly_scaled, dtype=np.int32)
             fresh_mask = np.zeros_like(curr_gray)
             cv2.fillPoly(fresh_mask, [current_poly_int], 255)
             fresh_mask = cv2.dilate(fresh_mask, kernel, iterations=1)
