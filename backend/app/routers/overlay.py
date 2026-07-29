@@ -19,7 +19,14 @@ class OverlayRequest(BaseModel):
     label: Optional[str] = None  # plot name / label text
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
+<<<<<<< HEAD
     text_position: str = "middle"  # "middle" or "outro"
+=======
+    text_position: str = "middle"
+    price: Optional[str] = None  # e.g., ₹25 Lakhs
+    size: Optional[str] = None  # e.g., 2000 SqFt
+    road_info: Optional[str] = None  # e.g., 60FT Highway | 100m
+>>>>>>> origin/diya
 
 
 def hex_to_bgr(hex_color: str):
@@ -53,8 +60,14 @@ def render_overlay(request: OverlayRequest):
         raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # Normalize resolution to max 1080x1920 to prevent RAM exhaustion on 4K/60fps video clips
+    MAX_W, MAX_H = 1080, 1920
+    scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
+    width = int(orig_w * scale_factor)
+    height = int(orig_h * scale_factor)
 
     # Step B: Temporary output file banao (bina audio ke, sirf video)
     temp_video_path = os.path.join(temp_dir, "overlay_temp.mp4")
@@ -65,16 +78,33 @@ def render_overlay(request: OverlayRequest):
     color_bgr = hex_to_bgr(request.highlight_color)
     total_polygon_frames = len(request.polygon_per_frame)
 
+    # Load 3D assets if enabled
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+    farmhouse_img = None
+    if request.enable_farmhouse_overlay:
+        fh_path = os.path.join(assets_dir, "farmhouse_render.png")
+        if os.path.exists(fh_path):
+            farmhouse_img = cv2.imread(fh_path, cv2.IMREAD_UNCHANGED)
+
+    fountain_img = None
+    if request.enable_fountain_overlay:
+        ft_path = os.path.join(assets_dir, "fountain.png")
+        if os.path.exists(ft_path):
+            fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
+
     pil_font = None
     if request.label:
         from PIL import Image, ImageDraw, ImageFont
-        try:
-            pil_font = ImageFont.truetype("arialbd.ttf", int(max(40, width / 20.0)))
-        except IOError:
-            try:
-                pil_font = ImageFont.truetype("arial.ttf", int(max(40, width / 20.0)))
-            except IOError:
-                pil_font = ImageFont.load_default()
+        font_size = max(42, int(width / 13))
+        for font_path in [r'C:\Windows\Fonts\ariblk.ttf', r'C:\Windows\Fonts\impact.ttf', r'C:\Windows\Fonts\segoeuib.ttf', r'C:\Windows\Fonts\arialbd.ttf']:
+            if os.path.exists(font_path):
+                try:
+                    pil_font = ImageFont.truetype(font_path, font_size)
+                    break
+                except Exception:
+                    pass
+        if pil_font is None:
+            pil_font = ImageFont.load_default()
 
     # Load 3D assets if enabled
     assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
@@ -92,12 +122,18 @@ def render_overlay(request: OverlayRequest):
 
     success, first_frame = cap.read()
     if success and len(request.polygon_per_frame) > 0:
-        polygon_points = np.array(request.polygon_per_frame[0], dtype=np.int32)
+        if scale_factor < 1.0:
+            first_frame = cv2.resize(first_frame, (width, height), interpolation=cv2.INTER_AREA)
+
+        raw_pts = np.array(request.polygon_per_frame[0], dtype=np.float32)
+        if scale_factor < 1.0:
+            raw_pts = raw_pts * scale_factor
+        polygon_points = raw_pts.astype(np.int32)
         M = len(polygon_points)
         
-        # We will freeze for 7.5 seconds (so it becomes exactly 5.0s after the 1.5x speedup in merge_clips)
+        # Freeze for 7.5 seconds
         freeze_frames_count = int(fps * 7.5)
-        ANIM_FRAMES = int(fps * 1.5) # Scale animation time up too
+        ANIM_FRAMES = int(fps * 1.5)
         FADE_FRAMES = int(fps * 0.75)
         
         for frame_idx in range(freeze_frames_count):
@@ -115,8 +151,8 @@ def render_overlay(request: OverlayRequest):
                     for i in range(K):
                         p_start = tuple(polygon_points[i])
                         p_end = tuple(polygon_points[(i + 1) % M])
-                        cv2.line(frame, p_start, p_end, color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                        cv2.line(frame, p_start, p_end, (255, 255, 255), thickness=request.border_thickness, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start, p_end, (0, 0, 0), thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start, p_end, color_bgr, thickness=request.border_thickness, lineType=cv2.LINE_AA)
                         
                     # Draw current partial tracing segment
                     if K < M:
@@ -127,15 +163,14 @@ def render_overlay(request: OverlayRequest):
                         p_end = (p_end_x, p_end_y)
                         p_start_tuple = tuple(p_start)
                         
-                        cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start_tuple, p_end, (0, 0, 0), thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
+                        cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request.border_thickness, lineType=cv2.LINE_AA)
                 else:
-                    # Border is complete, draw closed polygon outline with anti-aliasing
-                    
-                    # Smooth fade progress
+                    # Border is complete, draw closed polygon outline with background dimming
                     fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
                     
-                    # 1. Dim the background smoothly (outside the plot)
-                    dim_factor = 1.0 - (0.5 * fade_progress) # Dims up to 50%
+                    # 1. Dim background smoothly outside plot
+                    dim_factor = 1.0 - (0.5 * fade_progress)
                     dimmed_frame = cv2.convertScaleAbs(frame, alpha=dim_factor, beta=0)
                     
                     # 2. Polygon Mask
@@ -143,22 +178,22 @@ def render_overlay(request: OverlayRequest):
                     cv2.fillPoly(mask, [polygon_points], 255)
                     mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
                     
-                    # 3. Pulsing alpha for the plot fill
+                    # 3. Pulsing alpha for plot fill
                     import math
                     if fade_progress < 1.0:
                         alpha = 0.35 * fade_progress
                     else:
-                        # Gentle pulse between 0.20 and 0.40 for professional feel
                         alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
                     
-                    # 4. Highlighted area (Original frame + Color tint)
+                    # 4. Highlighted area
                     highlighted_area = frame.copy()
                     color_overlay = np.zeros_like(frame)
                     cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
                     highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
                     
-                    # 5. Combine using mask
-                    frame = np.where(mask_3ch == 255, highlighted_area, dimmed_frame)
+                    # 5. Combine using mask (zero temporary memory allocation)
+                    frame = dimmed_frame.copy()
+                    frame[mask == 255] = highlighted_area[mask == 255]
 
                     # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
                     if farmhouse_img is not None and M >= 4:
@@ -168,7 +203,6 @@ def render_overlay(request: OverlayRequest):
                             dst_pts = polygon_points[:4].astype(np.float32)
                             M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
                             warped_fh = cv2.warpPerspective(farmhouse_img, M_persp, (width, height))
-                            
                             # Alpha blend warped farmhouse onto frame
                             if warped_fh.shape[2] == 4:
                                 alpha_mask = (warped_fh[:, :, 3] / 255.0)[:, :, np.newaxis]
@@ -186,7 +220,6 @@ def render_overlay(request: OverlayRequest):
                             dst_pts = polygon_points[:4].astype(np.float32)
                             M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
                             warped_ft = cv2.warpPerspective(fountain_img, M_persp, (width, height))
-                            
                             # Alpha blend warped fountain onto frame
                             if warped_ft.shape[2] == 4:
                                 alpha_mask = (warped_ft[:, :, 3] / 255.0)[:, :, np.newaxis]
@@ -200,20 +233,32 @@ def render_overlay(request: OverlayRequest):
                     cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
                     cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness + 1, lineType=cv2.LINE_AA)
                     
-                    # Draw plot name label
+                    # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
                     if request.label and pil_font:
                         min_y_idx = np.argmin(polygon_points[:, 1])
+                        top_pt = polygon_points[min_y_idx]
                         
-                        label_text = request.label
-                        bbox = pil_font.getbbox(label_text)
-                        text_w = bbox[2] - bbox[0]
-                        text_h = bbox[3] - bbox[1]
+                        raw_label = request.label.strip().upper()
+                        words = raw_label.split()
+                        if len(words) == 2 and len(raw_label) >= 8:
+                            lines = words
+                        else:
+                            lines = [raw_label]
+                            
+                        from PIL import ImageDraw
+                        dummy_img = Image.new('RGBA', (1, 1))
+                        d_dummy = ImageDraw.Draw(dummy_img)
+                        line_bboxes = [d_dummy.textbbox((0, 0), line, font=pil_font) for line in lines]
+                        line_widths = [b[2] - b[0] for b in line_bboxes]
+                        line_heights = [b[3] - b[1] for b in line_bboxes]
                         
-                        label_x = polygon_points[min_y_idx][0] - text_w // 2
-                        label_y = polygon_points[min_y_idx][1] - text_h - 40
+                        total_h = sum(line_heights) + (len(lines) - 1) * 10
                         
-                        label_x = max(15, min(label_x, width - text_w - 20))
-                        label_y = max(text_h + 20, min(label_y, height - 20))
+                        if request.text_position == "outro":
+                            base_y = int(height * 0.72)
+                        else:
+                            base_y = int(top_pt[1] - total_h - 35)
+                            base_y = max(30, min(base_y, height - total_h - 30))
 
                         TEXT_ANIM_FRAMES = 15
                         frames_since_anim = frame_idx - ANIM_FRAMES
@@ -221,44 +266,108 @@ def render_overlay(request: OverlayRequest):
                         if frames_since_anim >= 0:
                             if frames_since_anim < TEXT_ANIM_FRAMES:
                                 t = frames_since_anim / TEXT_ANIM_FRAMES
-                                y_offset = int((1.0 - t) * 50)
+                                y_offset = int((1.0 - t) * 40)
                                 opacity = int(t * 255)
                             else:
                                 y_offset = 0
                                 opacity = 255
                                 
-                            label_y += y_offset
+                            start_y = base_y + y_offset
                             
+                            if "LOCATION" in raw_label or "BEST" in raw_label or request.text_position == "outro":
+                                text_rgb = (255, 235, 59)  # Neon Yellow
+                            else:
+                                text_rgb = (255, 255, 255)  # Crisp White
+
                             img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             txt_layer = Image.new('RGBA', img_pil.size, (255, 255, 255, 0))
                             d = ImageDraw.Draw(txt_layer)
                             
-                            shadow_offset = max(2, int(width / 350.0))
-                            d.text((label_x + shadow_offset, label_y + shadow_offset), label_text, font=pil_font, fill=(0, 0, 0, int(opacity * 0.7)))
-                            d.text((label_x, label_y), label_text, font=pil_font, fill=(255, 250, 240, opacity))
-                            
+                            curr_y = start_y
+                            for idx_l, line in enumerate(lines):
+                                lw = line_widths[idx_l]
+                                lh = line_heights[idx_l]
+                                lx = int((width - lw) / 2) if request.text_position == "outro" else int(top_pt[0] - lw / 2)
+                                lx = max(20, min(lx, width - lw - 20))
+                                
+                                # Drop shadow
+                                shadow_alpha = int(opacity * 0.7)
+                                for offset in range(1, 4):
+                                    d.text((lx + offset, curr_y + offset), line, font=pil_font, fill=(0, 0, 0, shadow_alpha))
+                                
+                                # Main text with stroke
+                                d.text((lx, curr_y), line, font=pil_font, fill=(*text_rgb, opacity), stroke_width=3, stroke_fill=(0, 0, 0, opacity))
+                                curr_y += lh + 10
+
+                            # --- RENDER PLOT PRICE & SIZE BADGE ---
+                            badge_str = ""
+                            if request.price and request.price.strip():
+                                badge_str += request.price.strip().upper()
+                            if request.size and request.size.strip():
+                                badge_str += (" | " if badge_str else "") + request.size.strip().upper()
+
+                            if badge_str:
+                                try:
+                                    badge_font_size = max(26, int(font_size * 0.65))
+                                    b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fonts\ariblk.ttf') else pil_font
+                                    b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
+                                    bw = b_bbox[2] - b_bbox[0]
+                                    blx = int((width - bw) / 2) if request.text_position == "outro" else int(top_pt[0] - bw / 2)
+                                    blx = max(20, min(blx, width - bw - 20))
+                                    
+                                    # Gold (#FFD700) badge text with drop shadow
+                                    for offset in range(1, 3):
+                                        d.text((blx + offset, curr_y + offset), badge_str, font=b_font, fill=(0, 0, 0, shadow_alpha))
+                                    d.text((blx, curr_y), badge_str, font=b_font, fill=(255, 215, 0, opacity), stroke_width=2, stroke_fill=(0, 0, 0, opacity))
+                                except Exception as ex_b:
+                                    print(f"[overlay] Badge error: {ex_b}")
+
+                            # --- RENDER ROAD CONNECTIVITY & DISTANCE BADGE ---
+                            if request.road_info and request.road_info.strip():
+                                try:
+                                    road_str = "➔ " + request.road_info.strip().upper()
+                                    r_font_size = max(22, int(font_size * 0.55))
+                                    r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fonts\arialbd.ttf') else pil_font
+                                    r_bbox = d.textbbox((0, 0), road_str, font=r_font)
+                                    rw = r_bbox[2] - r_bbox[0]
+                                    rh = r_bbox[3] - r_bbox[1]
+                                    
+                                    rx = 25
+                                    ry = int(height - rh - 45)
+                                    
+                                    r_pad_x = 14
+                                    r_pad_y = 7
+                                    r_box = [rx - r_pad_x, ry - r_pad_y, rx + rw + r_pad_x, ry + rh + r_pad_y]
+                                    d.rounded_rectangle(r_box, radius=8, fill=(15, 23, 42, int(opacity * 0.85)), outline=(0, 229, 255, opacity), width=2)
+                                    d.text((rx, ry), road_str, font=r_font, fill=(255, 255, 255, opacity))
+                                except Exception as ex_r:
+                                    print(f"[overlay] Road info error: {ex_r}")
+
                             img_pil = Image.alpha_composite(img_pil.convert('RGBA'), txt_layer).convert('RGB')
                             frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+
             out.write(frame)
 
         # Write first frame unhighlighted for smooth transition
         out.write(first_frame)
 
-    # Now write the rest of the video
+    # Write remaining video frames
     while True:
         success, frame = cap.read()
         if not success:
             break
+        if scale_factor < 1.0:
+            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         out.write(frame)
 
     cap.release()
     out.release()
 
-    # Step C: FFmpeg se re-encode karo (OpenCV ka codec browser-friendly nahi hota hamesha)
+    # Step C: FFmpeg re-encode
     final_output_path = os.path.join(temp_dir, "overlay_final.mp4")
     subprocess.run([
         "ffmpeg", "-y", "-i", temp_video_path,
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "superfast", "-crf", "23", "-pix_fmt", "yuv420p",
         final_output_path
     ], check=True, capture_output=True)
 
