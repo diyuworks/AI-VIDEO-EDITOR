@@ -26,7 +26,12 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     try:
         minio_client.fget_object(MINIO_BUCKET, object_name, local_video_path)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
+        demo_p = os.path.join("demo_clips", object_name)
+        if os.path.exists(demo_p):
+            import shutil
+            shutil.copy(demo_p, local_video_path)
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
 
     # Step B: OpenCV se local video kholo (guarantees frame parity with tracking)
     cap = cv2.VideoCapture(local_video_path)

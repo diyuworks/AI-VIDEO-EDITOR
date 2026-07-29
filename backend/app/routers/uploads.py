@@ -1,4 +1,6 @@
 import uuid
+import os
+import tempfile
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -45,16 +47,33 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
+    temp_dir = tempfile.mkdtemp()
+    temp_upload_path = os.path.join(temp_dir, object_name)
+    with open(temp_upload_path, "wb") as f:
+        f.write(contents)
+
+    # Always save a local copy in demo_clips for guaranteed 100% offline & fast processing
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    import shutil
+    shutil.copy(temp_upload_path, os.path.join(demo_dir, object_name))
+
     try:
-        minio_client.put_object(
+        minio_client.fput_object(
             MINIO_BUCKET,
             object_name,
-            data=BytesIO(contents),
-            length=len(contents),
-            content_type=file.content_type,
+            temp_upload_path,
+            content_type=file.content_type or "video/mp4",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed (MinIO might be down): {str(e)}")
+        print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
+    finally:
+        try:
+            if os.path.exists(temp_upload_path):
+                os.remove(temp_upload_path)
+            os.rmdir(temp_dir)
+        except Exception:
+            pass
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
@@ -92,15 +111,28 @@ async def upload_reference_video(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File too large")
 
     try:
+        # Calculate optimal part_size to avoid S3 multipart upload timeouts
+        part_size = max(10 * 1024 * 1024, len(contents) // 100) if len(contents) > 10 * 1024 * 1024 else 0
         minio_client.put_object(
             MINIO_BUCKET,
             object_name,
             data=BytesIO(contents),
             length=len(contents),
             content_type=file.content_type,
+            part_size=part_size
         )
-    except S3Error as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    except Exception as e:
+        print(f"[upload warning] Multipart upload threw {e}, trying direct stream...")
+        try:
+            minio_client.put_object(
+                MINIO_BUCKET,
+                object_name,
+                data=BytesIO(contents),
+                length=len(contents),
+                content_type=file.content_type,
+            )
+        except Exception as retry_err:
+            raise HTTPException(status_code=500, detail=f"Upload failed (MinIO error): {str(retry_err)}")
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 

@@ -56,6 +56,8 @@ def render_overlay(request: OverlayRequest):
         raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0 or np.isnan(fps):
+        fps = 25.0
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -64,6 +66,9 @@ def render_overlay(request: OverlayRequest):
     scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
     width = int(orig_w * scale_factor)
     height = int(orig_h * scale_factor)
+    # Ensure width and height are strictly even numbers for video codecs
+    width = width if width % 2 == 0 else width - 1
+    height = height if height % 2 == 0 else height - 1
 
     # Step B: Temporary output file banao (bina audio ke, sirf video)
     temp_video_path = os.path.join(temp_dir, "overlay_temp.mp4")
@@ -345,11 +350,16 @@ def render_overlay(request: OverlayRequest):
 
     # Step C: FFmpeg re-encode
     final_output_path = os.path.join(temp_dir, "overlay_final.mp4")
-    subprocess.run([
-        "ffmpeg", "-y", "-i", temp_video_path,
-        "-c:v", "libx264", "-preset", "superfast", "-crf", "23", "-pix_fmt", "yuv420p",
-        final_output_path
-    ], check=True, capture_output=True)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", temp_video_path,
+            "-c:v", "libx264", "-preset", "superfast", "-crf", "23", "-pix_fmt", "yuv420p",
+            final_output_path
+        ], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        print(f"[overlay] FFmpeg re-encode warning: {err_msg}")
+        final_output_path = temp_video_path
 
     # Step D: Result MinIO mein upload karo
     output_object_name = f"highlighted_{request.object_name}"

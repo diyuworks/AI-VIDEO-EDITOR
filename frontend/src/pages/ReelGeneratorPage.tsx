@@ -256,7 +256,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       clearInterval(progressInterval);
       setProgressPercent(100);
       setProgressMessage("Reel generation complete!");
-      setMultiClipVideoUrl(reelData.url);
+      const finalUrl = reelData.video_url || reelData.url;
+      setMultiClipVideoUrl(finalUrl);
       setMultiClipStage("done");
     } catch (err: any) {
       setMultiClipError(err.message || "Something went wrong during reel generation");
