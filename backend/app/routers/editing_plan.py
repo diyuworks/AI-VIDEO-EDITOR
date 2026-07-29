@@ -110,8 +110,8 @@ Structured options: {json.dumps(request.structured_options) if request.structure
             size = clip.get("size", "")
             road_info = clip.get("road_info", "")
             
-            # Target words for this segment (~2.5 words per sec)
-            target_words = int(dur * 2.5)
+            # Target words for this segment (~3.5 words per sec to avoid any silence gaps)
+            target_words = int(dur * 3.5)
             
             # Determine what's visually shown in this clip
             visual_elements = []
@@ -147,7 +147,7 @@ RULES FOR EACH SEGMENT:
 3. If a segment shows "FOUNTAIN", you MUST mention "ફાઉન્ટેન" prominently in that segment's text.
 4. If a segment has Price, Size, or Road details, you MUST gracefully weave those details into that segment's Gujarati text (e.g. mention the price in lakhs/crores, size in vigha/sq.ft as provided).
 5. MATCH THE VISUALS: Do NOT mention farmhouse when land is showing, and do NOT mention fountain when farmhouse is showing.
-6. TARGET WORD COUNT: Try to match the target word count so the TTS audio perfectly fits the video clip duration.
+6. NO SILENCE GAPS (CRITICAL): You MUST write detailed, continuous, and long descriptions to completely fill the clip duration. DO NOT write short sentences that leave 3-4 seconds of silence! You MUST write at least the "Target words" specified for EACH segment. If a segment is long, describe the beautiful scenery, the fresh air, the investment opportunity, or the benefits to ensure continuous speaking without gaps.
 7. TRANSITIONS: Make each segment flow naturally to the next, even though they are separate text blocks.
 
 CRITICAL OUTRO INSTRUCTION:

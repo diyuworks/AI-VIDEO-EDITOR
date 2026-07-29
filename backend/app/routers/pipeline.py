@@ -125,7 +125,7 @@ class MergeClipsRequest(BaseModel):
 
 
 @router.post("/merge-clips")
-async def merge_clips(request: MergeClipsRequest):
+def merge_clips(request: MergeClipsRequest):
     """
     Merges multiple video/image motion clips into a single continuous video file
     and uploads to MinIO.
@@ -386,15 +386,44 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 seg_audio_path = os.path.join(temp_dir, f"seg_{idx}_{tts_res['audio_id']}.mp3")
                 shutil.copy(seg_source_path, seg_audio_path)
                 
-                # Shift word boundaries so subtitles appear at the right time
-                for wb in tts_res["word_boundaries"]:
-                    wb["start"] = round(wb["start"] + clip_start, 3)
-                    wb["end"] = round(wb["end"] + clip_start, 3)
-                    word_boundaries.append(wb)
-                
-                # Pad/Trim to exact target_dur to guarantee perfect clip sync!
-                audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
-                segment_audio_streams.append(audio_padded)
+                # Center audio and stretch slightly to reduce massive silence gaps
+                try:
+                    probe = ffmpeg.probe(seg_audio_path)
+                    tts_dur = float(probe['format']['duration'])
+                except Exception:
+                    tts_dur = 0.0
+
+                if tts_dur > 0 and target_dur > 0:
+                    ratio = tts_dur / target_dur
+                    # Clamp ratio: max stretch is 15% slower (0.85) to avoid robotic voice
+                    ratio = max(0.85, min(1.15, ratio))
+                    
+                    new_tts_dur = tts_dur / ratio
+                    pad_total = max(0.0, target_dur - new_tts_dur)
+                    pad_front = pad_total / 2.0
+                    
+                    # Update word boundaries
+                    for wb in tts_res["word_boundaries"]:
+                        wb["start"] = round((wb["start"] / ratio) + clip_start + pad_front, 3)
+                        wb["end"] = round((wb["end"] / ratio) + clip_start + pad_front, 3)
+                        word_boundaries.append(wb)
+                    
+                    delay_ms = int(pad_front * 1000)
+                    
+                    audio_stream = ffmpeg.input(seg_audio_path).audio.filter('atempo', ratio)
+                    if delay_ms > 0:
+                        audio_stream = audio_stream.filter('adelay', f'{delay_ms}|{delay_ms}')
+                        
+                    audio_padded = audio_stream.filter('apad').filter('atrim', duration=target_dur)
+                    segment_audio_streams.append(audio_padded)
+                else:
+                    # Fallback
+                    for wb in tts_res["word_boundaries"]:
+                        wb["start"] = round(wb["start"] + clip_start, 3)
+                        wb["end"] = round(wb["end"] + clip_start, 3)
+                        word_boundaries.append(wb)
+                    audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
+                    segment_audio_streams.append(audio_padded)
 
             # Generate Outro TTS
             if outro_text:

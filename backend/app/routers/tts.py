@@ -27,7 +27,7 @@ async def generate_tts(request: TTSRequest):
     try:
         # Original Male Voice (gu-IN-NiranjanNeural)
         selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-NiranjanNeural"
-        # Adjust rate and pitch for a more natural, professional real-estate voice
+        # Adjust rate and pitch for a more natural, professional real-estate voice at normal speed
         communicate = edge_tts.Communicate(request.text, selected_voice, rate="+0%", pitch="+5Hz")
         
         last_offset = 0
