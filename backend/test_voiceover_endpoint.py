@@ -1,7 +1,7 @@
 ﻿import requests
 
 r = requests.post(
-    "http://localhost:8000/generate-voiceover",
+    "http://localhost:4005/generate-voiceover",
     json={
         "captions": [
             {"id": "cap1", "text": "આ એક પરીક્ષણ છે", "start": 0.0, "end": 2.5},

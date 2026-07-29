@@ -11,8 +11,8 @@ interface ReferenceVideo {
 }
 
 const MAX_REFERENCE_VIDEOS = 5
-const UPLOAD_ENDPOINT = 'http://localhost:8000/upload'
-const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:8000/upload-reference'
+const UPLOAD_ENDPOINT = 'http://localhost:4005/upload'
+const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:4005/upload-reference'
 
 interface UploadResult {
   success: boolean
@@ -103,7 +103,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     }
 
     xhr.onerror = () => {
-      setErrorMessage('Could not reach the backend. Is it running on localhost:8000?')
+      setErrorMessage('Could not reach the backend. Is it running on localhost:4005?')
       setSourceState('error')
     }
 

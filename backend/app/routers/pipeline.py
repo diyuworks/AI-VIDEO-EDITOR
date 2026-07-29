@@ -572,7 +572,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         )
     except Exception as ex_m:
         print(f"[pipeline warning] MinIO upload threw {ex_m}, using local demo-videos URL...")
-        presigned_url = f"http://localhost:8000/demo-videos/{final_object_name}"
+        presigned_url = f"http://localhost:4005/demo-videos/{final_object_name}"
 
     if request.job_id:
         update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")
@@ -604,7 +604,7 @@ def list_past_reels():
             reels.append({
                 "object_name": filename,
                 "filename": filename,
-                "url": f"http://localhost:8000/demo-videos/{filename}",
+                "url": f"http://localhost:4005/demo-videos/{filename}",
                 "size_mb": size_mb,
                 "created_at": mtime
             })

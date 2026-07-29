@@ -196,7 +196,7 @@ def list_past_reels():
             "filename": fname,
             "title": title,
             "clean_name": clean_name,
-            "url": f"http://localhost:8000/demo-videos/{fname}",
+            "url": f"http://localhost:4005/demo-videos/{fname}",
             "size_mb": size_mb,
             "created_at": formatted_date,
         })
