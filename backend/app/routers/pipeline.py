@@ -447,24 +447,35 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         with open("debug.log", "a") as f: f.write(f"Export Error: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Export pipeline failed: {str(e)}")
 
-    # ---- SUB-STEP E: Final Video Upload Karo ----
+    # ---- SUB-STEP E: Final Video Upload & Local Copy ----
     if request.job_id:
         update_progress(request.job_id, 95, "uploading", "Uploading final HD reel MP4 to storage...")
 
     final_object_name = f"reel_{request.raw_video_object_name}"
-    with open(final_output_path, "rb") as f:
-        file_data = f.read()
+    
+    # Always save a copy in demo_clips for guaranteed local retrieval
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    import shutil
+    shutil.copy(final_output_path, os.path.join(demo_dir, final_object_name))
 
-    from io import BytesIO
-    minio_client.put_object(
-        MINIO_BUCKET, final_object_name,
-        data=BytesIO(file_data), length=len(file_data), content_type="video/mp4",
-    )
+    try:
+        with open(final_output_path, "rb") as f:
+            file_data = f.read()
 
-    presigned_url = minio_client.presigned_get_object(
-        MINIO_BUCKET, final_object_name, expires=timedelta(days=7),
-        response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
-    )
+        from io import BytesIO
+        minio_client.put_object(
+            MINIO_BUCKET, final_object_name,
+            data=BytesIO(file_data), length=len(file_data), content_type="video/mp4",
+        )
+
+        presigned_url = minio_client.presigned_get_object(
+            MINIO_BUCKET, final_object_name, expires=timedelta(days=7),
+            response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
+        )
+    except Exception as ex_m:
+        print(f"[pipeline warning] MinIO upload threw {ex_m}, using local demo-videos URL...")
+        presigned_url = f"http://localhost:8000/demo-videos/{final_object_name}"
 
     if request.job_id:
         update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")
@@ -476,3 +487,31 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         "script": generated_script,
         "object_name": final_object_name
     }
+
+
+@router.get("/past-reels")
+def list_past_reels():
+    """Returns a list of all previously generated real estate reels from local storage."""
+    demo_dir = "demo_clips"
+    if not os.path.exists(demo_dir):
+        return []
+
+    reels = []
+    from datetime import datetime
+    for filename in os.listdir(demo_dir):
+        if filename.startswith("reel_") or filename.startswith("final_") or filename.startswith("highlighted_"):
+            filepath = os.path.join(demo_dir, filename)
+            stat = os.stat(filepath)
+            size_mb = round(stat.st_size / (1024 * 1024), 2)
+            mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%d %b %Y, %I:%M %p")
+            reels.append({
+                "object_name": filename,
+                "filename": filename,
+                "url": f"http://localhost:8000/demo-videos/{filename}",
+                "size_mb": size_mb,
+                "created_at": mtime
+            })
+
+    # Sort newest first
+    reels.sort(key=lambda x: x["created_at"], reverse=True)
+    return reels

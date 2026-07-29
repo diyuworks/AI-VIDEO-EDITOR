@@ -54,6 +54,16 @@ interface UploadedClip {
   url: string;
 }
 
+interface PastReel {
+  id: string;
+  filename: string;
+  title: string;
+  clean_name: string;
+  url: string;
+  size_mb: number;
+  created_at: string;
+}
+
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -77,6 +87,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
+  // Past Reels Gallery State
+  const [pastReels, setPastReels] = useState<PastReel[]>([]);
+  const [isLoadingPastReels, setIsLoadingPastReels] = useState<boolean>(false);
+
   // Single Video States
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
   const [singleVideoUrl, setSingleVideoUrl] = useState<string | null>(null);
@@ -93,12 +107,27 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
-  // Fetch uploaded clips on mount (disabled historical database fetch to start clean)
+  // Fetch past reels on mount
   useEffect(() => {
-    // We start with a completely clean workspace, no history loaded
     setUploadedClips([]);
     setSelectedClips([]);
+    fetchPastReels();
   }, []);
+
+  const fetchPastReels = async () => {
+    setIsLoadingPastReels(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/past-reels`);
+      if (res.ok) {
+        const data = await res.json();
+        setPastReels(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch past reels:", err);
+    } finally {
+      setIsLoadingPastReels(false);
+    }
+  };
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const moveClipUp = (index: number) => {
@@ -259,6 +288,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       const finalUrl = reelData.video_url || reelData.url;
       setMultiClipVideoUrl(finalUrl);
       setMultiClipStage("done");
+      fetchPastReels();
     } catch (err: any) {
       setMultiClipError(err.message || "Something went wrong during reel generation");
       setMultiClipStage("error");
@@ -808,6 +838,69 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               >
                 Try Again
               </button>
+            </div>
+          )}
+        </section>
+
+        {/* 📊 SECTION 2: PAST GENERATED REELS GALLERY */}
+        <section className="bg-white border border-slate-200 shadow-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-6 text-slate-800">
+          <div className="border-b border-slate-100 pb-4 flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-[#0D473B] flex items-center gap-2.5">
+                📊 Past Generated Reels Gallery
+              </h2>
+              <p className="text-sm font-semibold text-slate-500 mt-1">
+                Browse, preview & re-download all previously generated Jamin24 property reels.
+              </p>
+            </div>
+            <button
+              onClick={fetchPastReels}
+              disabled={isLoadingPastReels}
+              className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-[#0D473B] font-bold rounded-2xl text-xs sm:text-sm border border-emerald-200 transition flex items-center gap-2 shadow-sm disabled:opacity-50"
+            >
+              {isLoadingPastReels ? "⏳ Refreshing..." : "🔄 Refresh Gallery"}
+            </button>
+          </div>
+
+          {pastReels.length === 0 ? (
+            <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center text-slate-500 font-semibold text-sm sm:text-base bg-slate-50/50">
+              📹 No past generated reels found yet. Merge your first clip above to see your generated reels here!
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {pastReels.map((reel) => (
+                <div
+                  key={reel.id}
+                  className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex flex-col justify-between space-y-4 hover:border-[#0D473B]/50 transition shadow-sm hover:shadow-md"
+                >
+                  <div className="space-y-3">
+                    <div className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-200 aspect-video flex items-center justify-center">
+                      <video
+                        src={reel.url}
+                        controls
+                        preload="metadata"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="pt-1">
+                      <h4 className="font-extrabold text-[#0D473B] text-base truncate" title={reel.title}>
+                        {reel.title}
+                      </h4>
+                      <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mt-1">
+                        <span>📅 {reel.created_at}</span>
+                        <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-mono font-bold">{reel.size_mb} MB</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleDownload(reel.url)}
+                    className="w-full py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl text-xs sm:text-sm transition shadow-sm flex items-center justify-center gap-2"
+                  >
+                    ⬇️ Download Reel
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </section>

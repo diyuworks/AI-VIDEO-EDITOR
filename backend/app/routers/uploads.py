@@ -163,14 +163,45 @@ def list_videos(session: Session = Depends(get_session)):
     return videos
 
 
-@router.get("/videos/{object_name}")
-def get_video(object_name: str, session: Session = Depends(get_session)):
-    video = session.exec(
-        select(VideoRecord).where(VideoRecord.object_name == object_name)
-    ).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    return video
+@router.get("/past-reels")
+def list_past_reels():
+    """Returns a list of all previously generated AI real estate reels."""
+    demo_dir = "demo_clips"
+    if not os.path.exists(demo_dir):
+        return []
+
+    reels = []
+    import glob
+    from datetime import datetime
+
+    files = glob.glob(os.path.join(demo_dir, "*"))
+    # Filter files starting with reel_, final_, or highlighted_
+    reel_files = [f for f in files if os.path.basename(f).startswith(("reel_", "final_", "highlighted_")) and f.endswith(".mp4")]
+    
+    # Sort newest first
+    reel_files.sort(key=os.path.getmtime, reverse=True)
+
+    for idx, filepath in enumerate(reel_files):
+        fname = os.path.basename(filepath)
+        size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 2)
+        mtime = os.path.getmtime(filepath)
+        formatted_date = datetime.fromtimestamp(mtime).strftime("%d %b %Y, %I:%M %p")
+        
+        # Friendly title
+        clean_name = fname.replace("reel_", "").replace("final_", "").replace("highlighted_", "")
+        title = f"Jamin24 Real Estate Reel #{len(reel_files) - idx}"
+
+        reels.append({
+            "id": fname,
+            "filename": fname,
+            "title": title,
+            "clean_name": clean_name,
+            "url": f"http://localhost:8000/demo-videos/{fname}",
+            "size_mb": size_mb,
+            "created_at": formatted_date,
+        })
+
+    return reels
 
 
 from fastapi import Request
