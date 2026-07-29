@@ -21,7 +21,7 @@ function App() {
 
   useEffect(() => {
     // Silent website visit notification to the backend
-    fetch('http://localhost:4005/visit', {
+    fetch('https://reel-backend.jamin24.com/visit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

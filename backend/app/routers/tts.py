@@ -82,7 +82,7 @@ async def generate_tts(request: TTSRequest):
         return {
             'success': True,
             'audio_id': file_id,
-            'audio_url': f'http://localhost:4005/tts-file/{filename}',
+            'audio_url': f'https://reel-backend.jamin24.com/tts-file/{filename}',
             'word_boundaries': final_boundaries
         }
     except Exception as e:

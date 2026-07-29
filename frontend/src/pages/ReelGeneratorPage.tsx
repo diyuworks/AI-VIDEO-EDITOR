@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
-const API_BASE_URL = "http://localhost:4005";
+const API_BASE_URL = "https://reel-backend.jamin24.com";
 
 interface Point {
   x: number;

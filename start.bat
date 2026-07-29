@@ -9,6 +9,6 @@ echo Starting Vite Frontend...
 start cmd /k "cd frontend && npm run dev"
 
 echo 🚀 Both servers started in separate windows!
-echo Backend: http://localhost:4005
+echo Backend: https://reel-backend.jamin24.com
 echo Frontend: http://localhost:5173
 pause

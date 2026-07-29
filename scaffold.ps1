@@ -92,7 +92,7 @@ pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
-Visit http://localhost:4005/health to confirm it is running.
+Visit https://reel-backend.jamin24.com/health to confirm it is running.
 
 ## Local dev (with Docker Compose)
 See ../../infra/docker/docker-compose.yml — run from repo root:
@@ -223,7 +223,7 @@ function App() {
   const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "unreachable">("checking")
 
   useEffect(() => {
-    fetch("http://localhost:4005/health")
+    fetch("https://reel-backend.jamin24.com/health")
       .then((res) => res.json())
       .then(() => setApiStatus("connected"))
       .catch(() => setApiStatus("unreachable"))

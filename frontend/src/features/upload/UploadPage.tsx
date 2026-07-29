@@ -11,8 +11,8 @@ interface ReferenceVideo {
 }
 
 const MAX_REFERENCE_VIDEOS = 5
-const UPLOAD_ENDPOINT = 'http://localhost:4005/upload'
-const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:4005/upload-reference'
+const UPLOAD_ENDPOINT = 'https://reel-backend.jamin24.com/upload'
+const UPLOAD_REFERENCE_ENDPOINT = 'https://reel-backend.jamin24.com/upload-reference'
 
 interface UploadResult {
   success: boolean

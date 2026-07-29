@@ -8,5 +8,5 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; & .\v
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev"
 
 Write-Host "🚀 Backend and Frontend are starting up in separate windows..." -ForegroundColor Green
-Write-Host "Backend API: http://localhost:4005" -ForegroundColor Cyan
+Write-Host "Backend API: https://reel-backend.jamin24.com" -ForegroundColor Cyan
 Write-Host "Frontend Web: http://localhost:5173" -ForegroundColor Cyan
