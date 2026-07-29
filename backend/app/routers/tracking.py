@@ -24,12 +24,17 @@ def track_boundary(request: TrackingRequest):
 
     temp_dir = tempfile.mkdtemp()
     source_local_path = os.path.join(temp_dir, "track_source.mp4")
-    try:
-        minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
-    except Exception as e:
-        print(f"[tracking] MinIO download failed for {request.object_name}: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=404, detail=f"File not found in MinIO: {str(e)}")
+    demo_p = os.path.join("demo_clips", request.object_name)
+    if os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
+        import shutil
+        shutil.copy(demo_p, source_local_path)
+    else:
+        try:
+            minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
+        except Exception as e:
+            print(f"[tracking] MinIO download failed for {request.object_name}: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
 
     cap = cv2.VideoCapture(source_local_path)
     if not cap.isOpened():
@@ -45,7 +50,7 @@ def track_boundary(request: TrackingRequest):
         raise HTTPException(status_code=400, detail="Could not read video frames for tracking.")
 
     orig_h, orig_w = prev_frame.shape[:2]
-    MAX_W, MAX_H = 1080, 1920
+    MAX_W, MAX_H = 480, 854
     scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
 
     if scale_factor < 1.0:

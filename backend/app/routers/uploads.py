@@ -1,4 +1,6 @@
 import uuid
+import os
+import tempfile
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -21,12 +23,22 @@ minio_client = Minio(
 )
 
 def init_minio():
-    try:
-        if not minio_client.bucket_exists(MINIO_BUCKET):
-            minio_client.make_bucket(MINIO_BUCKET)
-        print("MinIO bucket initialized successfully.")
-    except Exception as e:
-        print(f"Warning: Could not connect to MinIO during startup. {e}")
+    """Initialize MinIO bucket with a timeout so app startup never hangs."""
+    import threading
+
+    def _try_init():
+        try:
+            if not minio_client.bucket_exists(MINIO_BUCKET):
+                minio_client.make_bucket(MINIO_BUCKET)
+            print("MinIO bucket initialized successfully.")
+        except Exception as e:
+            print(f"Warning: Could not connect to MinIO during startup. {e}")
+
+    t = threading.Thread(target=_try_init, daemon=True)
+    t.start()
+    t.join(timeout=5)  # Wait max 5 seconds, then proceed regardless
+    if t.is_alive():
+        print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -45,16 +57,39 @@ def upload_video(file: UploadFile = File(...), session: Session = Depends(get_se
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
-    try:
-        minio_client.put_object(
-            MINIO_BUCKET,
-            object_name,
-            data=BytesIO(contents),
-            length=len(contents),
-            content_type=file.content_type,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed (MinIO might be down): {str(e)}")
+    # Always save a local copy in demo_clips for guaranteed 100% offline & fast processing
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    import shutil
+    local_path = os.path.join(demo_dir, object_name)
+    with open(local_path, "wb") as f:
+        f.write(contents)
+
+    # Try MinIO upload in background thread with 3s timeout (local copy is already safe)
+    import threading
+    def _minio_upload():
+        temp_dir = tempfile.mkdtemp()
+        temp_upload_path = os.path.join(temp_dir, object_name)
+        try:
+            shutil.copy(local_path, temp_upload_path)
+            minio_client.fput_object(
+                MINIO_BUCKET,
+                object_name,
+                temp_upload_path,
+                content_type=file.content_type or "video/mp4",
+            )
+        except Exception as e:
+            print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
+        finally:
+            try:
+                if os.path.exists(temp_upload_path):
+                    os.remove(temp_upload_path)
+                os.rmdir(temp_dir)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_minio_upload, daemon=True)
+    t.start()
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
@@ -91,16 +126,26 @@ def upload_reference_video(file: UploadFile = File(...)):
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
+    # Always save a local copy in demo_clips for guaranteed offline processing
+    demo_dir = "demo_clips"
+    os.makedirs(demo_dir, exist_ok=True)
+    local_ref_path = os.path.join(demo_dir, object_name)
+    with open(local_ref_path, "wb") as f:
+        f.write(contents)
+
     try:
+        # Calculate optimal part_size to avoid S3 multipart upload timeouts
+        part_size = max(10 * 1024 * 1024, len(contents) // 100) if len(contents) > 10 * 1024 * 1024 else 0
         minio_client.put_object(
             MINIO_BUCKET,
             object_name,
             data=BytesIO(contents),
             length=len(contents),
             content_type=file.content_type,
+            part_size=part_size
         )
-    except S3Error as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    except Exception as e:
+        print(f"[upload-reference warning] MinIO upload threw {e}, using local storage copy...")
 
     file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
 
@@ -118,14 +163,45 @@ def list_videos(session: Session = Depends(get_session)):
     return videos
 
 
-@router.get("/videos/{object_name}")
-def get_video(object_name: str, session: Session = Depends(get_session)):
-    video = session.exec(
-        select(VideoRecord).where(VideoRecord.object_name == object_name)
-    ).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    return video
+@router.get("/past-reels")
+def list_past_reels():
+    """Returns a list of all previously generated AI real estate reels."""
+    demo_dir = "demo_clips"
+    if not os.path.exists(demo_dir):
+        return []
+
+    reels = []
+    import glob
+    from datetime import datetime
+
+    files = glob.glob(os.path.join(demo_dir, "*"))
+    # Filter files starting with reel_, final_, or highlighted_
+    reel_files = [f for f in files if os.path.basename(f).startswith(("reel_", "final_", "highlighted_")) and f.endswith(".mp4")]
+    
+    # Sort newest first
+    reel_files.sort(key=os.path.getmtime, reverse=True)
+
+    for idx, filepath in enumerate(reel_files):
+        fname = os.path.basename(filepath)
+        size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 2)
+        mtime = os.path.getmtime(filepath)
+        formatted_date = datetime.fromtimestamp(mtime).strftime("%d %b %Y, %I:%M %p")
+        
+        # Friendly title
+        clean_name = fname.replace("reel_", "").replace("final_", "").replace("highlighted_", "")
+        title = f"Jamin24 Real Estate Reel #{len(reel_files) - idx}"
+
+        reels.append({
+            "id": fname,
+            "filename": fname,
+            "title": title,
+            "clean_name": clean_name,
+            "url": f"http://localhost:8000/demo-videos/{fname}",
+            "size_mb": size_mb,
+            "created_at": formatted_date,
+        })
+
+    return reels
 
 
 from fastapi import Request
