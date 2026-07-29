@@ -172,14 +172,13 @@ async def merge_clips(request: MergeClipsRequest):
                 .filter('pad', 720, 1280, '(ow-iw)/2', '(oh-ih)/2')
                 .filter('setsar', '1')
                 .filter('format', 'yuv420p')
-                .filter('setpts', '0.666*PTS') # Speed up video by 1.5x for even shorter gaps between highlights
             )
             
-            # Normalize audio to 44.1kHz stereo, speed up 1.5x, or generate silence if missing
+            # Normalize audio to 44.1kHz stereo, or generate silence if missing
             if has_audio:
-                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atempo', '1.5')
+                aud = ffmpeg.input(p).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo')
             else:
-                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration * 0.666).audio
+                aud = ffmpeg.input('anullsrc', f='lavfi', t=duration).audio
                 
             streams.append(vid)
             streams.append(aud)
@@ -375,6 +374,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
         if os.path.exists(end_screen_path):
             image_stream = ffmpeg.input(end_screen_path, loop=1, t=end_screen_duration)
+            
             image_scaled = (
                 image_stream
                 .filter('fps', fps=25)
@@ -387,12 +387,17 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         else:
             video_for_subs = video_scaled
 
-        # Overlay logo watermark if jamin24_logo.png exists in assets/ folder
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "jamin24_logo.png")
+        # Overlay logo watermark if logo.png exists in assets/ folder
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo.png")
         if os.path.exists(logo_path):
             logo_input = ffmpeg.input(logo_path)
-            logo_scaled = logo_input.filter('scale', 120, -1)
-            video_for_subs = ffmpeg.overlay(video_for_subs, logo_scaled, x='main_w-overlay_w-20', y='20')
+            # Apply 95% opacity for better visibility
+            logo_alpha = logo_input.filter('colorchannelmixer', aa=0.95)
+            
+            # LOGO (Bottom-Center) - 30% of reel width (increased size)
+            logo_w = int(reel_width * 0.30)
+            scaled_logo = logo_alpha.filter('scale', logo_w, -1)
+            video_for_subs = ffmpeg.overlay(video_for_subs, scaled_logo, x='(main_w-overlay_w)/2', y='main_h-overlay_h-40')
         
         if not TEMPORARY_DISABLE_VOICEOVER:
             # Captions removed — clean video without text overlay, sirf voiceover audio
@@ -415,14 +420,14 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             else:
                 audio_stream = main_audio
                 
-            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
         else:
             filtered_video = video_for_subs
             if has_audio:
                 audio_stream = input_video.audio
-                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac', **{'preset': 'ultrafast'})
             else:
-                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264')
+                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264', **{'preset': 'ultrafast'})
         
         (
             ffmpeg_out

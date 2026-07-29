@@ -15,18 +15,14 @@ class OverlayRequest(BaseModel):
     object_name: str
     polygon_per_frame: List[List[List[float]]]  # Step 3 ka output
     highlight_color: str = "#FFEB3B"  # yellow, default
-    border_thickness: int = 4
+    border_thickness: int = 8
     label: Optional[str] = None  # plot name / label text
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
-<<<<<<< HEAD
     text_position: str = "middle"  # "middle" or "outro"
-=======
-    text_position: str = "middle"
     price: Optional[str] = None  # e.g., ₹25 Lakhs
     size: Optional[str] = None  # e.g., 2000 SqFt
     road_info: Optional[str] = None  # e.g., 60FT Highway | 100m
->>>>>>> origin/diya
 
 
 def hex_to_bgr(hex_color: str):
@@ -120,24 +116,39 @@ def render_overlay(request: OverlayRequest):
         if os.path.exists(ft_path):
             fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
 
-    success, first_frame = cap.read()
-    if success and len(request.polygon_per_frame) > 0:
-        if scale_factor < 1.0:
-            first_frame = cv2.resize(first_frame, (width, height), interpolation=cv2.INTER_AREA)
+    if len(request.polygon_per_frame) > 0:
+        # Set Animation Timings (Draw-in ~0.4s)
+        ANIM_FRAMES = int(fps * 0.4) 
+        FADE_FRAMES = int(fps * 0.25)
+        
+        frame_idx = 0
+        total_tracked_frames = len(request.polygon_per_frame)
 
-        raw_pts = np.array(request.polygon_per_frame[0], dtype=np.float32)
-        if scale_factor < 1.0:
-            raw_pts = raw_pts * scale_factor
-        polygon_points = raw_pts.astype(np.int32)
-        M = len(polygon_points)
-        
-        # Freeze for 7.5 seconds
-        freeze_frames_count = int(fps * 7.5)
-        ANIM_FRAMES = int(fps * 1.5)
-        FADE_FRAMES = int(fps * 0.75)
-        
-        for frame_idx in range(freeze_frames_count):
-            frame = first_frame.copy()
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
+
+            if scale_factor < 1.0:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+            # Get tracked polygon for current frame
+            if frame_idx < total_tracked_frames:
+                raw_pts = np.array(request.polygon_per_frame[frame_idx], dtype=np.float32)
+            elif total_tracked_frames > 0:
+                raw_pts = np.array(request.polygon_per_frame[-1], dtype=np.float32)
+            else:
+                raw_pts = None
+
+            if raw_pts is None or len(raw_pts) == 0:
+                out.write(frame)
+                frame_idx += 1
+                continue
+                
+            if scale_factor < 1.0:
+                raw_pts = raw_pts * scale_factor
+            polygon_points = raw_pts.astype(np.int32)
+            M = len(polygon_points)
             
             if M >= 3:
                 if frame_idx < ANIM_FRAMES:
@@ -347,18 +358,16 @@ def render_overlay(request: OverlayRequest):
                             frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
             out.write(frame)
-
-        # Write first frame unhighlighted for smooth transition
-        out.write(first_frame)
-
-    # Write remaining video frames
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-        if scale_factor < 1.0:
-            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
-        out.write(frame)
+            frame_idx += 1
+    else:
+        # Write remaining video frames (or all frames if no polygon)
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
+            if scale_factor < 1.0:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+            out.write(frame)
 
     cap.release()
     out.release()
