@@ -16,6 +16,72 @@ class TrackingRequest(BaseModel):
     object_name: str
     initial_points: List[Point]
 
+class AutoDetectRequest(BaseModel):
+    object_name: str
+
+@router.post("/auto-detect-boundary")
+def auto_detect_boundary(request: AutoDetectRequest):
+    from app.routers.uploads import minio_client
+    from app.config import MINIO_BUCKET
+
+    temp_dir = tempfile.mkdtemp()
+    source_local_path = os.path.join(temp_dir, "detect_source.mp4")
+    try:
+        minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
+    except Exception as e:
+        demo_p = os.path.join("demo_clips", request.object_name)
+        if os.path.exists(demo_p):
+            import shutil
+            shutil.copy(demo_p, source_local_path)
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+
+    cap = cv2.VideoCapture(source_local_path)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret or frame is None:
+        raise HTTPException(status_code=400, detail="Could not read video frame")
+
+    h, w = frame.shape[:2]
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 30, 100)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    best_pts = []
+    if contours:
+        max_area = 0
+        target_cnt = None
+        for c in contours:
+            area = cv2.contourArea(c)
+            if 0.05 * (w * h) < area < 0.95 * (w * h):
+                if area > max_area:
+                    max_area = area
+                    target_cnt = c
+
+        if target_cnt is not None:
+            epsilon = 0.03 * cv2.arcLength(target_cnt, True)
+            approx = cv2.approxPolyDP(target_cnt, epsilon, True)
+            hull = cv2.convexHull(approx)
+            for p in hull:
+                best_pts.append({"x": float(p[0][0]), "y": float(p[0][1])})
+
+    if len(best_pts) < 3:
+        margin_x = float(w * 0.25)
+        margin_y = float(h * 0.30)
+        best_pts = [
+            {"x": margin_x, "y": margin_y},
+            {"x": float(w - margin_x), "y": margin_y},
+            {"x": float(w - margin_x), "y": float(h - margin_y)},
+            {"x": margin_x, "y": float(h - margin_y)}
+        ]
+
+    return {"points": best_pts}
+
+
 @router.post("/track-boundary")
 def track_boundary(request: TrackingRequest):
     import traceback

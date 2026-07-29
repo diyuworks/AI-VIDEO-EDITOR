@@ -84,6 +84,28 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     setPoints((prev) => [...prev, { x, y }]);
   };
 
+  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+
+  const handleAutoDetect = async () => {
+    try {
+      setIsAutoDetecting(true);
+      const res = await fetch(`${API_BASE_URL}/auto-detect-boundary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ object_name: objectName }),
+      });
+      if (!res.ok) throw new Error("Auto-detect failed");
+      const data = await res.json();
+      if (data.points && data.points.length >= 3) {
+        setPoints(data.points);
+      }
+    } catch (e: any) {
+      alert("Could not auto-detect plot boundary: " + e.message);
+    } finally {
+      setIsAutoDetecting(false);
+    }
+  };
+
   const handleUndo = () => {
     setPoints((prev) => prev.slice(0, -1));
   };
@@ -104,7 +126,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
     <div className="flex flex-col items-center gap-4 w-full">
       <div className="text-center space-y-1">
         <h4 className="text-xs font-black text-[#0D473B] uppercase tracking-wider">
-          📍 Click Corners to Mark Boundary
+          📍 Click Corners to Mark Boundary (or use Optional AI Auto-Detect)
         </h4>
         <p className="text-[11px] text-slate-500 font-medium">
           Click corners along the edges of the land plot (minimum 3 points required)
@@ -127,7 +149,15 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
         />
       </div>
 
-      <div className="flex items-center gap-3 pt-1">
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+        <button
+          onClick={handleAutoDetect}
+          disabled={isAutoDetecting}
+          className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#0D473B] font-bold rounded-xl border border-emerald-300 transition text-xs flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+          title="Optional: Let AI computer vision auto-detect land plot shape"
+        >
+          {isAutoDetecting ? "⏳ Auto-Detecting..." : "✨ Auto-Detect Plot (AI)"}
+        </button>
         <button
           onClick={handleUndo}
           className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl border border-slate-200 transition text-xs flex items-center gap-1.5 shadow-sm"
