@@ -651,7 +651,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       {/* ===== PREMIUM BOUNDARY MARKER MODAL POPUP ===== */}
       {activeMarkingClip && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
-          <div className="w-full max-w-4xl bg-white p-6 sm:p-8 md:p-10 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto animate-in fade-in zoom-in duration-200 space-y-6">
+          <div className="w-full max-w-6xl bg-white p-6 md:p-8 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto animate-in fade-in zoom-in duration-200">
             {/* Close Button */}
             <button
               onClick={() => setActiveMarkingClip(null)}
@@ -662,7 +662,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             </button>
 
             {/* Header Section */}
-            <div>
+            <div className="mb-6">
               <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
                 <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
                 Mark Plot Details & Boundary
@@ -675,103 +675,131 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </p>
             </div>
 
-            {/* Form Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="text-base">🏷️</span> Plot Label / Name
-                </label>
-                <input
-                  type="text"
-                  value={activeMarkingLabel}
-                  onChange={(e) => setActiveMarkingLabel(e.target.value)}
-                  placeholder="e.g. Premium Corner Plot"
-                  className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-bold w-full transition shadow-sm"
-                />
+            <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
+              {/* LEFT COLUMN: Form Details */}
+              <div className="w-full lg:w-[45%] flex flex-col gap-6 h-full justify-between">
+                
+                <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-base">🏷️</span> Plot Label / Name
+                    </label>
+                    <input
+                      type="text"
+                      value={activeMarkingLabel}
+                      onChange={(e) => setActiveMarkingLabel(e.target.value)}
+                      placeholder="e.g. Premium Corner Plot"
+                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-bold w-full transition shadow-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-base">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={plotPrice}
+                        onChange={(e) => setPlotPrice(e.target.value)}
+                        placeholder="e.g. ₹25 Lakhs"
+                        className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm font-bold w-full transition shadow-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-base">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={plotSize}
+                        onChange={(e) => setPlotSize(e.target.value)}
+                        placeholder="e.g. 1.5 Vigha"
+                        className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold w-full transition shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-base">🛣️</span> Road / Highway Distance
+                    </label>
+                    <input
+                      type="text"
+                      value={roadInfo}
+                      onChange={(e) => setRoadInfo(e.target.value)}
+                      placeholder="e.g. 60FT Highway | 100m"
+                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-sm font-bold w-full transition shadow-sm"
+                    />
+                  </div>
+
+                  {/* Visual Effects */}
+                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-3 mt-2">
+                    <p className="text-xs font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-base">✨</span> 3D Visual Effects
+                    </p>
+                    <div className="flex flex-wrap gap-3 w-full">
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enableFarmhouse}
+                          onChange={(e) => setEnableFarmhouse(e.target.checked)}
+                          className="w-4 h-4 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-sm">🏡 Farmhouse</span>
+                      </label>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enableFountain}
+                          onChange={(e) => setEnableFountain(e.target.checked)}
+                          className="w-4 h-4 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-sm">🚰 Fountain</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instructions Box to fill space perfectly */}
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-5 rounded-2xl border border-amber-200/50 shadow-inner mt-6 flex-1 flex flex-col justify-center">
+                  <h4 className="text-sm font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-3">
+                    💡 Expert Tips for Best Results
+                  </h4>
+                  <ul className="text-xs text-amber-900/80 space-y-2.5 font-medium">
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500">✅</span> AI will automatically track these boundary points throughout the entire drone video!
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500">✅</span> 3D Models (Farmhouse/Fountain) will be perspectively locked to your custom marked boundary.
+                    </li>
+                  </ul>
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="text-base">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                </label>
-                <input
-                  type="text"
-                  value={plotPrice}
-                  onChange={(e) => setPlotPrice(e.target.value)}
-                  placeholder="e.g. ₹25 Lakhs"
-                  className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm font-bold w-full transition shadow-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="text-base">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                </label>
-                <input
-                  type="text"
-                  value={plotSize}
-                  onChange={(e) => setPlotSize(e.target.value)}
-                  placeholder="e.g. 1.5 Vigha"
-                  className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold w-full transition shadow-sm"
+
+              {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
+              <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
+                <BoundaryMarker
+                  objectName={activeMarkingClip}
+                  onBoundaryConfirmed={async (points) => {
+                    const clipName = activeMarkingClip;
+                    const label = activeMarkingLabel;
+                    const pr = plotPrice;
+                    const sz = plotSize;
+                    const rd = roadInfo;
+                    const clr = highlightColor;
+                    const fh = enableFarmhouse;
+                    const ft = enableFountain;
+                    const tp = textPosition || "middle";
+                    setActiveMarkingClip(null);
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
+                  }}
                 />
               </div>
             </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="text-base">🛣️</span> Road / Highway Distance
-              </label>
-              <input
-                type="text"
-                value={roadInfo}
-                onChange={(e) => setRoadInfo(e.target.value)}
-                placeholder="e.g. 60FT Highway | 100m"
-                className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-sm font-bold w-full transition shadow-sm"
-              />
-            </div>
-
-            {/* Visual Effects */}
-            <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <p className="text-xs font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5 min-w-max">
-                <span className="text-base">✨</span> 3D Visual Effects
-              </p>
-              <div className="flex flex-wrap gap-3 w-full">
-                <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-2.5 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                  <input
-                    type="checkbox"
-                    checked={enableFarmhouse}
-                    onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                    className="w-4 h-4 accent-[#0D473B]"
-                  />
-                  <span className="font-bold text-sm">🏡 Farmhouse</span>
-                </label>
-                <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-2.5 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                  <input
-                    type="checkbox"
-                    checked={enableFountain}
-                    onChange={(e) => setEnableFountain(e.target.checked)}
-                    className="w-4 h-4 accent-[#0D473B]"
-                  />
-                  <span className="font-bold text-sm">🚰 Fountain</span>
-                </label>
-              </div>
-            </div>
-
-            {/* BoundaryMarker Canvas Component */}
-            <BoundaryMarker
-              objectName={activeMarkingClip}
-              onBoundaryConfirmed={async (points) => {
-                const clipName = activeMarkingClip;
-                const label = activeMarkingLabel;
-                const pr = plotPrice;
-                const sz = plotSize;
-                const rd = roadInfo;
-                const clr = highlightColor;
-                const fh = enableFarmhouse;
-                const ft = enableFountain;
-                const tp = textPosition || "middle";
-                setActiveMarkingClip(null);
-                await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
-              }}
-            />
           </div>
         </div>
       )}
