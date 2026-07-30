@@ -377,20 +377,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   // Async tracking and rendering for multiple regions
   const handleMultiClipBoundaryConfirmed = async (
     clipName: string,
-<<<<<<< HEAD
-    points: Point[],
-    label: string,
-    farmhouse: boolean = false,
-    fountain: boolean = false,
-    petrolPump: boolean = false,
-    txtPos: string = "middle",
-    priceVal: string = "",
-    sizeVal: string = "",
-    roadVal: string = "",
-    colorVal: string = "#FFEB3B"
-=======
     regionsToTrack: RegionHighlight[]
->>>>>>> origin/jay
   ) => {
     if (regionsToTrack.length === 0) return;
     
@@ -399,20 +386,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         ...prev,
         [clipName]: {
           objectName: clipName,
-<<<<<<< HEAD
-          points,
-          label,
-          price: priceVal,
-          size: sizeVal,
-          roadInfo: roadVal,
-          highlightColor: colorVal,
-          enableFarmhouse: farmhouse,
-          enableFountain: fountain,
-          enablePetrolPump: petrolPump,
-          textPosition: txtPos,
-=======
           regions: regionsToTrack,
->>>>>>> origin/jay
           isTracking: true,
           isDone: false,
         },
@@ -420,28 +394,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       let currentObjName = clipName;
 
-<<<<<<< HEAD
-      const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          object_name: clipName,
-          polygon_per_frame: trackData.polygon_per_frame,
-          highlight_color: colorVal || "#FFEB3B",
-          border_thickness: 4,
-          label: label || undefined,
-          enable_farmhouse_overlay: farmhouse,
-          enable_fountain_overlay: fountain,
-          enable_petrol_pump_overlay: petrolPump,
-          text_position: txtPos,
-          price: priceVal || undefined,
-          size: sizeVal || undefined,
-          road_info: roadVal || undefined,
-        }),
-      });
-      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
-      const overlayData = await overlayRes.json();
-=======
       for (let i = 0; i < regionsToTrack.length; i++) {
         const reg = regionsToTrack[i];
         
@@ -469,6 +421,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             label: reg.label || undefined,
             enable_farmhouse_overlay: reg.enableFarmhouse,
             enable_fountain_overlay: reg.enableFountain,
+            enable_petrol_pump_overlay: reg.enablePetrolPump || false,
             text_position: reg.textPosition,
             price: reg.price || undefined,
             size: reg.size || undefined,
@@ -480,7 +433,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         
         currentObjName = overlayData.output_object_name;
       }
->>>>>>> origin/jay
 
       setClipHighlights((prev) => ({
         ...prev,
