@@ -392,7 +392,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         },
       }));
 
-      let currentObjName = clipName;
+      const regionsPayload = [];
 
       for (let i = 0; i < regionsToTrack.length; i++) {
         const reg = regionsToTrack[i];
@@ -409,30 +409,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         if (!trackRes.ok) throw new Error("Boundary tracking failed");
         const trackData = await trackRes.json();
 
-        // Render overlay on the progressively highlighted video
-        const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            object_name: currentObjName,
-            polygon_per_frame: trackData.polygon_per_frame,
-            highlight_color: reg.highlightColor || "#FFEB3B",
-            border_thickness: 4,
-            label: reg.label || undefined,
-            enable_farmhouse_overlay: reg.enableFarmhouse,
-            enable_fountain_overlay: reg.enableFountain,
-            enable_petrol_pump_overlay: reg.enablePetrolPump || false,
-            text_position: reg.textPosition,
-            price: reg.price || undefined,
-            size: reg.size || undefined,
-            road_info: reg.roadInfo || undefined,
-          }),
+        regionsPayload.push({
+          polygon_per_frame: trackData.polygon_per_frame,
+          highlight_color: reg.highlightColor || "#FFEB3B",
+          border_thickness: 4,
+          label: reg.label || undefined,
+          enable_farmhouse_overlay: reg.enableFarmhouse,
+          enable_fountain_overlay: reg.enableFountain,
+          enable_petrol_pump_overlay: reg.enablePetrolPump || false,
+          text_position: reg.textPosition,
+          price: reg.price || undefined,
+          size: reg.size || undefined,
+          road_info: reg.roadInfo || undefined,
         });
-        if (!overlayRes.ok) throw new Error("Overlay rendering failed");
-        const overlayData = await overlayRes.json();
-        
-        currentObjName = overlayData.output_object_name;
       }
+
+      // Render overlay on the ORIGINAL video in a SINGLE pass for all regions
+      const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object_name: clipName,
+          regions: regionsPayload,
+        }),
+      });
+      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
+      const overlayData = await overlayRes.json();
+      
+      const currentObjName = overlayData.output_object_name;
 
       setClipHighlights((prev) => ({
         ...prev,
