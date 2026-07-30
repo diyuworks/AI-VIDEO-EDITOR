@@ -23,6 +23,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   const [points, setPoints] = useState<Point[]>([]);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   useEffect(() => {
     setPoints([]);
@@ -147,32 +148,61 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         </p>
       </div>
 
-      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full py-4 flex items-center justify-center min-h-[300px]">
+      <div className="relative w-full">
+        {/* Zoom Controls Overlay */}
+        <div className="absolute top-4 right-4 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur-sm p-1.5 rounded-xl shadow-lg border border-slate-200">
+          <button 
+            onClick={() => setZoomLevel((z) => Math.min(4, z + 0.5))} 
+            className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-[#0D473B] hover:text-white rounded-lg font-bold text-lg text-slate-700 transition"
+            title="Zoom In"
+          >
+            +
+          </button>
+          <div className="text-[10px] font-black text-center text-slate-500 py-1">{Math.round(zoomLevel * 100)}%</div>
+          <button 
+            onClick={() => setZoomLevel((z) => Math.max(1, z - 0.5))} 
+            className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-[#0D473B] hover:text-white rounded-lg font-bold text-lg text-slate-700 transition"
+            title="Zoom Out"
+          >
+            −
+          </button>
+        </div>
+
+        {/* Loading / Help Overlays (Sticky) */}
         {!imageLoaded && !imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10 gap-3">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10 gap-3 rounded-2xl border-2 border-emerald-100">
             <div className="animate-spin h-10 w-10 border-4 border-[#0D473B] border-t-transparent rounded-full" />
             <p className="text-[#0D473B] text-sm font-semibold">Loading video frame...</p>
           </div>
         )}
         {imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-50 z-10 gap-2 p-6 text-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-50 z-10 gap-2 p-6 text-center rounded-2xl border-2 border-rose-200">
             <p className="text-rose-700 text-sm font-bold">Could not load video frame</p>
             <p className="text-rose-500 text-xs">Make sure backend is running and file is uploaded.</p>
           </div>
         )}
-        {points.length === 0 && imageLoaded && (
+        {points.length === 0 && imageLoaded && zoomLevel === 1 && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
-            <div className="bg-black/60 backdrop-blur-sm text-white text-xs font-bold px-4 py-2 rounded-2xl border border-white/20 shadow-xl">
+            <div className="bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-4 py-2 rounded-2xl border border-white/20 shadow-xl">
               Click on plot corners to mark boundary
             </div>
           </div>
         )}
-        <canvas
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          className="cursor-crosshair block rounded-xl shadow-2xl"
-          style={{ maxWidth: "100%", maxHeight: "50vh", width: "auto", height: "auto" }}
-        />
+
+        {/* Scrollable Canvas Container */}
+        <div className={`rounded-2xl overflow-auto border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full h-[50vh] min-h-[300px] flex ${zoomLevel > 1 ? 'items-start justify-start' : 'items-center justify-center'}`}>
+          <canvas
+            ref={canvasRef}
+            onClick={handleCanvasClick}
+            className="cursor-crosshair block rounded-xl shadow-2xl transition-transform origin-top-left"
+            style={{ 
+              width: zoomLevel === 1 ? "auto" : `${zoomLevel * 100}%`, 
+              maxWidth: zoomLevel === 1 ? "100%" : "none",
+              maxHeight: zoomLevel === 1 ? "100%" : "none",
+              height: "auto"
+            }}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
