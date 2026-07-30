@@ -219,8 +219,16 @@ async def export_reel(request: ReelExportRequest):
             filtered_video = concat_video.filter('subtitles', srt_path_ffmpeg, force_style=style)
             
             input_audio = ffmpeg.input(audio_path)
-            audio_stream = input_audio.audio
-            ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+            
+            if has_audio:
+                total_dur = video_duration + 5.0
+                bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.15').filter('atrim', duration=total_dur)
+                mixed_audio = ffmpeg.filter([input_audio.audio, bg_audio], 'amix', inputs=2, duration='longest')
+                final_audio = mixed_audio
+            else:
+                final_audio = input_audio.audio
+                
+            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac')
         else:
             filtered_video = concat_video
             if has_audio:

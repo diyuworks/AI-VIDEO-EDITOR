@@ -591,8 +591,18 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         if not TEMPORARY_DISABLE_VOICEOVER:
             filtered_video = video_for_subs
             
-            # Use the already concatenated and precisely synced segment audio stream
-            ffmpeg_out = ffmpeg.output(filtered_video, final_audio_stream, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
+            if has_audio:
+                # Loop original audio to cover the full duration (video + 5s outro)
+                # Lower volume to 15% so it acts as background music behind the voiceover
+                bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.15').filter('atrim', duration=total_final_duration)
+                
+                # Mix the TTS voiceover with the background audio
+                final_audio = ffmpeg.filter([final_audio_stream, bg_audio], 'amix', inputs=2, duration='longest')
+            else:
+                final_audio = final_audio_stream
+                
+            # Use the mixed audio stream
+            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
         else:
             filtered_video = video_for_subs
             if has_audio:
