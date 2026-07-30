@@ -122,6 +122,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
       return;
     }
     onBoundaryConfirmed(points);
+    setPoints([]);
   };
 
   const statusColor =
@@ -177,39 +178,42 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full">
         <button
           onClick={() => setPoints((p) => p.slice(0, -1))}
           disabled={points.length === 0}
-          className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl border border-slate-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl border border-slate-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Undo
         </button>
         <button
           onClick={() => setPoints([])}
           disabled={points.length === 0}
-          className="py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl border border-rose-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl border border-rose-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Reset
         </button>
         <button
           onClick={handleConfirm}
           disabled={points.length < 3}
-          className="px-6 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-[2] px-4 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {confirmButtonText}
+          <span>{confirmButtonText}</span>
+          <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
         </button>
 
         {onSaveAndFinish && (
           <button
             onClick={() => {
-              if (points.length < 1) {
-                alert("Please mark at least 1 point to define a highlight");
+              if (points.length < 3) {
+                alert("Please mark at least 3 corner points to define the plot boundary!");
                 return;
               }
               onSaveAndFinish(points);
+              setPoints([]);
             }}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
+            disabled={points.length < 3}
+            className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span>🚀 Save & Process Now</span>
             <span className="text-xs font-medium text-emerald-100">({points.length} Points Marked)</span>

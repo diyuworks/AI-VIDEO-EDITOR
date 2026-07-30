@@ -759,6 +759,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             {/* BoundaryMarker Canvas Component */}
             <BoundaryMarker
               objectName={activeMarkingClip}
+              confirmButtonText="➕ Save & Add Another Highlight"
               onBoundaryConfirmed={async (points) => {
                 const clipName = activeMarkingClip;
                 const label = activeMarkingLabel;
@@ -770,6 +771,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 const ft = enableFountain;
                 const pp = enablePetrolPump;
                 const tp = textPosition || "middle";
+                
+                // Reset form inputs for next highlight
+                setActiveMarkingLabel("");
+                setPlotPrice("");
+                setPlotSize("");
+                setRoadInfo("");
+                setEnableFarmhouse(false);
+                setEnableFountain(false);
+                setEnablePetrolPump(false);
+                
+                await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+              }}
+              onSaveAndFinish={async (points) => {
+                const clipName = activeMarkingClip;
+                const label = activeMarkingLabel;
+                const pr = plotPrice;
+                const sz = plotSize;
+                const rd = roadInfo;
+                const clr = highlightColor;
+                const fh = enableFarmhouse;
+                const ft = enableFountain;
+                const pp = enablePetrolPump;
+                const tp = textPosition || "middle";
+                
                 setActiveMarkingClip(null);
                 await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
               }}
