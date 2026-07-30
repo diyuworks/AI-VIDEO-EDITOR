@@ -147,17 +147,17 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         </p>
       </div>
 
-      <div className="relative rounded-2xl overflow-hidden border-2 border-slate-200/50 shadow-xl bg-[#0a0f1c] w-full py-6 flex items-center justify-center min-h-[300px]">
+      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full py-4 flex items-center justify-center min-h-[300px]">
         {!imageLoaded && !imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f1c] z-10 gap-3">
-            <div className="animate-spin h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full" />
-            <p className="text-slate-300 text-sm font-semibold">Loading video frame...</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10 gap-3">
+            <div className="animate-spin h-10 w-10 border-4 border-[#0D473B] border-t-transparent rounded-full" />
+            <p className="text-[#0D473B] text-sm font-semibold">Loading video frame...</p>
           </div>
         )}
         {imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f1c] z-10 gap-2 p-6 text-center">
-            <p className="text-white text-sm font-bold">Could not load video frame</p>
-            <p className="text-slate-400 text-xs">Make sure backend is running and file is uploaded.</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-50 z-10 gap-2 p-6 text-center">
+            <p className="text-rose-700 text-sm font-bold">Could not load video frame</p>
+            <p className="text-rose-500 text-xs">Make sure backend is running and file is uploaded.</p>
           </div>
         )}
         {points.length === 0 && imageLoaded && (
@@ -171,7 +171,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
           ref={canvasRef}
           onClick={handleCanvasClick}
           className="cursor-crosshair block rounded-xl shadow-2xl"
-          style={{ maxWidth: "100%", maxHeight: "600px", width: "auto", height: "auto" }}
+          style={{ maxWidth: "100%", maxHeight: "50vh", width: "auto", height: "auto" }}
         />
       </div>
 

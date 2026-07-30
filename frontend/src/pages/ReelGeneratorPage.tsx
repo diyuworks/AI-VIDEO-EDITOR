@@ -677,7 +677,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
               {/* LEFT COLUMN: Form Details */}
-              <div className="w-full lg:w-[45%] flex flex-col gap-6 h-full justify-between">
+              <div className="w-full lg:w-[45%] flex flex-col gap-6 lg:gap-8">
                 
                 <div className="flex flex-col gap-6">
                   <div className="flex flex-col gap-1.5">
@@ -762,7 +762,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
 
                 {/* Instructions Box to fill space perfectly */}
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-5 rounded-2xl border border-amber-200/50 shadow-inner mt-6 flex-1 flex flex-col justify-center">
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center">
                   <h4 className="text-sm font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-3">
                     💡 Expert Tips for Best Results
                   </h4>
