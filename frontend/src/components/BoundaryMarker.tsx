@@ -24,135 +24,180 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
+    setPoints([]);
+    setImageLoaded(false);
+    setImageError(false);
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = `${API_BASE_URL}/extract-frame/${objectName}?timestamp=0`;
     img.onload = () => {
       imageRef.current = img;
       setImageLoaded(true);
-      drawCanvas();
     };
+    img.onerror = () => setImageError(true);
   }, [objectName]);
 
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const img = imageRef.current;
     if (!canvas || !img) return;
-
-    canvas.width = img.width;
-    canvas.height = img.height;
-
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     ctx.drawImage(img, 0, 0);
-
     if (points.length > 0) {
-      ctx.strokeStyle = "#FFEB3B";
-      ctx.lineWidth = 4;
-      ctx.fillStyle = "rgba(255, 235, 59, 0.35)";
-
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
-      points.forEach((point) => ctx.lineTo(point.x, point.y));
+      points.forEach((p) => ctx.lineTo(p.x, p.y));
+      if (points.length > 2) ctx.closePath();
+      ctx.fillStyle = "rgba(255, 235, 59, 0.22)";
+      ctx.fill();
+      ctx.shadowColor = "#FFEB3B";
+      ctx.shadowBlur = 14;
+      ctx.strokeStyle = "#FFEB3B";
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      points.forEach((p) => ctx.lineTo(p.x, p.y));
       if (points.length > 2) ctx.closePath();
       ctx.stroke();
-      if (points.length > 2) ctx.fill();
-
-      points.forEach((point) => {
+      ctx.shadowBlur = 0;
+      if (points.length > 1) {
         ctx.beginPath();
-        ctx.arc(point.x, point.y, 7, 0, 2 * Math.PI);
-        ctx.fillStyle = "#FFEB3B";
+        ctx.setLineDash([7, 5]);
+        ctx.moveTo(points[points.length - 1].x, points[points.length - 1].y);
+        ctx.lineTo(points[0].x, points[0].y);
+        ctx.strokeStyle = "rgba(255,235,59,0.5)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      points.forEach((pt, idx) => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 13, 0, 2 * Math.PI);
+        ctx.fillStyle = idx === 0 ? "rgba(255,87,34,0.2)" : "rgba(255,235,59,0.2)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
+        const grad = ctx.createRadialGradient(pt.x - 2, pt.y - 2, 1, pt.x, pt.y, 8);
+        grad.addColorStop(0, idx === 0 ? "#FF7043" : "#FFF176");
+        grad.addColorStop(1, idx === 0 ? "#BF360C" : "#F9A825");
+        ctx.fillStyle = grad;
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "#000000";
+        ctx.strokeStyle = "#1a1a1a";
         ctx.stroke();
+        ctx.font = "bold 10px Arial";
+        ctx.fillStyle = "#000";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${idx + 1}`, pt.x, pt.y);
       });
     }
   };
 
   useEffect(() => {
-    drawCanvas();
-  }, [points]);
+    if (imageLoaded) drawCanvas();
+  }, [points, imageLoaded]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    setPoints((prev) => [...prev, { x, y }]);
-  };
-
-  const handleUndo = () => {
-    setPoints((prev) => prev.slice(0, -1));
-  };
-
-  const handleReset = () => {
-    setPoints([]);
+    setPoints((prev) => [
+      ...prev,
+      { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY },
+    ]);
   };
 
   const handleConfirm = () => {
-    if (points.length < 1) {
-      alert("Please mark at least 1 point to define a highlight");
+    if (points.length < 3) {
+      alert("Please mark at least 3 corner points to define the plot boundary!");
       return;
     }
     onBoundaryConfirmed(points);
   };
 
+  const statusColor =
+    points.length === 0
+      ? "bg-slate-100 border-slate-200 text-slate-500"
+      : points.length < 3
+      ? "bg-amber-50 border-amber-300 text-amber-700"
+      : "bg-emerald-50 border-emerald-300 text-emerald-700";
+
+  const statusText =
+    points.length === 0
+      ? "Click on the plot to start"
+      : points.length < 3
+      ? `${points.length} pt${points.length > 1 ? "s" : ""} - need ${3 - points.length} more`
+      : `${points.length} points - Ready to confirm`;
+
   return (
-    <div className="flex flex-col items-center gap-4 w-full">
-      <div className="text-center space-y-1">
-        <h4 className="text-sm sm:text-base font-black text-[#0D473B] uppercase tracking-wider">
-          📍 Click Corners to Mark Land Plot Boundary
+    <div className="flex flex-col gap-4 w-full mt-4">
+      <div className="flex flex-col items-center justify-center text-center gap-1 mb-2">
+        <h4 className="text-sm font-black text-[#0D473B] uppercase tracking-widest flex items-center gap-2">
+          📍 CLICK CORNERS TO MARK LAND PLOT BOUNDARY
         </h4>
         <p className="text-xs text-slate-500 font-medium">
-          Click on the video frame to mark points for the highlight (minimum 1 point required)
+          Click on the video frame to mark points for the highlight (minimum 3 points required)
         </p>
       </div>
 
-      {!imageLoaded && (
-        <div className="flex items-center gap-2 text-sm text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-5 py-3 rounded-2xl animate-pulse">
-          <div className="animate-spin h-4 w-4 border-2 border-[#0D473B] border-t-transparent rounded-full" />
-          Loading video frame image...
-        </div>
-      )}
-
-      <div className="relative rounded-2xl overflow-hidden border-2 border-[#0D473B]/20 shadow-2xl bg-slate-900 w-full flex justify-center">
+      <div className="relative rounded-2xl overflow-hidden border-2 border-slate-200/50 shadow-xl bg-[#0a0f1c] w-full py-6 flex items-center justify-center min-h-[300px]">
+        {!imageLoaded && !imageError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f1c] z-10 gap-3">
+            <div className="animate-spin h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full" />
+            <p className="text-slate-300 text-sm font-semibold">Loading video frame...</p>
+          </div>
+        )}
+        {imageError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f1c] z-10 gap-2 p-6 text-center">
+            <p className="text-white text-sm font-bold">Could not load video frame</p>
+            <p className="text-slate-400 text-xs">Make sure backend is running and file is uploaded.</p>
+          </div>
+        )}
+        {points.length === 0 && imageLoaded && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+            <div className="bg-black/60 backdrop-blur-sm text-white text-xs font-bold px-4 py-2 rounded-2xl border border-white/20 shadow-xl">
+              Click on plot corners to mark boundary
+            </div>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
-          className="cursor-crosshair max-w-full rounded-xl"
-          style={{ maxHeight: "480px" }}
+          className="cursor-crosshair block rounded-xl shadow-2xl"
+          style={{ maxWidth: "100%", maxHeight: "600px", width: "auto", height: "auto" }}
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+      <div className="grid grid-cols-3 gap-3">
         <button
-          onClick={handleUndo}
-          className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-2xl border border-slate-300 transition text-sm flex items-center gap-2 shadow-sm"
+          onClick={() => setPoints((p) => p.slice(0, -1))}
+          disabled={points.length === 0}
+          className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl border border-slate-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          ↩ Undo Point
+          Undo
         </button>
         <button
-          onClick={handleReset}
-          className="px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-2xl border border-rose-200 transition text-sm flex items-center gap-2 shadow-sm"
+          onClick={() => setPoints([])}
+          disabled={points.length === 0}
+          className="py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl border border-rose-200 transition text-sm flex items-center justify-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          🗑 Reset All
+          Reset
         </button>
         <button
           onClick={handleConfirm}
-          className="px-6 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
+          disabled={points.length < 3}
+          className="px-6 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <span>{confirmButtonText}</span>
-          <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
+          {confirmButtonText}
         </button>
 
         {onSaveAndFinish && (
