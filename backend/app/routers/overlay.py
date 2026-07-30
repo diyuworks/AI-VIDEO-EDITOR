@@ -18,13 +18,7 @@ class RegionOverlayRequest(BaseModel):
     label: Optional[str] = None
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
-<<<<<<< HEAD
     enable_petrol_pump_overlay: bool = False
-    text_position: str = "middle"  # "middle" or "outro"
-    price: Optional[str] = None  # e.g., ₹25 Lakhs
-    size: Optional[str] = None  # e.g., 2000 SqFt
-    road_info: Optional[str] = None  # e.g., 60FT Highway | 100m
-=======
     text_position: str = "middle"
     price: Optional[str] = None
     size: Optional[str] = None
@@ -44,7 +38,6 @@ class OverlayRequest(BaseModel):
     price: Optional[str] = None
     size: Optional[str] = None
     road_info: Optional[str] = None
->>>>>>> origin/jay
 
 
 def hex_to_bgr(hex_color: str):
@@ -193,7 +186,6 @@ def render_overlay(request: OverlayRequest):
                             cv2.line(frame, p_start_tuple, p_end, (0, 0, 0), thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
                             cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request_border_thickness, lineType=cv2.LINE_AA)
                     else:
-<<<<<<< HEAD
                         alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
                     
                     # 4. Highlighted area
@@ -241,11 +233,8 @@ def render_overlay(request: OverlayRequest):
                     # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
                     if request.label and pil_font:
                         min_y_idx = np.argmin(polygon_points[:, 1])
-                        top_pt = polygon_points[min_y_idx]
-=======
                         # Border is complete, draw closed polygon outline with background dimming
                         fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
->>>>>>> origin/jay
                         
                         # 1. Dim background smoothly outside plot (Very subtle so multiple highlights don't turn it pitch black)
                         dim_factor = 1.0 - (0.15 * fade_progress)
