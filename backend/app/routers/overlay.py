@@ -139,19 +139,16 @@ def render_overlay(request: OverlayRequest):
                 request_text_position = region.text_position
                 request_border_thickness = region.border_thickness
 
-                # Get tracked polygon for current frame
                 if frame_idx < len(region.polygon_per_frame):
                     raw_pts = np.array(region.polygon_per_frame[frame_idx], dtype=np.float32)
                 elif len(region.polygon_per_frame) > 0:
                     raw_pts = np.array(region.polygon_per_frame[-1], dtype=np.float32)
-            else:
-                raw_pts = None
+                else:
+                    raw_pts = None
 
                 if raw_pts is None or len(raw_pts) == 0:
-                    out.write(frame)
-                    frame_idx += 1
                     continue
-                    
+
                 if scale_factor < 1.0:
                     raw_pts = raw_pts * scale_factor
                 polygon_points = raw_pts.astype(np.int32)
@@ -298,9 +295,7 @@ def render_overlay(request: OverlayRequest):
                                     text_rgb = (255, 255, 255)  # Crisp White
 
                                 if False:
-                                    # Reuse fast cached text overlay for stationary frames
-                                    mask_alpha = cached_txt_alpha[:, :, np.newaxis]
-                                    frame = (cached_txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
+                                    pass
                                 else:
                                     txt_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
                                     d = ImageDraw.Draw(txt_layer)
@@ -331,7 +326,7 @@ def render_overlay(request: OverlayRequest):
                                     if badge_str:
                                         try:
                                             badge_font_size = max(26, int(font_size * 0.65))
-                                            b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fonts\ariblk.ttf') else pil_font
+                                            b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fontsriblk.ttf') else pil_font
                                             b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
                                             bw = b_bbox[2] - b_bbox[0]
                                             blx = int((width - bw) / 2) if request_text_position == "outro" else int(top_pt[0] - bw / 2)
@@ -349,7 +344,7 @@ def render_overlay(request: OverlayRequest):
                                         try:
                                             road_str = "➔ " + request_road_info.strip().upper()
                                             r_font_size = max(22, int(font_size * 0.55))
-                                            r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fonts\arialbd.ttf') else pil_font
+                                            r_font = ImageFont.truetype("arialbd.ttf", r_font_size) if os.path.exists(r'C:\Windows\Fontsrialbd.ttf') else pil_font
                                             r_bbox = d.textbbox((0, 0), road_str, font=r_font)
                                             rw = r_bbox[2] - r_bbox[0]
                                             rh = r_bbox[3] - r_bbox[1]
@@ -368,10 +363,6 @@ def render_overlay(request: OverlayRequest):
                                     txt_np = np.array(txt_layer)
                                     txt_alpha = (txt_np[:, :, 3] / 255.0)
                                     txt_bgr = cv2.cvtColor(txt_np[:, :, :3], cv2.COLOR_RGB2BGR)
-
-                                    if opacity == 255:
-                                        cached_txt_bgr = txt_bgr
-                                        cached_txt_alpha = txt_alpha
 
                                     mask_alpha = txt_alpha[:, :, np.newaxis]
                                     frame = (txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)

@@ -1,5 +1,5 @@
 from datetime import timedelta
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from sqlmodel import Session, select, delete
 from app.database import get_session, VideoRecord, Caption
 from app.config import MINIO_BUCKET
@@ -84,3 +84,56 @@ def get_captions(object_name: str, session: Session = Depends(get_session)):
             {"start": c.start, "end": c.end, "text": c.text} for c in captions
         ],
     }
+
+@router.post("/transcribe-audio")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Standalone utility endpoint to transcribe uploaded audio directly."""
+    import tempfile
+    import os
+    import shutil
+
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ".mp3"
+    temp_dir = tempfile.mkdtemp()
+    temp_audio_path = os.path.join(temp_dir, f"upload{ext}")
+
+    try:
+        # Save uploaded file
+        with open(temp_audio_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Transcribe with Gujarati language preference
+        segments, info = get_whisper_model().transcribe(
+            temp_audio_path, 
+            beam_size=5, 
+            language="gu", 
+            condition_on_previous_text=False
+        )
+
+        segments_list = []
+        full_transcript = []
+        
+        for segment in segments:
+            text = segment.text.strip()
+            segments_list.append({
+                "start": round(segment.start, 2),
+                "end": round(segment.end, 2),
+                "text": text
+            })
+            full_transcript.append(text)
+
+        return {
+            "success": True,
+            "detected_language": info.language,
+            "full_transcript": " ".join(full_transcript),
+            "segments": segments_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    finally:
+        # Cleanup
+        try:
+            if os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
+            os.rmdir(temp_dir)
+        except Exception:
+            pass
