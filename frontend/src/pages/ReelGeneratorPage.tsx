@@ -110,18 +110,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
-  // Fetch available raw clips on mount for fast testing & seamless workflow
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/available-clips`)
-      .then((res) => res.json())
-      .then((data: UploadedClip[]) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setUploadedClips(data);
-          setSelectedClips(data.map((c) => c.object_name));
-        }
-      })
-      .catch((err) => console.warn("Could not fetch available clips:", err));
-  }, []);
+  // Sample clips auto-load removed — only user-uploaded clips will appear
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
   const moveClipUp = (index: number) => {
