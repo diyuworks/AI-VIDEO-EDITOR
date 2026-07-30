@@ -17,6 +17,7 @@ class EditingPlanRequest(BaseModel):
     reference_object_name: Optional[str] = None
     reference_captions: Optional[List[dict]] = None
     prompt: Optional[str] = None
+    use_exact_script: Optional[bool] = False
     structured_options: Optional[dict] = None  # e.g. {"style": "fast-paced", "music": "upbeat"}
     duration_seconds: Optional[float] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, start_time, end_time, has_farmhouse, has_fountain}]
@@ -90,7 +91,18 @@ CRITICAL: The very FIRST sentence MUST be a powerful, cinematic hook that instan
 CRITICAL: The Gujarati MUST be perfectly natural, grammatically flawless, and very simple. Do NOT use overly complex, weird, or awkward words. It must sound like a real native speaker on social media.
 """
 
-    context += f"""
+    if request.use_exact_script:
+        context += f"""
+User's EXACT Script: {request.prompt or ""}
+CRITICAL USER REQUIREMENT (EXACT SCRIPT MATCH): 
+You MUST use the "User's EXACT Script" word-for-word exactly as it is provided above. 
+DO NOT rewrite, do not summarize, do not add any extra intro or outro hooks. 
+Your ONLY job is to take the EXACT words from the User's EXACT Script and split them across the video segments below.
+If the script is in Hindi or English, LEAVE IT AS IS. Do not translate. Just output the EXACT words.
+Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
+"""
+    else:
+        context += f"""
 User's Request/Prompt: {request.prompt or "No specific prompt given"}
 CRITICAL USER REQUIREMENT: You MUST strictly incorporate the User's Request/Prompt above into the voiceover script. (e.g. if they say "1.8 vigha, farmhouse, highway najik", you must include these details beautifully in the real estate script).
 Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}

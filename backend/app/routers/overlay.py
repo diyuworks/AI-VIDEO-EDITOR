@@ -160,7 +160,7 @@ def render_overlay(request: OverlayRequest):
             polygon_points = raw_pts.astype(np.int32)
             M = len(polygon_points)
             
-            if M >= 3:
+            if M >= 1:
                 if frame_idx < ANIM_FRAMES:
                     # Live tracing dynamic border drawing animation
                     t = frame_idx / ANIM_FRAMES
@@ -190,8 +190,8 @@ def render_overlay(request: OverlayRequest):
                     # Border is complete, draw closed polygon outline with background dimming
                     fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
                     
-                    # 1. Dim background smoothly outside plot
-                    dim_factor = 1.0 - (0.5 * fade_progress)
+                    # 1. Dim background smoothly outside plot (Very subtle so multiple highlights don't turn it pitch black)
+                    dim_factor = 1.0 - (0.15 * fade_progress)
                     dimmed_frame = cv2.convertScaleAbs(frame, alpha=dim_factor, beta=0)
                     
                     # 2. Polygon Mask

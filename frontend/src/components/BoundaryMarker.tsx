@@ -8,11 +8,12 @@ interface Point {
 interface BoundaryMarkerProps {
   objectName: string;
   onBoundaryConfirmed: (points: Point[]) => void;
+  confirmButtonText?: string;
 }
 
 const API_BASE_URL = "http://localhost:8000";
 
-const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryConfirmed }) => {
+const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryConfirmed, confirmButtonText = "✅ Confirm Boundary" }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
@@ -93,8 +94,8 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
   };
 
   const handleConfirm = () => {
-    if (points.length < 3) {
-      alert("Kam se kam 3 points chahiye ek boundary banane ke liye");
+    if (points.length < 1) {
+      alert("Please mark at least 1 point to define a highlight");
       return;
     }
     onBoundaryConfirmed(points);
@@ -106,8 +107,8 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
         <h4 className="text-sm sm:text-base font-black text-[#0D473B] uppercase tracking-wider">
           📍 Click Corners to Mark Land Plot Boundary
         </h4>
-        <p className="text-xs sm:text-sm text-slate-600 font-semibold">
-          Click corners along the edges of the land plot (minimum 3 points required)
+        <p className="text-xs text-slate-500 font-medium">
+          Click on the video frame to mark points for the highlight (minimum 1 point required)
         </p>
       </div>
 
@@ -142,9 +143,10 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
         </button>
         <button
           onClick={handleConfirm}
-          className="px-7 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex items-center gap-2.5"
+          className="px-7 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
         >
-          ✅ Confirm Boundary ({points.length} Points Marked)
+          <span>{confirmButtonText}</span>
+          <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
         </button>
       </div>
     </div>

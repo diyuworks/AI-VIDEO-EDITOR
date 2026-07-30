@@ -30,19 +30,22 @@ interface ReelGeneratorPageProps {
   prompt?: string;
 }
 
+interface RegionHighlight {
+  points: Point[];
+  label: string;
+  price: string;
+  size: string;
+  roadInfo: string;
+  highlightColor: string;
+  enableFarmhouse: boolean;
+  enableFountain: boolean;
+  textPosition: string;
+}
+
 interface ClipHighlight {
   objectName: string;
-  points?: Point[];
-  label?: string;
-  price?: string;
-  size?: string;
-  roadInfo?: string;
-  highlightColor?: string;
-  enableFarmhouse?: boolean;
-  enableFountain?: boolean;
-  textPosition?: string;
+  regions: RegionHighlight[];
   highlightedObjectName?: string;
-  polygonPerFrame?: number[][][]; // Cache tracked polygon for fast label updates
   isTracking?: boolean;
   isDone?: boolean;
 }
@@ -63,6 +66,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 }) => {
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "Real estate plot sales reel in Hindi");
+  const [useExactScript, setUseExactScript] = useState<boolean>(false);
 
   // Multi-Clip States (Always start empty for a clean workspace)
   const [multiClipStage, setMultiClipStage] = useState<"idle" | "merging_clips" | "generating_reel" | "done" | "error">("idle");
@@ -88,6 +92,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   // Multi-clip boundary marking modal state
   const [activeMarkingClip, setActiveMarkingClip] = useState<string | null>(null);
+  const [tempRegions, setTempRegions] = useState<RegionHighlight[]>([]);
   const [activeMarkingLabel, setActiveMarkingLabel] = useState<string>("");
   const [plotPrice, setPlotPrice] = useState<string>("");
   const [plotSize, setPlotSize] = useState<string>("");
@@ -224,14 +229,22 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       // Build clip_info with metadata for context-aware voiceover
       const clipInfoForMerge = selectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
+        // Merge labels and details for AI context
+        const combinedLabel = highlight?.regions?.map(r => r.label).filter(Boolean).join(", then ") || "";
+        const combinedPrice = highlight?.regions?.map(r => r.price).filter(Boolean).join(" and ") || "";
+        const combinedSize = highlight?.regions?.map(r => r.size).filter(Boolean).join(" and ") || "";
+        const combinedRoad = highlight?.regions?.map(r => r.roadInfo).filter(Boolean).join(" and ") || "";
+        const hasFh = highlight?.regions?.some(r => r.enableFarmhouse) || false;
+        const hasFt = highlight?.regions?.some(r => r.enableFountain) || false;
+
         return {
           object_name: clip,
-          label: highlight?.label || "",
-          has_farmhouse: highlight?.enableFarmhouse || false,
-          has_fountain: highlight?.enableFountain || false,
-          price: highlight?.price || "",
-          size: highlight?.size || "",
-          road_info: highlight?.roadInfo || "",
+          label: combinedLabel,
+          has_farmhouse: hasFh,
+          has_fountain: hasFt,
+          price: combinedPrice,
+          size: combinedSize,
+          road_info: combinedRoad,
         };
       });
 
@@ -273,6 +286,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           raw_video_object_name: mergeData.merged_object_name,
           highlighted_video_object_name: mergeData.merged_object_name,
           prompt: prompt,
+          use_exact_script: useExactScript,
           clip_metadata: mergeData.clip_metadata || null,
           job_id: jobId,
         }),
@@ -348,82 +362,77 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
-  // Async tracking and rendering for an individual multi-clip
+  // Async tracking and rendering for multiple regions
   const handleMultiClipBoundaryConfirmed = async (
     clipName: string,
-    points: Point[],
-    label: string,
-    farmhouse: boolean = false,
-    fountain: boolean = false,
-    txtPos: string = "middle",
-    priceVal: string = "",
-    sizeVal: string = "",
-    roadVal: string = "",
-    colorVal: string = "#FFEB3B"
+    regionsToTrack: RegionHighlight[]
   ) => {
+    if (regionsToTrack.length === 0) return;
+    
     try {
       setClipHighlights((prev) => ({
         ...prev,
         [clipName]: {
           objectName: clipName,
-          points,
-          label,
-          price: priceVal,
-          size: sizeVal,
-          roadInfo: roadVal,
-          highlightColor: colorVal,
-          enableFarmhouse: farmhouse,
-          enableFountain: fountain,
-          textPosition: txtPos,
+          regions: regionsToTrack,
           isTracking: true,
           isDone: false,
         },
       }));
 
-      const trackRes = await fetch(`${API_BASE_URL}/track-boundary`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          object_name: clipName,
-          initial_points: points,
-        }),
-      });
-      if (!trackRes.ok) throw new Error("Boundary tracking failed");
-      const trackData = await trackRes.json();
+      let currentObjName = clipName;
 
-      const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          object_name: clipName,
-          polygon_per_frame: trackData.polygon_per_frame,
-          highlight_color: colorVal || "#FFEB3B",
-          border_thickness: 4,
-          label: label || undefined,
-          enable_farmhouse_overlay: farmhouse,
-          enable_fountain_overlay: fountain,
-          text_position: txtPos,
-          price: priceVal || undefined,
-          size: sizeVal || undefined,
-          road_info: roadVal || undefined,
-        }),
-      });
-      if (!overlayRes.ok) throw new Error("Overlay rendering failed");
-      const overlayData = await overlayRes.json();
+      for (let i = 0; i < regionsToTrack.length; i++) {
+        const reg = regionsToTrack[i];
+        
+        // Track on original video to keep optical flow accurate
+        const trackRes = await fetch(`${API_BASE_URL}/track-boundary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            object_name: clipName,
+            initial_points: reg.points,
+          }),
+        });
+        if (!trackRes.ok) throw new Error("Boundary tracking failed");
+        const trackData = await trackRes.json();
+
+        // Render overlay on the progressively highlighted video
+        const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            object_name: currentObjName,
+            polygon_per_frame: trackData.polygon_per_frame,
+            highlight_color: reg.highlightColor || "#FFEB3B",
+            border_thickness: 4,
+            label: reg.label || undefined,
+            enable_farmhouse_overlay: reg.enableFarmhouse,
+            enable_fountain_overlay: reg.enableFountain,
+            text_position: reg.textPosition,
+            price: reg.price || undefined,
+            size: reg.size || undefined,
+            road_info: reg.roadInfo || undefined,
+          }),
+        });
+        if (!overlayRes.ok) throw new Error("Overlay rendering failed");
+        const overlayData = await overlayRes.json();
+        
+        currentObjName = overlayData.output_object_name;
+      }
 
       setClipHighlights((prev) => ({
         ...prev,
         [clipName]: {
           ...prev[clipName],
-          highlightedObjectName: overlayData.output_object_name,
-          polygonPerFrame: trackData.polygon_per_frame, // Cache polygon points for quick editing
+          highlightedObjectName: currentObjName,
           isTracking: false,
           isDone: true,
         },
       }));
-    } catch (err: any) {
-      console.error(`Failed to track/render overlay for ${clipName}:`, err);
-      alert(`Failed to track and highlight clip: ${err.message}`);
+    } catch (err) {
+      console.error(err);
+      setMultiClipError("Failed to track boundaries for clip");
       setClipHighlights((prev) => ({
         ...prev,
         [clipName]: {
@@ -435,60 +444,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
-  // Re-renders overlay instantly when label changes in a completed clip
-  const handleLabelBlur = async (clipName: string, newLabel: string) => {
-    const highlight = clipHighlights[clipName];
-    if (highlight && highlight.isDone && highlight.polygonPerFrame) {
-      try {
-        setClipHighlights((prev) => ({
-          ...prev,
-          [clipName]: {
-            ...prev[clipName],
-            isTracking: true,
-            isDone: false, // temporarily clear done state while updating
-          },
-        }));
-
-        const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            object_name: clipName,
-            polygon_per_frame: highlight.polygonPerFrame,
-            highlight_color: "#FFEB3B",
-            border_thickness: 4,
-            label: newLabel || undefined,
-            enable_farmhouse_overlay: highlight.enableFarmhouse || false,
-            enable_fountain_overlay: highlight.enableFountain || false,
-            text_position: highlight.textPosition || "middle",
-          }),
-        });
-        if (!overlayRes.ok) throw new Error("Overlay update failed");
-        const overlayData = await overlayRes.json();
-
-        setClipHighlights((prev) => ({
-          ...prev,
-          [clipName]: {
-            ...prev[clipName],
-            highlightedObjectName: overlayData.output_object_name,
-            isTracking: false,
-            isDone: true,
-          },
-        }));
-      } catch (err: any) {
-        console.error(`Failed to update label for ${clipName}:`, err);
-        alert(`Failed to update plot label: ${err.message}`);
-        setClipHighlights((prev) => ({
-          ...prev,
-          [clipName]: {
-            ...prev[clipName],
-            isTracking: false,
-            isDone: true,
-          },
-        }));
-      }
-    }
-  };
+  // handleLabelBlur removed since we now manage multiple regions inside the modal
 
   const handleDownload = (url: string) => {
     const a = document.createElement("a");
@@ -611,17 +567,17 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                               onClick={() => moveClipUp(clipIndex)}
                               disabled={clipIndex === 0}
                               className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30"
-                              title="Move clip up in sequence"
+                              title="Move clip left (earlier in sequence)"
                             >
-                              ⬆️
+                              ◀
                             </button>
                             <button
                               onClick={() => moveClipDown(clipIndex)}
                               disabled={clipIndex === uploadedClips.length - 1}
                               className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30"
-                              title="Move clip down in sequence"
+                              title="Move clip right (later in sequence)"
                             >
-                              ⬇️
+                              ▶
                             </button>
                           </div>
                           <button
@@ -659,61 +615,49 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
                             {isSelected && (
                               <div className="w-full space-y-2">
-                                {/* Plot name input directly inside the card */}
-                                <div className="flex flex-col text-left gap-1">
-                                  <span className="text-xs font-bold text-slate-600">Plot Name:</span>
-                                  <input
-                                    type="text"
-                                    value={clipHighlights[clipName]?.label || label.split(".")[0]}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setClipHighlights((prev) => ({
-                                        ...prev,
-                                        [clipName]: {
-                                          ...prev[clipName],
-                                          objectName: clipName,
-                                          label: val,
-                                        },
-                                      }));
-                                    }}
-                                    onBlur={(e) => handleLabelBlur(clipName, e.target.value)}
-                                    placeholder="e.g. Plot A"
-                                    className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-slate-800 text-xs sm:text-sm font-semibold w-full focus:outline-none focus:border-[#0D473B]"
-                                  />
+                                <div className="flex flex-col text-left gap-1 mb-2">
+                                  <span className="text-xs font-bold text-slate-600">Highlighted Regions:</span>
+                                  <span className="text-xs font-semibold text-slate-800 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 truncate">
+                                    {clipHighlights[clipName]?.regions?.map(r => r.label).join(", ") || "None"}
+                                  </span>
                                 </div>
 
                                 {clipHighlights[clipName]?.isTracking ? (
                                   <span className="text-xs text-[#0D473B] animate-pulse font-mono flex items-center justify-center py-1.5 font-bold">⏳ Tracking AI...</span>
                                 ) : clipHighlights[clipName]?.isDone ? (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTempRegions(clipHighlights[clipName]?.regions || []);
                                       setActiveMarkingClip(clipName);
-                                      setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
-                                      setPlotPrice(clipHighlights[clipName]?.price || "");
-                                      setPlotSize(clipHighlights[clipName]?.size || "");
-                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
-                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
-                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
-                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
+                                      setActiveMarkingLabel(label.split(".")[0]);
+                                      setPlotPrice("");
+                                      setPlotSize("");
+                                      setRoadInfo("");
+                                      setHighlightColor("#FFEB3B");
+                                      setEnableFarmhouse(false);
+                                      setEnableFountain(false);
+                                      setTextPosition("middle");
                                     }}
                                     className="w-full py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-xs font-bold rounded-xl flex items-center justify-center truncate border border-emerald-300"
                                     title="Click to edit plot boundary"
                                   >
-                                    ✏️ Edit Plot: {clipHighlights[clipName]?.label}
+                                    ✏️ Edit Plot
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTempRegions(clipHighlights[clipName]?.regions || []);
                                       setActiveMarkingClip(clipName);
-                                      setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
-                                      setPlotPrice(clipHighlights[clipName]?.price || "");
-                                      setPlotSize(clipHighlights[clipName]?.size || "");
-                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
-                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
-                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
-                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
+                                      setActiveMarkingLabel(label.split(".")[0]);
+                                      setPlotPrice("");
+                                      setPlotSize("");
+                                      setRoadInfo("");
+                                      setHighlightColor("#FFEB3B");
+                                      setEnableFarmhouse(false);
+                                      setEnableFountain(false);
+                                      setTextPosition("middle");
                                     }}
                                     className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200"
                                   >
@@ -747,6 +691,19 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   placeholder="e.g. 1.5 Vigha luxury plot with 3D Water Fountain and Farmhouse layout."
                   className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm sm:text-base font-medium resize-y shadow-sm"
                 />
+                
+                {/* Exact Script Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer mt-2 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200 hover:bg-emerald-100 transition w-fit">
+                  <input
+                    type="checkbox"
+                    checked={useExactScript}
+                    onChange={(e) => setUseExactScript(e.target.checked)}
+                    className="w-4 h-4 text-[#0D473B] rounded focus:ring-[#0D473B] border-emerald-300"
+                  />
+                  <span className="text-sm font-bold text-emerald-900">
+                    🔒 Exact Script Match (Bypass AI Rewriting)
+                  </span>
+                </label>
               </div>
 
               {/* Merge Action Button */}
@@ -937,10 +894,32 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               </div>
 
+              {tempRegions.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl mb-4">
+                  <h4 className="font-black text-emerald-800 mb-2 uppercase text-xs tracking-wider">📦 Highlights Saved So Far:</h4>
+                  <ul className="list-disc pl-5 text-sm font-semibold text-emerald-700 space-y-1 mb-4">
+                    {tempRegions.map((r, idx) => (
+                      <li key={idx}>{r.label || `Highlight ${idx + 1}`} {r.price ? `(${r.price})` : ""}</li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={() => {
+                      const clipName = activeMarkingClip;
+                      setActiveMarkingClip(null);
+                      handleMultiClipBoundaryConfirmed(clipName, tempRegions);
+                    }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-2"
+                  >
+                    🚀 FINISH: Process All {tempRegions.length} Highlights
+                  </button>
+                </div>
+              )}
+
               <BoundaryMarker
+                key={tempRegions.length}
                 objectName={activeMarkingClip}
+                confirmButtonText="💾 Save this Highlight & Draw Another"
                 onBoundaryConfirmed={async (points) => {
-                  const clipName = activeMarkingClip;
                   const label = activeMarkingLabel;
                   const pr = plotPrice;
                   const sz = plotSize;
@@ -949,8 +928,20 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   const fh = enableFarmhouse;
                   const ft = enableFountain;
                   const tp = "middle"; // Default Above Plot
-                  setActiveMarkingClip(null);
-                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
+                  
+                  const newRegion: RegionHighlight = {
+                    points, label, price: pr, size: sz, roadInfo: rd, highlightColor: clr, enableFarmhouse: fh, enableFountain: ft, textPosition: tp
+                  };
+                  
+                  setTempRegions(prev => [...prev, newRegion]);
+                  
+                  // Reset form for next highlight
+                  setActiveMarkingLabel("");
+                  setPlotPrice("");
+                  setPlotSize("");
+                  setRoadInfo("");
+                  setEnableFarmhouse(false);
+                  setEnableFountain(false);
                 }}
               />
             </div>
