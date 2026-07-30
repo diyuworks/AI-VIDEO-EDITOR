@@ -54,6 +54,10 @@ def render_overlay(request: OverlayRequest):
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
     from typing import Optional
 
+    farmhouse_img = cv2.imread(os.path.join("assets", "farmhouse_render.png"), cv2.IMREAD_UNCHANGED)
+    fountain_img = cv2.imread(os.path.join("assets", "fountain.png"), cv2.IMREAD_UNCHANGED)
+
+
     # Step A: Video ko local temp file me download karo
     # (presigned URLs ke saath cv2.VideoCapture Windows pe fail hota hai)
     temp_dir = tempfile.mkdtemp()
@@ -109,7 +113,10 @@ def render_overlay(request: OverlayRequest):
             label=request.label,
             enable_farmhouse_overlay=request.enable_farmhouse_overlay,
             enable_fountain_overlay=request.enable_fountain_overlay,
+<<<<<<< HEAD
             enable_petrol_pump_overlay=request.enable_petrol_pump_overlay,
+=======
+>>>>>>> origin/jay
             text_position=request.text_position,
             price=request.price,
             size=request.size,
