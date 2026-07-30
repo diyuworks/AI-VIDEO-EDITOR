@@ -34,6 +34,7 @@ class OverlayRequest(BaseModel):
     label: Optional[str] = None
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
+    enable_petrol_pump_overlay: bool = False
     text_position: str = "middle"
     price: Optional[str] = None
     size: Optional[str] = None
