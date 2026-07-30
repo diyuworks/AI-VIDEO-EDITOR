@@ -94,9 +94,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
-  // Highlight Preview State
-  const [previewClipUrl, setPreviewClipUrl] = useState<string | null>(null);
-
   // Fetch past reels on mount
   useEffect(() => {
     setUploadedClips([]);
@@ -554,15 +551,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
                                   {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlight" : "✏️ Highlight Plot"}
                                 </button>
-
-                                {clipHighlights[clipName]?.isDone && (
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); setPreviewClipUrl(`http://localhost:8000/demo-videos/highlighted_${clip.filename}`); }} 
-                                    className="w-full py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-xs font-bold rounded-xl flex items-center justify-center border border-emerald-200 shadow-sm"
-                                  >
-                                    ▶ Preview Highlight
-                                  </button>
-                                )}
                               </div>
                             )}
                           </div>
@@ -803,43 +791,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           </div>
         </div>
       )}
-
-      {/* Clip Preview Modal */}
-      {previewClipUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" onClick={() => setPreviewClipUrl(null)}>
-          <div className="bg-white rounded-3xl overflow-hidden shadow-2xl w-full max-w-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                🎬 Highlight Preview
-              </h3>
-              <button
-                onClick={() => setPreviewClipUrl(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 transition font-bold"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4 bg-black flex justify-center items-center">
-              <video 
-                src={previewClipUrl} 
-                className="w-full max-h-[60vh] object-contain rounded-xl"
-                controls
-                autoPlay
-                loop
-              />
-            </div>
-            <div className="p-4 bg-slate-50 flex justify-end">
-                <button
-                  onClick={() => setPreviewClipUrl(null)}
-                  className="px-6 py-2 bg-[#0D473B] text-white font-bold rounded-xl hover:bg-[#09352C] transition shadow-md"
-                >
-                  Looks Good! ✅
-                </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       </div>
       );
 };

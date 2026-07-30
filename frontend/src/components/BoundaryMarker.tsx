@@ -188,18 +188,18 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
             </div>
           </div>
         )}
-
         {/* Scrollable Canvas Container */}
-        <div className={`rounded-2xl overflow-auto border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full h-[50vh] min-h-[300px] flex ${zoomLevel > 1 ? 'items-start justify-start' : 'items-center justify-center'}`}>
+        <div className={`rounded-2xl overflow-auto border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full h-[50vh] min-h-[300px] flex ${zoomLevel > 1 ? 'items-start justify-center' : 'items-center justify-center'}`}>
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
-            className="cursor-crosshair block rounded-xl shadow-2xl transition-transform origin-top-left"
+            className="cursor-crosshair block rounded-xl shadow-2xl transition-transform"
             style={{ 
-              width: zoomLevel === 1 ? "auto" : `${zoomLevel * 100}%`, 
-              maxWidth: zoomLevel === 1 ? "100%" : "none",
-              maxHeight: zoomLevel === 1 ? "100%" : "none",
-              height: "auto"
+              height: zoomLevel === 1 ? "50vh" : `${zoomLevel * 50}vh`,
+              width: "auto",
+              maxWidth: "none",
+              maxHeight: "none",
+              transformOrigin: "center center"
             }}
           />
         </div>
