@@ -641,17 +641,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       e.stopPropagation();
                                       setTempRegions(clipHighlights[clipName]?.regions || []);
                                       setActiveMarkingClip(clipName);
-<<<<<<< HEAD
-                                      setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
-                                      setPlotPrice(clipHighlights[clipName]?.price || "");
-                                      setPlotSize(clipHighlights[clipName]?.size || "");
-                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
-                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
-                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
-                                      setEnablePetrolPump(clipHighlights[clipName]?.enablePetrolPump || false);
-                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
-=======
                                       setActiveMarkingLabel(label.split(".")[0]);
                                       setPlotPrice("");
                                       setPlotSize("");
@@ -660,7 +649,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setEnableFarmhouse(false);
                                       setEnableFountain(false);
                                       setTextPosition("middle");
->>>>>>> origin/jay
                                     }}
                                     className="w-full py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-xs font-bold rounded-xl flex items-center justify-center truncate border border-emerald-300"
                                     title="Click to edit plot boundary"
@@ -673,17 +661,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       e.stopPropagation();
                                       setTempRegions(clipHighlights[clipName]?.regions || []);
                                       setActiveMarkingClip(clipName);
-<<<<<<< HEAD
-                                      setActiveMarkingLabel(clipHighlights[clipName]?.label || label.split(".")[0]);
-                                      setPlotPrice(clipHighlights[clipName]?.price || "");
-                                      setPlotSize(clipHighlights[clipName]?.size || "");
-                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
-                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
-                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
-                                      setEnablePetrolPump(clipHighlights[clipName]?.enablePetrolPump || false);
-                                      setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
-=======
                                       setActiveMarkingLabel(label.split(".")[0]);
                                       setPlotPrice("");
                                       setPlotSize("");
@@ -692,7 +669,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setEnableFarmhouse(false);
                                       setEnableFountain(false);
                                       setTextPosition("middle");
->>>>>>> origin/jay
                                     }}
                                     className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200"
                                   >
