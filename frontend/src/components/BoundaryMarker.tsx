@@ -8,12 +8,18 @@ interface Point {
 interface BoundaryMarkerProps {
   objectName: string;
   onBoundaryConfirmed: (points: Point[]) => void;
+  onSaveAndFinish?: (points: Point[]) => void;
   confirmButtonText?: string;
 }
 
 import { API_BASE_URL } from "../config";
 
-const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryConfirmed, confirmButtonText = "✅ Confirm Boundary" }) => {
+const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ 
+  objectName, 
+  onBoundaryConfirmed, 
+  onSaveAndFinish,
+  confirmButtonText = "➕ Save & Add Another Highlight" 
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
@@ -143,11 +149,27 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryC
         </button>
         <button
           onClick={handleConfirm}
-          className="px-7 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
+          className="px-6 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
         >
           <span>{confirmButtonText}</span>
           <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
         </button>
+
+        {onSaveAndFinish && (
+          <button
+            onClick={() => {
+              if (points.length < 1) {
+                alert("Please mark at least 1 point to define a highlight");
+                return;
+              }
+              onSaveAndFinish(points);
+            }}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 text-sm sm:text-base transition flex flex-col items-center justify-center gap-0.5"
+          >
+            <span>🚀 Save & Process Now</span>
+            <span className="text-xs font-medium text-emerald-100">({points.length} Points Marked)</span>
+          </button>
+        )}
       </div>
     </div>
   );

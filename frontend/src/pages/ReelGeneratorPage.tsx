@@ -938,12 +938,17 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <BoundaryMarker
                 key={tempRegions.length}
                 objectName={activeMarkingClip}
-                confirmButtonText="💾 Save this Highlight & Draw Another"
+                confirmButtonText="💾 Save & Add Another Highlight"
                 onBoundaryConfirmed={async (points) => {
                   const label = activeMarkingLabel;
                   const pr = plotPrice;
                   const sz = plotSize;
                   const rd = roadInfo;
+                  const clr = highlightColor || "#FFEB3B";
+                  const fh = enableFarmhouse;
+                  const ft = enableFountain;
+                  const pp = enablePetrolPump;
+                  const tp = textPosition || "middle";
                   const newRegion: RegionHighlight = {
                     points, label, price: pr, size: sz, roadInfo: rd, highlightColor: clr, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp
                   };
@@ -958,6 +963,24 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   setEnableFarmhouse(false);
                   setEnableFountain(false);
                   setEnablePetrolPump(false);
+                }}
+                onSaveAndFinish={async (points) => {
+                  const clipName = activeMarkingClip;
+                  const label = activeMarkingLabel;
+                  const pr = plotPrice;
+                  const sz = plotSize;
+                  const rd = roadInfo;
+                  const clr = highlightColor || "#FFEB3B";
+                  const fh = enableFarmhouse;
+                  const ft = enableFountain;
+                  const pp = enablePetrolPump;
+                  const tp = textPosition || "middle";
+                  const newRegion: RegionHighlight = {
+                    points, label, price: pr, size: sz, roadInfo: rd, highlightColor: clr, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp
+                  };
+                  const allRegions = [...tempRegions, newRegion];
+                  setActiveMarkingClip(null);
+                  handleMultiClipBoundaryConfirmed(clipName, allRegions);
                 }}
               />
             </div>
