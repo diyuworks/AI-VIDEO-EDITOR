@@ -230,7 +230,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   const areAllSelectedClipsHighlighted = () => {
     if (selectedClips.length === 0) return false;
-    return selectedClips.every((clip) => clipHighlights[clip]?.isDone);
+    return true;
   };
 
   const handleGenerateMultiClipReel = async () => {
@@ -239,7 +239,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       const clipsToMerge = selectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
-        return highlight && highlight.isDone && highlight.highlightedObjectName
+        return highlight && highlight.highlightedObjectName
           ? highlight.highlightedObjectName
           : clip;
       });
@@ -583,12 +583,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2">
-                {selectedClips.length > 0 && !areAllSelectedClipsHighlighted() && (
-                  <p className="text-amber-900 text-sm font-bold flex items-center gap-2 bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm">
-                    ⚠️ Validation Guard: Please mark the plot boundary for all selected clips before merging.
-                  </p>
-                )}
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
               </div>
