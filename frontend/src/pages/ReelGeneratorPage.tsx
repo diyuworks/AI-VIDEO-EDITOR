@@ -39,12 +39,12 @@ interface RegionHighlight {
   highlightColor: string;
   enableFarmhouse: boolean;
   enableFountain: boolean;
+  enablePetrolPump?: boolean;
   textPosition: string;
 }
 
 interface ClipHighlight {
   objectName: string;
-<<<<<<< HEAD
   points?: Point[];
   label?: string;
   price?: string;
@@ -55,9 +55,7 @@ interface ClipHighlight {
   enableFountain?: boolean;
   enablePetrolPump?: boolean;
   textPosition?: string;
-=======
-  regions: RegionHighlight[];
->>>>>>> origin/jay
+  regions?: RegionHighlight[];
   highlightedObjectName?: string;
   isTracking?: boolean;
   isDone?: boolean;
