@@ -281,6 +281,12 @@ def render_overlay(request: OverlayRequest):
                         frame[mask == 255] = highlighted_area[mask == 255]
 
                         # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
+                        farmhouse_img = None
+                        if region.enable_farmhouse_overlay:
+                            fh_path = os.path.join(assets_dir, "farmhouse_render.png")
+                            if os.path.exists(fh_path):
+                                farmhouse_img = cv2.imread(fh_path, cv2.IMREAD_UNCHANGED)
+
                         if farmhouse_img is not None and M >= 4:
                             try:
                                 fh_h, fh_w = farmhouse_img.shape[:2]
@@ -298,6 +304,12 @@ def render_overlay(request: OverlayRequest):
                                 print(f"[overlay] Farmhouse warp error: {ex_fh}")
 
                         # --- 3D FOUNTAIN PERSPECTIVE WARP OVERLAY ---
+                        fountain_img = None
+                        if region.enable_fountain_overlay:
+                            ft_path = os.path.join(assets_dir, "fountain.png")
+                            if os.path.exists(ft_path):
+                                fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
+
                         if fountain_img is not None and M >= 4:
                             try:
                                 ft_h, ft_w = fountain_img.shape[:2]
