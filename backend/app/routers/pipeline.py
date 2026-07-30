@@ -113,6 +113,7 @@ class GenerateReelRequest(BaseModel):
     highlighted_video_object_name: str  # Step 4 ka output (visual-only, no audio)
     reference_object_name: Optional[str] = None  # Style-reference video (agar hai)
     prompt: Optional[str] = None
+    use_exact_script: Optional[bool] = False
     structured_options: Optional[dict] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
     job_id: Optional[str] = None
@@ -357,6 +358,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 reference_object_name=request.reference_object_name,
                 reference_captions=reference_captions,
                 prompt=request.prompt,
+                use_exact_script=request.use_exact_script,
                 structured_options=request.structured_options,
                 duration_seconds=video_duration + 5.0,  # Now includes 5s end screen for seamless outro
                 clip_metadata=request.clip_metadata  # Timeline info for context-aware narration

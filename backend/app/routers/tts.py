@@ -25,10 +25,17 @@ async def generate_tts(request: TTSRequest):
     filepath = os.path.join(TMP_AUDIO_DIR, filename)
 
     try:
+        # Reverted to default settings as extreme rate/pitch causes stuttering in Neural voices
+        DEFAULT_RATE = "+0%"
+        DEFAULT_PITCH = "+0Hz"
+
+        # Replace [PAUSE] markers with a comma for a very natural neural pause (dots cause choppiness)
+        processed_text = request.text.replace("[PAUSE]", ", ")
+
         # Original Male Voice (gu-IN-NiranjanNeural)
         selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-NiranjanNeural"
         # Adjust rate and pitch for a more natural, professional real-estate voice at normal speed
-        communicate = edge_tts.Communicate(request.text, selected_voice, rate="+0%", pitch="+5Hz")
+        communicate = edge_tts.Communicate(processed_text, selected_voice, rate=DEFAULT_RATE, pitch=DEFAULT_PITCH)
         
         last_offset = 0
         last_duration = 0

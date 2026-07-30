@@ -99,3 +99,9 @@ backend/chatgpt_images/
 backend/demo_clips/
 backend/minio-data/
 *.exe
+*.diff
+backend/scratch/
+backend/extract_overlay.py
+backend/farmhouse_overlay.py
+backend/search.py
+diya_overlay*.py
