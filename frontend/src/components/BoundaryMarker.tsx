@@ -10,7 +10,7 @@ interface BoundaryMarkerProps {
   onBoundaryConfirmed: (points: Point[]) => void;
 }
 
-const API_BASE_URL = "https://reel-backend.jamin24.com";
+import { API_BASE_URL } from "../config";
 
 const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({ objectName, onBoundaryConfirmed }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);

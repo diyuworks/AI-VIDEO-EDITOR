@@ -10,9 +10,11 @@ interface ReferenceVideo {
   uploadResult?: UploadResult
 }
 
+import { API_BASE_URL } from '../../config'
+
 const MAX_REFERENCE_VIDEOS = 5
-const UPLOAD_ENDPOINT = 'https://reel-backend.jamin24.com/upload'
-const UPLOAD_REFERENCE_ENDPOINT = 'https://reel-backend.jamin24.com/upload-reference'
+const UPLOAD_ENDPOINT = `${API_BASE_URL}/upload`
+const UPLOAD_REFERENCE_ENDPOINT = `${API_BASE_URL}/upload-reference`
 
 interface UploadResult {
   success: boolean

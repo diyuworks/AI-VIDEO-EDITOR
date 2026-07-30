@@ -12,6 +12,8 @@ export interface PromptData {
   prompt: string
 }
 
+import { API_BASE_URL } from './config'
+
 function App() {
   const [screen, setScreen] = useState<Screen>('reel')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
@@ -21,7 +23,7 @@ function App() {
 
   useEffect(() => {
     // Silent website visit notification to the backend
-    fetch('https://reel-backend.jamin24.com/visit', {
+    fetch(`${API_BASE_URL}/visit`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

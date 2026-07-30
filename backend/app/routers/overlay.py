@@ -19,6 +19,7 @@ class OverlayRequest(BaseModel):
     label: Optional[str] = None  # plot name / label text
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
+    enable_petrol_pump_overlay: bool = False
     text_position: str = "middle"  # "middle" or "outro"
     price: Optional[str] = None  # e.g., ₹25 Lakhs
     size: Optional[str] = None  # e.g., 2000 SqFt
@@ -98,33 +99,11 @@ def render_overlay(request: OverlayRequest):
         if os.path.exists(ft_path):
             fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
 
-    pil_font = None
-    if request.label:
-        from PIL import Image, ImageDraw, ImageFont
-        font_size = max(42, int(width / 13))
-        for font_path in [r'C:\Windows\Fonts\ariblk.ttf', r'C:\Windows\Fonts\impact.ttf', r'C:\Windows\Fonts\segoeuib.ttf', r'C:\Windows\Fonts\arialbd.ttf']:
-            if os.path.exists(font_path):
-                try:
-                    pil_font = ImageFont.truetype(font_path, font_size)
-                    break
-                except Exception:
-                    pass
-        if pil_font is None:
-            pil_font = ImageFont.load_default()
-
-    # Load 3D assets if enabled
-    assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
-    farmhouse_img = None
-    if request.enable_farmhouse_overlay:
-        fh_path = os.path.join(assets_dir, "farmhouse_render.png")
-        if os.path.exists(fh_path):
-            farmhouse_img = cv2.imread(fh_path, cv2.IMREAD_UNCHANGED)
-
-    fountain_img = None
-    if request.enable_fountain_overlay:
-        ft_path = os.path.join(assets_dir, "fountain.png")
-        if os.path.exists(ft_path):
-            fountain_img = cv2.imread(ft_path, cv2.IMREAD_UNCHANGED)
+    petrol_pump_img = None
+    if request.enable_petrol_pump_overlay:
+        pp_path = os.path.join(assets_dir, "petrol_pump.png")
+        if os.path.exists(pp_path):
+            petrol_pump_img = cv2.imread(pp_path, cv2.IMREAD_UNCHANGED)
 
     if len(request.polygon_per_frame) > 0:
         # Set Animation Timings (Draw-in ~0.4s)
@@ -216,39 +195,33 @@ def render_overlay(request: OverlayRequest):
                     frame = dimmed_frame.copy()
                     frame[mask == 255] = highlighted_area[mask == 255]
 
-                    # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
-                    if farmhouse_img is not None and M >= 4:
-                        try:
-                            fh_h, fh_w = farmhouse_img.shape[:2]
-                            src_pts = np.float32([[0, 0], [fh_w, 0], [fh_w, fh_h], [0, fh_h]])
-                            dst_pts = polygon_points[:4].astype(np.float32)
-                            M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                            warped_fh = cv2.warpPerspective(farmhouse_img, M_persp, (width, height))
-                            # Alpha blend warped farmhouse onto frame
-                            if warped_fh.shape[2] == 4:
-                                alpha_mask = (warped_fh[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                frame = (warped_fh[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
-                            else:
-                                frame = cv2.addWeighted(warped_fh, 0.8, frame, 0.2, 0)
-                        except Exception as ex_fh:
-                            print(f"[overlay] Farmhouse warp error: {ex_fh}")
+                    # Determine active 3D overlays and compute sequential time slots
+                    active_overlays = []
+                    if farmhouse_img is not None: active_overlays.append(("farmhouse", farmhouse_img))
+                    if fountain_img is not None: active_overlays.append(("fountain", fountain_img))
+                    if petrol_pump_img is not None: active_overlays.append(("petrol_pump", petrol_pump_img))
 
-                    # --- 3D FOUNTAIN PERSPECTIVE WARP OVERLAY ---
-                    if fountain_img is not None and M >= 4:
+                    num_active = len(active_overlays)
+                    current_asset_img = None
+                    if num_active > 0:
+                        slot_len = total_tracked_frames / float(num_active)
+                        active_slot_idx = min(num_active - 1, int(frame_idx / slot_len))
+                        current_asset_name, current_asset_img = active_overlays[active_slot_idx]
+
+                    if current_asset_img is not None and M >= 4:
                         try:
-                            ft_h, ft_w = fountain_img.shape[:2]
-                            src_pts = np.float32([[0, 0], [ft_w, 0], [ft_w, ft_h], [0, ft_h]])
+                            img_h, img_w = current_asset_img.shape[:2]
+                            src_pts = np.float32([[0, 0], [img_w, 0], [img_w, img_h], [0, img_h]])
                             dst_pts = polygon_points[:4].astype(np.float32)
                             M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                            warped_ft = cv2.warpPerspective(fountain_img, M_persp, (width, height))
-                            # Alpha blend warped fountain onto frame
-                            if warped_ft.shape[2] == 4:
-                                alpha_mask = (warped_ft[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                frame = (warped_ft[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
+                            warped_img = cv2.warpPerspective(current_asset_img, M_persp, (width, height))
+                            if warped_img.shape[2] == 4:
+                                alpha_mask = (warped_img[:, :, 3] / 255.0)[:, :, np.newaxis]
+                                frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
                             else:
-                                frame = cv2.addWeighted(warped_ft, 0.8, frame, 0.2, 0)
-                        except Exception as ex_ft:
-                            print(f"[overlay] Fountain warp error: {ex_ft}")
+                                frame = cv2.addWeighted(warped_img, 0.8, frame, 0.2, 0)
+                        except Exception as ex_overlay:
+                            print(f"[overlay] 3D overlay warp error: {ex_overlay}")
 
                     # 6. Draw glowing borders
                     cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)

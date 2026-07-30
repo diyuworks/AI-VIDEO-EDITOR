@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
-const API_BASE_URL = "https://reel-backend.jamin24.com";
+import { API_BASE_URL } from "../config";
 
 interface Point {
   x: number;
@@ -40,6 +40,7 @@ interface ClipHighlight {
   highlightColor?: string;
   enableFarmhouse?: boolean;
   enableFountain?: boolean;
+  enablePetrolPump?: boolean;
   textPosition?: string;
   highlightedObjectName?: string;
   polygonPerFrame?: number[][][]; // Cache tracked polygon for fast label updates
@@ -91,12 +92,20 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [highlightColor, setHighlightColor] = useState<string>("#FFEB3B");
   const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
+  const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
-  // Fetch uploaded clips on mount
+  // Fetch available raw clips on mount for fast testing & seamless workflow
   useEffect(() => {
-    setUploadedClips([]);
-    setSelectedClips([]);
+    fetch(`${API_BASE_URL}/available-clips`)
+      .then((res) => res.json())
+      .then((data: UploadedClip[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setUploadedClips(data);
+          setSelectedClips(data.map((c) => c.object_name));
+        }
+      })
+      .catch((err) => console.warn("Could not fetch available clips:", err));
   }, []);
 
   // Handle uploading multiple raw video files (Max 10 clips limit)
@@ -348,6 +357,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     label: string,
     farmhouse: boolean = false,
     fountain: boolean = false,
+    petrolPump: boolean = false,
     txtPos: string = "middle",
     priceVal: string = "",
     sizeVal: string = "",
@@ -367,6 +377,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           highlightColor: colorVal,
           enableFarmhouse: farmhouse,
           enableFountain: fountain,
+          enablePetrolPump: petrolPump,
           textPosition: txtPos,
           isTracking: true,
           isDone: false,
@@ -395,6 +406,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           label: label || undefined,
           enable_farmhouse_overlay: farmhouse,
           enable_fountain_overlay: fountain,
+          enable_petrol_pump_overlay: petrolPump,
           text_position: txtPos,
           price: priceVal || undefined,
           size: sizeVal || undefined,
@@ -686,6 +698,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
                                       setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
+                                      setEnablePetrolPump(clipHighlights[clipName]?.enablePetrolPump || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
                                     className="w-full py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-[#0D473B] text-xs font-bold rounded-xl flex items-center justify-center truncate border border-emerald-300"
@@ -704,6 +717,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                       setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
                                       setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
                                       setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
+                                      setEnablePetrolPump(clipHighlights[clipName]?.enablePetrolPump || false);
                                       setTextPosition(clipHighlights[clipName]?.textPosition || "middle");
                                     }}
                                     className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200"
@@ -906,24 +920,33 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               {/* Per-Plot Visual Effects Controls */}
               <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-sm">
                 <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider">✨ Plot Visual Effects</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-3 cursor-pointer bg-white rounded-2xl px-4 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFarmhouse}
                       onChange={(e) => setEnableFarmhouse(e.target.checked)}
                       className="w-5 h-5 accent-[#0D473B]"
                     />
-                    <span className="text-slate-800 font-bold text-sm sm:text-base">🏡 Farmhouse Overlay</span>
+                    <span className="text-slate-800 font-bold text-xs sm:text-sm">🏡 Farmhouse</span>
                   </label>
-                  <label className="flex items-center gap-3 cursor-pointer bg-white rounded-2xl px-4 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
+                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
                     <input
                       type="checkbox"
                       checked={enableFountain}
                       onChange={(e) => setEnableFountain(e.target.checked)}
                       className="w-5 h-5 accent-[#0D473B]"
                     />
-                    <span className="text-slate-800 font-bold text-sm sm:text-base">🚰 Water Fountain</span>
+                    <span className="text-slate-800 font-bold text-xs sm:text-sm">🚰 Water Fountain</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
+                    <input
+                      type="checkbox"
+                      checked={enablePetrolPump}
+                      onChange={(e) => setEnablePetrolPump(e.target.checked)}
+                      className="w-5 h-5 accent-[#0D473B]"
+                    />
+                    <span className="text-slate-800 font-bold text-xs sm:text-sm">⛽ Petrol Pump</span>
                   </label>
                 </div>
               </div>
@@ -939,9 +962,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   const clr = "#FFEB3B"; // Default Electric Yellow
                   const fh = enableFarmhouse;
                   const ft = enableFountain;
+                  const pp = enablePetrolPump;
                   const tp = "middle"; // Default Above Plot
                   setActiveMarkingClip(null);
-                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
+                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
                 }}
               />
             </div>

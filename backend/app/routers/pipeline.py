@@ -235,19 +235,25 @@ def merge_clips(request: MergeClipsRequest):
             print(f"[MERGE] FFMPEG ERROR: {error_msg}")
             raise HTTPException(status_code=500, detail=f"FFmpeg concat filter failed: {error_msg}")
 
-        # Upload merged output to MinIO
-        with open(output_path, "rb") as f:
-            data = f.read()
+        # Always save local copy in demo_clips
+        demo_dest = os.path.join("demo_clips", merged_id)
+        with open(output_path, "rb") as f_in:
+            data = f_in.read()
+        with open(demo_dest, "wb") as f_out:
+            f_out.write(data)
 
-        minio_client.put_object(
-            MINIO_BUCKET, merged_id,
-            data=BytesIO(data), length=len(data), content_type="video/mp4"
-        )
-
-        presigned_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, merged_id, expires=timedelta(days=7),
-            response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
-        )
+        try:
+            minio_client.put_object(
+                MINIO_BUCKET, merged_id,
+                data=BytesIO(data), length=len(data), content_type="video/mp4"
+            )
+            presigned_url = minio_client.presigned_get_object(
+                MINIO_BUCKET, merged_id, expires=timedelta(days=7),
+                response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
+            )
+        except Exception as ex_minio:
+            print(f"[MERGE warning] MinIO upload failed ({ex_minio}), using local demo-videos URL")
+            presigned_url = f"http://localhost:8000/demo-videos/{merged_id}"
 
         # Build clip_metadata for voiceover sync
         clip_metadata = []
@@ -318,7 +324,13 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
     
     try:
-        minio_client.fget_object(MINIO_BUCKET, request.highlighted_video_object_name, video_path)
+        demo_p = os.path.join("demo_clips", request.highlighted_video_object_name)
+        if os.path.exists(demo_p):
+            import shutil
+            shutil.copy(demo_p, video_path)
+        else:
+            minio_client.fget_object(MINIO_BUCKET, request.highlighted_video_object_name, video_path)
+
         probe_video = ffmpeg.probe(video_path)
         video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
         video_duration = float(probe_video['format']['duration'])
@@ -572,7 +584,8 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         )
     except Exception as ex_m:
         print(f"[pipeline warning] MinIO upload threw {ex_m}, using local demo-videos URL...")
-        presigned_url = f"https://reel-backend.jamin24.com/demo-videos/{final_object_name}"
+        base_url = str(request.base_url).rstrip("/") if hasattr(request, 'base_url') else "http://localhost:8000"
+        presigned_url = f"{base_url}/demo-videos/{final_object_name}"
 
     if request.job_id:
         update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")
@@ -586,8 +599,10 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     }
 
 
+from fastapi import Request
+
 @router.get("/past-reels")
-def list_past_reels():
+def list_past_reels(request: Request):
     """Returns a list of all previously generated real estate reels from local storage."""
     demo_dir = "demo_clips"
     if not os.path.exists(demo_dir):
@@ -595,6 +610,7 @@ def list_past_reels():
 
     reels = []
     from datetime import datetime
+    base_url = str(request.base_url).rstrip("/")
     for filename in os.listdir(demo_dir):
         if filename.startswith("reel_") or filename.startswith("final_") or filename.startswith("highlighted_"):
             filepath = os.path.join(demo_dir, filename)
@@ -604,7 +620,7 @@ def list_past_reels():
             reels.append({
                 "object_name": filename,
                 "filename": filename,
-                "url": f"https://reel-backend.jamin24.com/demo-videos/{filename}",
+                "url": f"{base_url}/demo-videos/{filename}",
                 "size_mb": size_mb,
                 "created_at": mtime
             })
