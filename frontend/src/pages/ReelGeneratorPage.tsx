@@ -39,6 +39,7 @@ export interface ClipHighlight {
   highlightColor?: string;
   enableFarmhouse?: boolean;
   enableFountain?: boolean;
+  enablePetrolPump?: boolean;
   textPosition?: string;
   isDone: boolean;
   isTracking?: boolean;
@@ -92,6 +93,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [highlightColor, setHighlightColor] = useState<string>("#FFEB3B");
   const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
+  const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
   // Fetch past reels on mount
@@ -331,6 +333,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     label: string,
     enableFarmhouse: boolean,
     enableFountain: boolean,
+    enablePetrolPump: boolean,
     textPosition: string,
     price?: string,
     size?: string,
@@ -338,7 +341,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     highlightColor?: string
   ) => {
     const highlight: ClipHighlight = {
-        points, label, price, size, roadInfo, highlightColor, enableFarmhouse, enableFountain, textPosition, isDone: false, isTracking: true
+        points, label, price, size, roadInfo, highlightColor, enableFarmhouse, enableFountain, enablePetrolPump, textPosition, isDone: false, isTracking: true
     };
     
     setClipHighlights((prev) => ({
@@ -393,6 +396,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           road_info: highlight.roadInfo || undefined,
           enable_farmhouse_overlay: highlight.enableFarmhouse || false,
           enable_fountain_overlay: highlight.enableFountain || false,
+          enable_petrol_pump_overlay: highlight.enablePetrolPump || false,
           text_position: highlight.textPosition || "middle",
         }),
       });
@@ -740,6 +744,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   />
                   <span className="font-bold text-sm">🚰 Fountain</span>
                 </label>
+                <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-2.5 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                  <input
+                    type="checkbox"
+                    checked={enablePetrolPump}
+                    onChange={(e) => setEnablePetrolPump(e.target.checked)}
+                    className="w-4 h-4 accent-[#0D473B]"
+                  />
+                  <span className="font-bold text-sm">⛽ Petrol Pump</span>
+                </label>
               </div>
             </div>
 
@@ -755,9 +768,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 const clr = highlightColor;
                 const fh = enableFarmhouse;
                 const ft = enableFountain;
+                const pp = enablePetrolPump;
                 const tp = textPosition || "middle";
                 setActiveMarkingClip(null);
-                await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
+                await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
               }}
             />
           </div>
