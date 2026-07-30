@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 
-import { API_BASE_URL } from "../config";
+const API_BASE_URL = "http://localhost:8000";
 
 interface Point {
   x: number;
@@ -32,23 +32,6 @@ interface ReelGeneratorPageProps {
 
 export interface ClipHighlight {
   points: Point[];
-<<<<<<< HEAD
-  label: string;
-  price: string;
-  size: string;
-  roadInfo: string;
-  highlightColor: string;
-  enableFarmhouse: boolean;
-  enableFountain: boolean;
-  enablePetrolPump?: boolean;
-  textPosition: string;
-}
-
-interface ClipHighlight {
-  objectName: string;
-  points?: Point[];
-=======
->>>>>>> origin/jay
   label?: string;
   price?: string;
   size?: string;
@@ -56,15 +39,8 @@ interface ClipHighlight {
   highlightColor?: string;
   enableFarmhouse?: boolean;
   enableFountain?: boolean;
-<<<<<<< HEAD
-  enablePetrolPump?: boolean;
-  textPosition?: string;
-  regions?: RegionHighlight[];
-  highlightedObjectName?: string;
-=======
   textPosition?: string;
   isDone: boolean;
->>>>>>> origin/jay
   isTracking?: boolean;
   highlightedObjectName?: string;
 }
@@ -100,10 +76,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [clipHighlights, setClipHighlights] = useState<Record<string, ClipHighlight>>({});
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
-<<<<<<< HEAD
-=======
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
->>>>>>> origin/jay
 
   // Single Video States
   const [singleVideoStage, setSingleVideoStage] = useState<SingleVideoStage>("idle");
@@ -119,21 +92,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [highlightColor, setHighlightColor] = useState<string>("#FFEB3B");
   const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
-  const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
-<<<<<<< HEAD
-  // Sample clips auto-load removed — only user-uploaded clips will appear
-
-  // Handle uploading multiple raw video files (Max 10 clips limit)
-=======
   // Fetch past reels on mount
   useEffect(() => {
     setUploadedClips([]);
     setSelectedClips([]);
   }, []);
 
->>>>>>> origin/jay
   const moveClipUp = (index: number) => {
     if (index <= 0) return;
     const updated = [...uploadedClips];
@@ -352,6 +318,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       const finalUrl = reelData.video_url || reelData.url;
       setMultiClipVideoUrl(finalUrl);
       setMultiClipStage("done");
+
     } catch (err: any) {
       setMultiClipError(err.message || "Something went wrong during reel generation");
       setMultiClipStage("error");
@@ -395,45 +362,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     try {
       if (!highlight.points || highlight.points.length === 0) return;
 
-<<<<<<< HEAD
-      const regionsPayload = [];
-
-      for (let i = 0; i < regionsToTrack.length; i++) {
-        const reg = regionsToTrack[i];
-        
-        // Track on original video to keep optical flow accurate
-        const trackRes = await fetch(`${API_BASE_URL}/track-boundary`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            object_name: clipName,
-            initial_points: reg.points,
-          }),
-        });
-        if (!trackRes.ok) throw new Error("Boundary tracking failed");
-        const trackData = await trackRes.json();
-
-        regionsPayload.push({
-          polygon_per_frame: trackData.polygon_per_frame,
-          highlight_color: reg.highlightColor || "#FFEB3B",
-          border_thickness: 4,
-          label: reg.label || undefined,
-          enable_farmhouse_overlay: reg.enableFarmhouse,
-          enable_fountain_overlay: reg.enableFountain,
-          enable_petrol_pump_overlay: reg.enablePetrolPump || false,
-          text_position: reg.textPosition,
-          price: reg.price || undefined,
-          size: reg.size || undefined,
-          road_info: reg.roadInfo || undefined,
-        });
-      }
-
-      // Render overlay on the ORIGINAL video in a SINGLE pass for all regions
-      const overlayRes = await fetch(`${API_BASE_URL}/render-overlay`, {
-=======
       // Step 1: Track the boundary using /track-boundary
       const trackingRes = await fetch(`${API_BASE_URL}/track-boundary`, {
->>>>>>> origin/jay
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -525,9 +455,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </h2>
               <p className="text-sm font-semibold text-slate-500 mt-1">Upload, select, highlight plot boundaries, and merge clips into a custom reel.</p>
             </div>
-            <span className="bg-emerald-100 text-[#0D473B] text-xs font-extrabold px-3.5 py-1.5 rounded-full border border-emerald-300 shadow-sm">
-              MAX 10 CLIPS
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="bg-emerald-100 text-[#0D473B] text-xs font-extrabold px-3.5 py-1.5 rounded-full border border-emerald-300 shadow-sm">
+                MAX 10 CLIPS
+              </span>
+            </div>
           </div>
 
           {multiClipStage === "idle" && (
@@ -771,110 +703,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
             </div>
 
-<<<<<<< HEAD
-              {/* Per-Plot Visual Effects Controls */}
-              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-sm">
-                <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider">✨ Plot Visual Effects</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={enableFarmhouse}
-                      onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                      className="w-5 h-5 accent-[#0D473B]"
-                    />
-                    <span className="text-slate-800 font-bold text-xs sm:text-sm">🏡 Farmhouse</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={enableFountain}
-                      onChange={(e) => setEnableFountain(e.target.checked)}
-                      className="w-5 h-5 accent-[#0D473B]"
-                    />
-                    <span className="text-slate-800 font-bold text-xs sm:text-sm">🚰 Water Fountain</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 cursor-pointer bg-white rounded-2xl px-3.5 py-3 border border-slate-200 hover:border-[#0D473B] transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={enablePetrolPump}
-                      onChange={(e) => setEnablePetrolPump(e.target.checked)}
-                      className="w-5 h-5 accent-[#0D473B]"
-                    />
-                    <span className="text-slate-800 font-bold text-xs sm:text-sm">⛽ Petrol Pump</span>
-                  </label>
-                </div>
-              </div>
-
-              {tempRegions.length > 0 && (
-                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl mb-4">
-                  <h4 className="font-black text-emerald-800 mb-2 uppercase text-xs tracking-wider">📦 Highlights Saved So Far:</h4>
-                  <ul className="list-disc pl-5 text-sm font-semibold text-emerald-700 space-y-1 mb-4">
-                    {tempRegions.map((r, idx) => (
-                      <li key={idx}>{r.label || `Highlight ${idx + 1}`} {r.price ? `(${r.price})` : ""}</li>
-                    ))}
-                  </ul>
-                  <button
-                    onClick={() => {
-                      const clipName = activeMarkingClip;
-                      setActiveMarkingClip(null);
-                      handleMultiClipBoundaryConfirmed(clipName, tempRegions);
-                    }}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-2"
-                  >
-                    🚀 FINISH: Process All {tempRegions.length} Highlights
-                  </button>
-                </div>
-              )}
-
-              <BoundaryMarker
-                key={tempRegions.length}
-                objectName={activeMarkingClip}
-                confirmButtonText="💾 Save & Add Another Highlight"
-                onBoundaryConfirmed={async (points) => {
-                  const label = activeMarkingLabel;
-                  const pr = plotPrice;
-                  const sz = plotSize;
-                  const rd = roadInfo;
-                  const clr = highlightColor || "#FFEB3B";
-                  const fh = enableFarmhouse;
-                  const ft = enableFountain;
-                  const pp = enablePetrolPump;
-                  const tp = textPosition || "middle";
-                  const newRegion: RegionHighlight = {
-                    points, label, price: pr, size: sz, roadInfo: rd, highlightColor: clr, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp
-                  };
-                  
-                  setTempRegions(prev => [...prev, newRegion]);
-                  
-                  // Reset form for next highlight
-                  setActiveMarkingLabel("");
-                  setPlotPrice("");
-                  setPlotSize("");
-                  setRoadInfo("");
-                  setEnableFarmhouse(false);
-                  setEnableFountain(false);
-                  setEnablePetrolPump(false);
-                }}
-                onSaveAndFinish={async (points) => {
-                  const clipName = activeMarkingClip;
-                  const label = activeMarkingLabel;
-                  const pr = plotPrice;
-                  const sz = plotSize;
-                  const rd = roadInfo;
-                  const clr = highlightColor || "#FFEB3B";
-                  const fh = enableFarmhouse;
-                  const ft = enableFountain;
-                  const pp = enablePetrolPump;
-                  const tp = textPosition || "middle";
-                  const newRegion: RegionHighlight = {
-                    points, label, price: pr, size: sz, roadInfo: rd, highlightColor: clr, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp
-                  };
-                  const allRegions = [...tempRegions, newRegion];
-                  setActiveMarkingClip(null);
-                  handleMultiClipBoundaryConfirmed(clipName, allRegions);
-                }}
-=======
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <span className="text-base">🛣️</span> Road / Highway Distance
@@ -885,7 +713,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 onChange={(e) => setRoadInfo(e.target.value)}
                 placeholder="e.g. 60FT Highway | 100m"
                 className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-sm font-bold w-full transition shadow-sm"
->>>>>>> origin/jay
               />
             </div>
 
@@ -938,7 +765,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       )}
 
       </div>
-    );
+      );
 };
 
-export default ReelGeneratorPage;
+      export default ReelGeneratorPage;
