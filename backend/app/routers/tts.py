@@ -26,14 +26,16 @@ async def generate_tts(request: TTSRequest):
 
     try:
         # Reverted to default settings as extreme rate/pitch causes stuttering in Neural voices
-        DEFAULT_RATE = "+0%"
-        DEFAULT_PITCH = "+0Hz"
+        # For a premium real estate feel, we use Dhwani (Female) as it sounds much more natural and pure Gujarati.
+        # Slight tuning to make it sound more professional.
+        DEFAULT_RATE = "-4%"
+        DEFAULT_PITCH = "-2Hz"
 
         # Replace [PAUSE] markers with a comma for a very natural neural pause (dots cause choppiness)
         processed_text = request.text.replace("[PAUSE]", ", ")
 
-        # Original Male Voice (gu-IN-NiranjanNeural)
-        selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-NiranjanNeural"
+        # Default to ultra-realistic female voice
+        selected_voice = request.voice if request.voice and "Neural" in request.voice else "gu-IN-DhwaniNeural"
         # Adjust rate and pitch for a more natural, professional real-estate voice at normal speed
         communicate = edge_tts.Communicate(processed_text, selected_voice, rate=DEFAULT_RATE, pitch=DEFAULT_PITCH)
         

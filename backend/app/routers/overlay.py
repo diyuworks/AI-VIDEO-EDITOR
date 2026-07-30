@@ -52,9 +52,18 @@ def render_overlay(request: OverlayRequest):
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET, MINIO_ENDPOINT
     from typing import Optional
+    from PIL import Image, ImageDraw, ImageFont
+
+    font_size = 60
+    try:
+        pil_font = ImageFont.truetype(r"C:\Windows\Fonts\ariblk.ttf", font_size)
+    except:
+        pil_font = ImageFont.load_default()
+
 
     farmhouse_img = cv2.imread(os.path.join("assets", "farmhouse_render.png"), cv2.IMREAD_UNCHANGED)
     fountain_img = cv2.imread(os.path.join("assets", "fountain.png"), cv2.IMREAD_UNCHANGED)
+
 
 
     # Step A: Video ko local temp file me download karo
@@ -214,8 +223,21 @@ def render_overlay(request: OverlayRequest):
                         frame = dimmed_frame.copy()
                         frame[mask == 255] = highlighted_area[mask == 255]
 
+                        # 6. Premium 3D Border Glow
+                        # Thick dark outer shadow
+                        border_alpha_overlay = frame.copy()
+                        cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 10, lineType=cv2.LINE_AA)
+                        frame = cv2.addWeighted(frame, 0.6, border_alpha_overlay, 0.4, 0)
+                        
+                        # Colored main border
+                        cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
+                        
+                        # Bright inner highlight for 3D ridge effect
+                        cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
+
+
                         # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
-                        if farmhouse_img is not None and M >= 4:
+                        if region.enable_farmhouse_overlay and farmhouse_img is not None and M >= 4:
                             try:
                                 fh_h, fh_w = farmhouse_img.shape[:2]
                                 src_pts = np.float32([[0, 0], [fh_w, 0], [fh_w, fh_h], [0, fh_h]])
@@ -232,7 +254,7 @@ def render_overlay(request: OverlayRequest):
                                 print(f"[overlay] Farmhouse warp error: {ex_fh}")
 
                         # --- 3D FOUNTAIN PERSPECTIVE WARP OVERLAY ---
-                        if fountain_img is not None and M >= 4:
+                        if region.enable_fountain_overlay and fountain_img is not None and M >= 4:
                             try:
                                 ft_h, ft_w = fountain_img.shape[:2]
                                 src_pts = np.float32([[0, 0], [ft_w, 0], [ft_w, ft_h], [0, ft_h]])
