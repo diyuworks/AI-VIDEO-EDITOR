@@ -116,6 +116,7 @@ class GenerateReelRequest(BaseModel):
     use_exact_script: Optional[bool] = False
     structured_options: Optional[dict] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
+    custom_audio_object_name: Optional[str] = None
     job_id: Optional[str] = None
 
 
@@ -328,135 +329,192 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         raise HTTPException(status_code=500, detail=f"Failed to fetch or probe source video: {str(e)}")
 
     if not TEMPORARY_DISABLE_VOICEOVER:
-        # ---- SUB-STEP A: AI Script Generate Karo ----
-        try:
-            from app.routers.captions import generate_captions
+        if request.custom_audio_object_name:
+            # ==== CUSTOM AUDIO PROVIDED ====
+            if request.job_id:
+                update_progress(request.job_id, 50, "scripting", "Processing uploaded custom audio...")
             
-            reference_captions = None
-            if request.reference_object_name:
+            try:
+                # 1. Download custom audio from MinIO
+                custom_audio_path = os.path.join(temp_dir, f"custom_audio_{export_id}.mp3")
+                minio_client.fget_object(MINIO_BUCKET, request.custom_audio_object_name, custom_audio_path)
+                
+                # 2. Extract word boundaries and text using faster_whisper
+                from app.routers.captions import get_whisper_model
+                if request.job_id:
+                    update_progress(request.job_id, 60, "transcribing", "Transcribing custom audio for captions...")
+                
                 try:
-                    cap_res = generate_captions(request.reference_object_name, session)
-                    reference_captions = cap_res.get("captions")
+                    whisper_segments, _ = get_whisper_model().transcribe(custom_audio_path, beam_size=5, condition_on_previous_text=False)
+                    for segment in whisper_segments:
+                        if hasattr(segment, 'words') and segment.words:
+                            for w in segment.words:
+                                word_boundaries.append({
+                                    "word": w.word.strip(),
+                                    "start": w.start,
+                                    "end": w.end
+                                })
+                        else:
+                            # Fallback if no word-level timestamps (depends on model, but base usually doesn't have words unless configured. Wait, faster_whisper needs word_timestamps=True)
+                            pass
                 except Exception as e:
-                    with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
+                    print(f"Warning: Whisper transcription failed on custom audio: {e}")
 
-            # 1. Target script duration to main video clips duration + 5s logo screen
-            plan_req = EditingPlanRequest(
-                object_name=request.raw_video_object_name,
-                reference_object_name=request.reference_object_name,
-                reference_captions=reference_captions,
-                prompt=request.prompt,
-                use_exact_script=request.use_exact_script,
-                structured_options=request.structured_options,
-                duration_seconds=video_duration + 5.0,  # Now includes 5s end screen for seamless outro
-                clip_metadata=request.clip_metadata  # Timeline info for context-aware narration
-            )
-            plan_req = generate_editing_plan(plan_req, session)
-            # 'generated_script' is removed, we directly use segments below
-        except Exception as e:
-            with open("debug.log", "a") as f: f.write(f"Script Error: {str(e)}\n")
-            raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+                # If word_timestamps wasn't passed, let's fix it by passing word_timestamps=True
+                # Re-run properly just to be safe
+                word_boundaries = []
+                whisper_segments, _ = get_whisper_model().transcribe(custom_audio_path, beam_size=5, word_timestamps=True, condition_on_previous_text=False)
+                for segment in whisper_segments:
+                    if hasattr(segment, 'words') and segment.words:
+                        for w in segment.words:
+                            word_boundaries.append({
+                                "word": w.word.strip(),
+                                "start": w.start,
+                                "end": w.end
+                            })
 
-        # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
-        try:
-            import shutil
-            segments = plan_req["editing_plan"].get("segments", [])
-            outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
+                # 3. Setup final_audio_stream
+                total_final_duration = video_duration + 5.0 # video + end screen
+                final_audio_stream = ffmpeg.input(custom_audio_path).audio.filter('apad').filter('atrim', duration=total_final_duration)
+                
+                if request.job_id:
+                    update_progress(request.job_id, 70, "merging", "Custom audio ready. Merging into video...")
+
+            except Exception as e:
+                with open("debug.log", "a") as f: f.write(f"Custom Audio Error: {str(e)}\n")
+                raise HTTPException(status_code=500, detail=f"Custom audio processing failed: {str(e)}")
             
-            segment_audio_streams = []
-            word_boundaries = []
-            clip_metadata_list = request.clip_metadata or []
-            
-            # Process each video clip segment
-            for idx, seg in enumerate(segments):
-                seg_text = seg.get("text", "").strip()
-                if not seg_text: continue
+        else:
+            # ==== AI TTS SCRIPT GENERATION ====
+            # ---- SUB-STEP A: AI Script Generate Karo ----
+            try:
+                from app.routers.captions import generate_captions
                 
-                # Fetch target duration and start time for this segment
-                if idx < len(clip_metadata_list):
-                    target_dur = clip_metadata_list[idx].get("duration", 0)
-                    clip_start = clip_metadata_list[idx].get("start_time", 0)
-                else:
-                    target_dur = 5.0 # fallback
-                    clip_start = 0.0
-                
-                # Generate TTS for segment
-                tts_req = TTSRequest(text=seg_text)
-                tts_res = await generate_tts(tts_req)
-                
-                seg_source_path = os.path.join("tts_output", f"{tts_res['audio_id']}.mp3")
-                seg_audio_path = os.path.join(temp_dir, f"seg_{idx}_{tts_res['audio_id']}.mp3")
-                shutil.copy(seg_source_path, seg_audio_path)
-                
-                # Center audio and stretch slightly to reduce massive silence gaps
-                try:
-                    probe = ffmpeg.probe(seg_audio_path)
-                    tts_dur = float(probe['format']['duration'])
-                except Exception:
-                    tts_dur = 0.0
+                reference_captions = None
+                if request.reference_object_name:
+                    try:
+                        cap_res = generate_captions(request.reference_object_name, session)
+                        reference_captions = cap_res.get("captions")
+                    except Exception as e:
+                        with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
 
-                if tts_dur > 0 and target_dur > 0:
-                    ratio = tts_dur / target_dur
-                    # Clamp ratio: max stretch is 15% slower (0.85) to avoid robotic voice
-                    ratio = max(0.85, min(1.15, ratio))
+                # 1. Target script duration to main video clips duration + 5s logo screen
+                plan_req = EditingPlanRequest(
+                    object_name=request.raw_video_object_name,
+                    reference_object_name=request.reference_object_name,
+                    reference_captions=reference_captions,
+                    prompt=request.prompt,
+                    use_exact_script=request.use_exact_script,
+                    structured_options=request.structured_options,
+                    duration_seconds=video_duration + 5.0,  # Now includes 5s end screen for seamless outro
+                    clip_metadata=request.clip_metadata  # Timeline info for context-aware narration
+                )
+                plan_req = generate_editing_plan(plan_req, session)
+                # 'generated_script' is removed, we directly use segments below
+            except Exception as e:
+                with open("debug.log", "a") as f: f.write(f"Script Error: {str(e)}\n")
+                raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+
+            # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
+            try:
+                import shutil
+                segments = plan_req["editing_plan"].get("segments", [])
+                outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
+                
+                segment_audio_streams = []
+                word_boundaries = []
+                clip_metadata_list = request.clip_metadata or []
+                
+                # Process each video clip segment
+                for idx, seg in enumerate(segments):
+                    seg_text = seg.get("text", "").strip()
+                    if not seg_text: continue
                     
-                    new_tts_dur = tts_dur / ratio
-                    pad_total = max(0.0, target_dur - new_tts_dur)
-                    pad_front = pad_total / 2.0
+                    # Fetch target duration and start time for this segment
+                    if idx < len(clip_metadata_list):
+                        target_dur = clip_metadata_list[idx].get("duration", 0)
+                        clip_start = clip_metadata_list[idx].get("start_time", 0)
+                    else:
+                        target_dur = 5.0 # fallback
+                        clip_start = 0.0
                     
-                    # Update word boundaries
-                    for wb in tts_res["word_boundaries"]:
-                        wb["start"] = round((wb["start"] / ratio) + clip_start + pad_front, 3)
-                        wb["end"] = round((wb["end"] / ratio) + clip_start + pad_front, 3)
-                        word_boundaries.append(wb)
+                    # Generate TTS for segment
+                    tts_req = TTSRequest(text=seg_text)
+                    tts_res = await generate_tts(tts_req)
                     
-                    delay_ms = int(pad_front * 1000)
+                    seg_source_path = os.path.join("tts_output", f"{tts_res['audio_id']}.mp3")
+                    seg_audio_path = os.path.join(temp_dir, f"seg_{idx}_{tts_res['audio_id']}.mp3")
+                    shutil.copy(seg_source_path, seg_audio_path)
                     
-                    audio_stream = ffmpeg.input(seg_audio_path).audio.filter('atempo', ratio)
-                    if delay_ms > 0:
-                        audio_stream = audio_stream.filter('adelay', f'{delay_ms}|{delay_ms}')
+                    # Center audio and stretch slightly to reduce massive silence gaps
+                    try:
+                        probe = ffmpeg.probe(seg_audio_path)
+                        tts_dur = float(probe['format']['duration'])
+                    except Exception:
+                        tts_dur = 0.0
+    
+                    if tts_dur > 0 and target_dur > 0:
+                        ratio = tts_dur / target_dur
+                        # Clamp ratio: max stretch is 15% slower (0.85) to avoid robotic voice
+                        ratio = max(0.85, min(1.15, ratio))
                         
-                    audio_padded = audio_stream.filter('apad').filter('atrim', duration=target_dur)
-                    segment_audio_streams.append(audio_padded)
-                else:
-                    # Fallback
-                    for wb in tts_res["word_boundaries"]:
-                        wb["start"] = round(wb["start"] + clip_start, 3)
-                        wb["end"] = round(wb["end"] + clip_start, 3)
-                        word_boundaries.append(wb)
-                    audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
-                    segment_audio_streams.append(audio_padded)
-
-            # Generate Outro TTS
-            if outro_text:
-                outro_req = TTSRequest(text=outro_text)
-                outro_res = await generate_tts(outro_req)
-                outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
-                outro_audio_path = os.path.join(temp_dir, f"outro_{outro_res['audio_id']}.mp3")
-                shutil.copy(outro_source, outro_audio_path)
-                
-                outro_start = video_duration
-                for wb in outro_res["word_boundaries"]:
-                    wb["start"] = round(wb["start"] + outro_start, 3)
-                    wb["end"] = round(wb["end"] + outro_start, 3)
-                    word_boundaries.append(wb)
+                        new_tts_dur = tts_dur / ratio
+                        pad_total = max(0.0, target_dur - new_tts_dur)
+                        pad_front = pad_total / 2.0
+                        
+                        # Update word boundaries
+                        for wb in tts_res["word_boundaries"]:
+                            wb["start"] = round((wb["start"] / ratio) + clip_start + pad_front, 3)
+                            wb["end"] = round((wb["end"] / ratio) + clip_start + pad_front, 3)
+                            word_boundaries.append(wb)
+                        
+                        delay_ms = int(pad_front * 1000)
+                        
+                        audio_stream = ffmpeg.input(seg_audio_path).audio.filter('atempo', ratio)
+                        if delay_ms > 0:
+                            audio_stream = audio_stream.filter('adelay', f'{delay_ms}|{delay_ms}')
+                            
+                        audio_padded = audio_stream.filter('apad').filter('atrim', duration=target_dur)
+                        segment_audio_streams.append(audio_padded)
+                    else:
+                        # Fallback
+                        for wb in tts_res["word_boundaries"]:
+                            wb["start"] = round(wb["start"] + clip_start, 3)
+                            wb["end"] = round(wb["end"] + clip_start, 3)
+                            word_boundaries.append(wb)
+                        audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
+                        segment_audio_streams.append(audio_padded)
+    
+                # Generate Outro TTS
+                if outro_text:
+                    outro_req = TTSRequest(text=outro_text)
+                    outro_res = await generate_tts(outro_req)
+                    outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
+                    outro_audio_path = os.path.join(temp_dir, f"outro_{outro_res['audio_id']}.mp3")
+                    shutil.copy(outro_source, outro_audio_path)
                     
-                # Pad outro to 5 seconds (end screen duration)
-                outro_audio_stream = ffmpeg.input(outro_audio_path).audio.filter('apad').filter('atrim', duration=5.0)
-                segment_audio_streams.append(outro_audio_stream)
-
-            # Concat all audio streams into a single perfect timeline
-            if len(segment_audio_streams) > 1:
-                final_audio_stream = ffmpeg.concat(*segment_audio_streams, v=0, a=1)
-            elif len(segment_audio_streams) == 1:
-                final_audio_stream = segment_audio_streams[0]
-            else:
-                # Fallback empty audio
-                final_audio_stream = ffmpeg.input('anullsrc', f='lavfi', t=total_final_duration).audio
-
-        except Exception as e:
-            with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Segment TTS Error: {str(e)}\n")
-            raise HTTPException(status_code=500, detail=f"Segment TTS generation failed: {str(e)}")
+                    outro_start = video_duration
+                    for wb in outro_res["word_boundaries"]:
+                        wb["start"] = round(wb["start"] + outro_start, 3)
+                        wb["end"] = round(wb["end"] + outro_start, 3)
+                        word_boundaries.append(wb)
+                        
+                    # Pad outro to 5 seconds (end screen duration)
+                    outro_audio_stream = ffmpeg.input(outro_audio_path).audio.filter('apad').filter('atrim', duration=5.0)
+                    segment_audio_streams.append(outro_audio_stream)
+    
+                # Concat all audio streams into a single perfect timeline
+                if len(segment_audio_streams) > 1:
+                    final_audio_stream = ffmpeg.concat(*segment_audio_streams, v=0, a=1)
+                elif len(segment_audio_streams) == 1:
+                    final_audio_stream = segment_audio_streams[0]
+                else:
+                    # Fallback empty audio
+                    final_audio_stream = ffmpeg.input('anullsrc', f='lavfi', t=total_final_duration).audio
+    
+            except Exception as e:
+                with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Segment TTS Error: {str(e)}\n")
+                raise HTTPException(status_code=500, detail=f"Segment TTS generation failed: {str(e)}")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
     

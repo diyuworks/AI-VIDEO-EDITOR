@@ -41,7 +41,7 @@ def init_minio():
         print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
 
 
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac"}
 MAX_FILE_SIZE_MB = 500
 
 
