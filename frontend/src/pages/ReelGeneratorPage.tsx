@@ -230,7 +230,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   const areAllSelectedClipsHighlighted = () => {
     if (selectedClips.length === 0) return false;
-    return true;
+    return selectedClips.every((clip) => clipHighlights[clip]?.isDone);
   };
 
   const handleGenerateMultiClipReel = async () => {
@@ -498,8 +498,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     {uploadedClips.map((clip, clipIndex) => {
                       const clipName = clip.object_name;
                       const isSelected = selectedClips.includes(clipName);
+                      const isDone = clipHighlights[clipName]?.isDone;
                       return (
                         <div key={clip.id} className={`p-4 pb-4 rounded-2xl border flex flex-col items-center justify-between transition relative min-h-[190px] ${isSelected ? "border-[#0D473B] bg-emerald-50/60 shadow-md ring-2 ring-[#0D473B]/20" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                          {isDone && (
+                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg shadow-emerald-500/30 flex items-center gap-1 z-10 border border-emerald-400">
+                              <span>✅</span> PROCESSED
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 absolute top-2.5 left-2.5">
                             <button onClick={() => moveClipUp(clipIndex)} disabled={clipIndex === 0} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">◀</button>
                             <button onClick={() => moveClipDown(clipIndex)} disabled={clipIndex === uploadedClips.length - 1} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">▶</button>
@@ -583,7 +589,12 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
+                {selectedClips.length > 0 && !areAllSelectedClipsHighlighted() && (
+                  <p className="text-amber-900 text-sm font-bold flex items-center gap-2 bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm">
+                    ⚠️ Validation Guard: Please mark the plot boundary for all selected clips before merging.
+                  </p>
+                )}
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
               </div>
