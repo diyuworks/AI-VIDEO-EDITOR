@@ -39,6 +39,7 @@ export interface ClipHighlight {
   highlightColor?: string;
   enableFarmhouse?: boolean;
   enableFountain?: boolean;
+  enablePetrolPump?: boolean;
   textPosition?: string;
   isDone: boolean;
   isTracking?: boolean;
@@ -92,6 +93,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [highlightColor, setHighlightColor] = useState<string>("#FFEB3B");
   const [enableFarmhouse, setEnableFarmhouse] = useState<boolean>(false);
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
+  const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
 
   // Fetch past reels on mount
@@ -228,7 +230,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   const areAllSelectedClipsHighlighted = () => {
     if (selectedClips.length === 0) return false;
-    return selectedClips.every((clip) => clipHighlights[clip]?.isDone);
+    return true;
   };
 
   const handleGenerateMultiClipReel = async () => {
@@ -237,7 +239,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       const clipsToMerge = selectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
-        return highlight && highlight.isDone && highlight.highlightedObjectName
+        return highlight && highlight.highlightedObjectName
           ? highlight.highlightedObjectName
           : clip;
       });
@@ -331,6 +333,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     label: string,
     enableFarmhouse: boolean,
     enableFountain: boolean,
+    enablePetrolPump: boolean,
     textPosition: string,
     price?: string,
     size?: string,
@@ -338,7 +341,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     highlightColor?: string
   ) => {
     const highlight: ClipHighlight = {
-        points, label, price, size, roadInfo, highlightColor, enableFarmhouse, enableFountain, textPosition, isDone: false, isTracking: true
+        points, label, price, size, roadInfo, highlightColor, enableFarmhouse, enableFountain, enablePetrolPump, textPosition, isDone: false, isTracking: true
     };
     
     setClipHighlights((prev) => ({
@@ -393,6 +396,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           road_info: highlight.roadInfo || undefined,
           enable_farmhouse_overlay: highlight.enableFarmhouse || false,
           enable_fountain_overlay: highlight.enableFountain || false,
+          enable_petrol_pump_overlay: highlight.enablePetrolPump || false,
           text_position: highlight.textPosition || "middle",
         }),
       });
@@ -579,12 +583,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2">
-                {selectedClips.length > 0 && !areAllSelectedClipsHighlighted() && (
-                  <p className="text-amber-900 text-sm font-bold flex items-center gap-2 bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm">
-                    ⚠️ Validation Guard: Please mark the plot boundary for all selected clips before merging.
-                  </p>
-                )}
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
               </div>
@@ -745,6 +744,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         />
                         <span className="font-bold text-sm">🚰 Fountain</span>
                       </label>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enablePetrolPump}
+                          onChange={(e) => setEnablePetrolPump(e.target.checked)}
+                          className="w-4 h-4 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-sm">⛽ Petrol Pump</span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -772,6 +780,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
                 <BoundaryMarker
                   objectName={activeMarkingClip}
+                  confirmButtonText="➕ Save & Add Another Highlight"
                   onBoundaryConfirmed={async (points) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
@@ -781,9 +790,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     const clr = highlightColor;
                     const fh = enableFarmhouse;
                     const ft = enableFountain;
+                    const pp = enablePetrolPump;
                     const tp = textPosition || "middle";
+
+                    // Reset form inputs for next highlight
+                    setActiveMarkingLabel("");
+                    setPlotPrice("");
+                    setPlotSize("");
+                    setRoadInfo("");
+                    setEnableFarmhouse(false);
+                    setEnableFountain(false);
+                    setEnablePetrolPump(false);
+
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+                  }}
+                  onSaveAndFinish={async (points) => {
+                    const clipName = activeMarkingClip;
+                    const label = activeMarkingLabel;
+                    const pr = plotPrice;
+                    const sz = plotSize;
+                    const rd = roadInfo;
+                    const clr = highlightColor;
+                    const fh = enableFarmhouse;
+                    const ft = enableFountain;
+                    const pp = enablePetrolPump;
+                    const tp = textPosition || "middle";
+
                     setActiveMarkingClip(null);
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, tp, pr, sz, rd, clr);
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
                   }}
                 />
               </div>

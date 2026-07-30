@@ -18,6 +18,7 @@ class RegionOverlayRequest(BaseModel):
     label: Optional[str] = None
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
+    enable_petrol_pump_overlay: bool = False
     text_position: str = "middle"
     price: Optional[str] = None
     size: Optional[str] = None
@@ -33,6 +34,7 @@ class OverlayRequest(BaseModel):
     label: Optional[str] = None
     enable_farmhouse_overlay: bool = False
     enable_fountain_overlay: bool = False
+    enable_petrol_pump_overlay: bool = False
     text_position: str = "middle"
     price: Optional[str] = None
     size: Optional[str] = None
@@ -63,6 +65,7 @@ def render_overlay(request: OverlayRequest):
 
     farmhouse_img = cv2.imread(os.path.join("assets", "farmhouse_render.png"), cv2.IMREAD_UNCHANGED)
     fountain_img = cv2.imread(os.path.join("assets", "fountain.png"), cv2.IMREAD_UNCHANGED)
+    petrol_pump_img = cv2.imread(os.path.join("assets", "petrol_pump.png"), cv2.IMREAD_UNCHANGED)
 
 
 
@@ -121,6 +124,7 @@ def render_overlay(request: OverlayRequest):
             label=request.label,
             enable_farmhouse_overlay=request.enable_farmhouse_overlay,
             enable_fountain_overlay=request.enable_fountain_overlay,
+            enable_petrol_pump_overlay=request.enable_petrol_pump_overlay,
             text_position=request.text_position,
             price=request.price,
             size=request.size,
@@ -269,6 +273,23 @@ def render_overlay(request: OverlayRequest):
                                     frame = cv2.addWeighted(warped_ft, 0.8, frame, 0.2, 0)
                             except Exception as ex_ft:
                                 print(f"[overlay] Fountain warp error: {ex_ft}")
+
+                        # --- 3D PETROL PUMP PERSPECTIVE WARP OVERLAY ---
+                        if getattr(region, 'enable_petrol_pump_overlay', False) and petrol_pump_img is not None and M >= 4:
+                            try:
+                                pp_h, pp_w = petrol_pump_img.shape[:2]
+                                src_pts = np.float32([[0, 0], [pp_w, 0], [pp_w, pp_h], [0, pp_h]])
+                                dst_pts = polygon_points[:4].astype(np.float32)
+                                M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                                warped_pp = cv2.warpPerspective(petrol_pump_img, M_persp, (width, height))
+                                # Alpha blend warped petrol pump onto frame
+                                if warped_pp.shape[2] == 4:
+                                    alpha_mask = (warped_pp[:, :, 3] / 255.0)[:, :, np.newaxis]
+                                    frame = (warped_pp[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
+                                else:
+                                    frame = cv2.addWeighted(warped_pp, 0.8, frame, 0.2, 0)
+                            except Exception as ex_pp:
+                                print(f"[overlay] Petrol pump warp error: {ex_pp}")
 
                         # 6. Draw glowing borders
                         cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
@@ -557,6 +578,7 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
     return {
         "success": True,
         "final_object_name": final_object_name,
+        "output_object_name": final_object_name,
         "url": output_url,
         "had_audio": has_audio,
     }
