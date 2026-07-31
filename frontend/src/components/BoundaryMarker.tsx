@@ -118,8 +118,8 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   };
 
   const handleConfirm = () => {
-    if (points.length < 3) {
-      alert("Please mark at least 3 corner points to define the plot boundary!");
+    if (points.length < 1) {
+      alert("Please mark at least 1 point!");
       return;
     }
     onBoundaryConfirmed(points);
@@ -225,7 +225,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         </button>
         <button
           onClick={handleConfirm}
-          disabled={points.length < 3}
+          disabled={points.length < 1}
           className="flex-[2] px-4 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <span>{confirmButtonText}</span>
@@ -235,14 +235,14 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         {onSaveAndFinish && (
           <button
             onClick={() => {
-              if (points.length < 3) {
-                alert("Please mark at least 3 corner points to define the plot boundary!");
+              if (points.length < 1) {
+                alert("Please mark at least 1 point!");
                 return;
               }
               onSaveAndFinish(points);
               setPoints([]);
             }}
-            disabled={points.length < 3}
+            disabled={points.length < 1}
             className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span>🚀 Save & Process Now</span>

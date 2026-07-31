@@ -237,19 +237,30 @@ def merge_clips(request: MergeClipsRequest):
             print(f"[MERGE] FFMPEG ERROR: {error_msg}")
             raise HTTPException(status_code=500, detail=f"FFmpeg concat filter failed: {error_msg}")
 
+        # Save locally to demo_clips as fallback
+        demo_dir = "demo_clips"
+        os.makedirs(demo_dir, exist_ok=True)
+        local_merged_path = os.path.join(demo_dir, merged_id)
+        import shutil
+        shutil.copy(output_path, local_merged_path)
+
         # Upload merged output to MinIO
-        with open(output_path, "rb") as f:
-            data = f.read()
+        try:
+            with open(output_path, "rb") as f:
+                data = f.read()
 
-        minio_client.put_object(
-            MINIO_BUCKET, merged_id,
-            data=BytesIO(data), length=len(data), content_type="video/mp4"
-        )
+            minio_client.put_object(
+                MINIO_BUCKET, merged_id,
+                data=BytesIO(data), length=len(data), content_type="video/mp4"
+            )
 
-        presigned_url = minio_client.presigned_get_object(
-            MINIO_BUCKET, merged_id, expires=timedelta(days=7),
-            response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
-        )
+            presigned_url = minio_client.presigned_get_object(
+                MINIO_BUCKET, merged_id, expires=timedelta(days=7),
+                response_headers={'response-content-disposition': 'attachment; filename="AI_Reel.mp4"'}
+            )
+        except Exception as e:
+            print(f"[MERGE] MinIO upload failed, using local URL. Error: {e}")
+            presigned_url = f"http://localhost:8000/demo-videos/{merged_id}"
 
         # Build clip_metadata for voiceover sync
         clip_metadata = []
@@ -360,22 +371,31 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
                 except Exception as e:
                     print(f"Warning: Whisper transcription failed on custom audio: {e}")
 
-                # If word_timestamps wasn't passed, let's fix it by passing word_timestamps=True
-                # Re-run properly just to be safe
-                word_boundaries = []
-                whisper_segments, _ = get_whisper_model().transcribe(custom_audio_path, beam_size=5, word_timestamps=True, condition_on_previous_text=False)
-                for segment in whisper_segments:
-                    if hasattr(segment, 'words') and segment.words:
-                        for w in segment.words:
-                            word_boundaries.append({
-                                "word": w.word.strip(),
-                                "start": w.start,
-                                "end": w.end
-                            })
+                try:
+                    # If word_timestamps wasn't passed, let's fix it by passing word_timestamps=True
+                    # Re-run properly just to be safe
+                    word_boundaries = []
+                    whisper_segments, _ = get_whisper_model().transcribe(custom_audio_path, beam_size=5, word_timestamps=True, condition_on_previous_text=False)
+                    for segment in whisper_segments:
+                        if hasattr(segment, 'words') and segment.words:
+                            for w in segment.words:
+                                word_boundaries.append({
+                                    "word": w.word.strip(),
+                                    "start": w.start,
+                                    "end": w.end
+                                })
+                except Exception as e:
+                    print(f"Warning: Whisper transcription with word_timestamps failed on custom audio: {e}")
 
                 # 3. Setup final_audio_stream
-                total_final_duration = video_duration + 5.0 # video + end screen
-                final_audio_stream = ffmpeg.input(custom_audio_path).audio.filter('apad').filter('atrim', duration=total_final_duration)
+                try:
+                    custom_audio_probe = ffmpeg.probe(custom_audio_path)
+                    custom_audio_dur = float(custom_audio_probe['format']['duration'])
+                except Exception:
+                    custom_audio_dur = video_duration # fallback
+
+                total_final_duration = custom_audio_dur
+                final_audio_stream = ffmpeg.input(custom_audio_path).audio.filter('atrim', duration=total_final_duration)
                 
                 if request.job_id:
                     update_progress(request.job_id, 70, "merging", "Custom audio ready. Merging into video...")
@@ -520,15 +540,22 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     
     try:
         # Video is already downloaded and probed!
-        trim_duration = video_duration
-        end_screen_duration = 5.0  # Fixed 5s logo end screen
-        total_final_duration = video_duration + end_screen_duration
-        outro_start_time = video_duration
+        if not TEMPORARY_DISABLE_VOICEOVER and request.custom_audio_object_name:
+            # Custom Audio Mode: Video length matches audio EXACTLY, no end screen.
+            trim_duration = total_final_duration  # set from custom audio dur above
+            end_screen_duration = 0.0
+            outro_start_time = trim_duration
+            input_video = ffmpeg.input(video_path, stream_loop=-1) # Loop video if shorter than audio
+        else:
+            # Normal AI TTS Mode: Video + 5s End Screen
+            trim_duration = video_duration
+            end_screen_duration = 5.0  # Fixed 5s logo end screen
+            total_final_duration = video_duration + end_screen_duration
+            outro_start_time = video_duration
+            input_video = ffmpeg.input(video_path)
         
         width = int(video_info['width'])
         height = int(video_info['height'])
-
-        input_video = ffmpeg.input(video_path)
         
         # Convert video to 9:16 Reels format (crop center)
         crop_w = 'min(iw,ih*9/16)'
@@ -547,9 +574,9 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         reel_width = int(min(width, height * 9 / 16))
         reel_height = int(min(height, width * 16 / 9))
         
-        # Setup end screen image stream (5 seconds logo card)
+        # Setup end screen image stream (5 seconds logo card) if duration > 0
         end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
-        if os.path.exists(end_screen_path):
+        if os.path.exists(end_screen_path) and end_screen_duration > 0:
             image_stream = ffmpeg.input(end_screen_path, loop=1, t=end_screen_duration)
             
             image_scaled = (
@@ -579,7 +606,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         if not TEMPORARY_DISABLE_VOICEOVER:
             filtered_video = video_for_subs
             
-            if has_audio:
+            if has_audio and not request.custom_audio_object_name:
                 # Loop original audio to cover the full duration (video + 5s outro)
                 # Lower volume to 15% so it acts as background music behind the voiceover
                 bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.15').filter('atrim', duration=total_final_duration)
