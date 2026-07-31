@@ -546,7 +546,16 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             end_screen_duration = 5.0
             trim_duration = max(1.0, total_final_duration - end_screen_duration)
             outro_start_time = trim_duration
-            input_video = ffmpeg.input(video_path, stream_loop=-1) # Loop video if shorter than audio
+            
+            if video_duration > trim_duration:
+                # Video is longer than audio: Speed it up (timelapse) so ALL selected clips are shown!
+                speed_factor = trim_duration / video_duration
+                input_video = ffmpeg.input(video_path)
+                video_node = input_video.video.filter('setpts', f'{speed_factor}*PTS')
+            else:
+                # Video is shorter than audio: Loop it seamlessly
+                input_video = ffmpeg.input(video_path, stream_loop=-1)
+                video_node = input_video.video
         else:
             # Normal AI TTS Mode: Video + 5s End Screen
             trim_duration = video_duration
@@ -554,6 +563,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
             total_final_duration = video_duration + end_screen_duration
             outro_start_time = video_duration
             input_video = ffmpeg.input(video_path)
+            video_node = input_video.video
         
         width = int(video_info['width'])
         height = int(video_info['height'])
@@ -562,7 +572,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         crop_w = 'min(iw,ih*9/16)'
         crop_h = 'min(ih,iw*16/9)'
         video_scaled = (
-            input_video.video
+            video_node
             .trim(duration=trim_duration)
             .setpts('PTS-STARTPTS')
             .filter('fps', fps=25)
@@ -592,7 +602,18 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         else:
             video_for_subs = video_scaled
 
-        # Logo watermark has been removed to maintain the original video feel.
+        # Overlay logo watermark if logo.png exists in assets/ folder
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo.png")
+        if os.path.exists(logo_path):
+            # Apply colorkey to remove white background and set opacity
+            logo_input = ffmpeg.input(logo_path)
+            logo_clean = logo_input.filter('colorkey', color='white', similarity=0.3, blend=0.1)
+            logo_alpha = logo_clean.filter('colorchannelmixer', aa=0.90)
+            
+            # LOGO (Bottom-Center) - 25% of reel width for a proper, non-intrusive look
+            logo_w = int(reel_width * 0.25)
+            scaled_logo = logo_alpha.filter('scale', logo_w, -1)
+            video_for_subs = ffmpeg.overlay(video_for_subs, scaled_logo, x='(main_w-overlay_w)/2', y='main_h-overlay_h-40')
         
         if not TEMPORARY_DISABLE_VOICEOVER:
             filtered_video = video_for_subs

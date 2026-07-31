@@ -3,6 +3,20 @@ import BoundaryMarker from "../components/BoundaryMarker";
 
 const API_BASE_URL = "http://localhost:8000";
 
+const TypewriterText = ({ text }: { text: string }) => {
+  const [typedText, setTypedText] = useState("");
+  useEffect(() => {
+    let i = 0;
+    const interval = setInterval(() => {
+      setTypedText(text.slice(0, i));
+      i++;
+      if (i > text.length) clearInterval(interval);
+    }, 40);
+    return () => clearInterval(interval);
+  }, [text]);
+  return <>{typedText}</>;
+};
+
 interface Point {
   x: number;
   y: number;
@@ -529,11 +543,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </span>
                 Next-Gen Video AI
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0D473B] tracking-tight leading-tight">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0D473B] tracking-tight leading-tight animate-pop-in">
                 Jamin <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 animate-gradient-x drop-shadow-sm">24</span> AI Hub
               </h1>
-              <p className="text-slate-500 text-sm sm:text-base font-bold tracking-wide max-w-md">
-                Automated Plot Highlighting & Professional Reel Generation
+              <p className="text-slate-500 text-sm sm:text-base font-bold tracking-wide max-w-md min-h-[48px]">
+                <TypewriterText text="Automated Plot Highlighting & Professional Reel Generation" />
               </p>
             </div>
           </div>
@@ -765,12 +779,12 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="text-base">🏷️</span> Plot Label / Name
                     </label>
-                    <input
-                      type="text"
+                    <textarea
                       value={activeMarkingLabel}
                       onChange={(e) => setActiveMarkingLabel(e.target.value)}
-                      placeholder="e.g. Premium Corner Plot"
-                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-bold w-full transition shadow-sm"
+                      placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
+                      rows={2}
+                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-bold w-full transition shadow-sm resize-none"
                     />
                   </div>
 

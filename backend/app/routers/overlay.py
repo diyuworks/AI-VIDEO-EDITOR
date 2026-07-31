@@ -250,56 +250,42 @@ def render_overlay(request: OverlayRequest):
                             # Bright inner highlight for 3D ridge effect
                             cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
 
-                        # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
-                        if region.enable_farmhouse_overlay and farmhouse_img is not None and M >= 4:
-                            try:
-                                fh_h, fh_w = farmhouse_img.shape[:2]
-                                src_pts = np.float32([[0, 0], [fh_w, 0], [fh_w, fh_h], [0, fh_h]])
-                                dst_pts = polygon_points[:4].astype(np.float32)
-                                M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                                warped_fh = cv2.warpPerspective(farmhouse_img, M_persp, (width, height))
-                                # Alpha blend warped farmhouse onto frame
-                                if warped_fh.shape[2] == 4:
-                                    alpha_mask = (warped_fh[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                    frame = (warped_fh[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
-                                else:
-                                    frame = cv2.addWeighted(warped_fh, 0.8, frame, 0.2, 0)
-                            except Exception as ex_fh:
-                                print(f"[overlay] Farmhouse warp error: {ex_fh}")
-
-                        # --- 3D FOUNTAIN PERSPECTIVE WARP OVERLAY ---
-                        if region.enable_fountain_overlay and fountain_img is not None and M >= 4:
-                            try:
-                                ft_h, ft_w = fountain_img.shape[:2]
-                                src_pts = np.float32([[0, 0], [ft_w, 0], [ft_w, ft_h], [0, ft_h]])
-                                dst_pts = polygon_points[:4].astype(np.float32)
-                                M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                                warped_ft = cv2.warpPerspective(fountain_img, M_persp, (width, height))
-                                # Alpha blend warped fountain onto frame
-                                if warped_ft.shape[2] == 4:
-                                    alpha_mask = (warped_ft[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                    frame = (warped_ft[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
-                                else:
-                                    frame = cv2.addWeighted(warped_ft, 0.8, frame, 0.2, 0)
-                            except Exception as ex_ft:
-                                print(f"[overlay] Fountain warp error: {ex_ft}")
-
-                        # --- 3D PETROL PUMP PERSPECTIVE WARP OVERLAY ---
-                        if getattr(region, 'enable_petrol_pump_overlay', False) and petrol_pump_img is not None and M >= 4:
-                            try:
-                                pp_h, pp_w = petrol_pump_img.shape[:2]
-                                src_pts = np.float32([[0, 0], [pp_w, 0], [pp_w, pp_h], [0, pp_h]])
-                                dst_pts = polygon_points[:4].astype(np.float32)
-                                M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                                warped_pp = cv2.warpPerspective(petrol_pump_img, M_persp, (width, height))
-                                # Alpha blend warped petrol pump onto frame
-                                if warped_pp.shape[2] == 4:
-                                    alpha_mask = (warped_pp[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                    frame = (warped_pp[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
-                                else:
-                                    frame = cv2.addWeighted(warped_pp, 0.8, frame, 0.2, 0)
-                            except Exception as ex_pp:
-                                print(f"[overlay] Petrol pump warp error: {ex_pp}")
+                        # --- 3D PERSPECTIVE WARP OVERLAYS (Dynamic Split for Multiple Models) ---
+                        active_models = []
+                        if getattr(region, 'enable_farmhouse_overlay', False) and farmhouse_img is not None:
+                            active_models.append(('Farmhouse', farmhouse_img))
+                        if getattr(region, 'enable_fountain_overlay', False) and fountain_img is not None:
+                            active_models.append(('Fountain', fountain_img))
+                        if getattr(region, 'enable_petrol_pump_overlay', False) and petrol_pump_img is not None:
+                            active_models.append(('Petrol Pump', petrol_pump_img))
+                            
+                        if len(active_models) > 0 and M >= 4:
+                            p0, p1, p2, p3 = polygon_points[0], polygon_points[1], polygon_points[2], polygon_points[3]
+                            for i, (model_name, img) in enumerate(active_models):
+                                try:
+                                    t1 = i / len(active_models)
+                                    t2 = (i + 1) / len(active_models)
+                                    
+                                    pt0 = p0 + (p1 - p0) * t1
+                                    pt1 = p0 + (p1 - p0) * t2
+                                    pt2 = p3 + (p2 - p3) * t2
+                                    pt3 = p3 + (p2 - p3) * t1
+                                    
+                                    dst_pts = np.float32([pt0, pt1, pt2, pt3])
+                                    img_h, img_w = img.shape[:2]
+                                    src_pts = np.float32([[0, 0], [img_w, 0], [img_w, img_h], [0, img_h]])
+                                    
+                                    M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                                    warped_img = cv2.warpPerspective(img, M_persp, (width, height))
+                                    
+                                    # Alpha blend warped model onto frame
+                                    if warped_img.shape[2] == 4:
+                                        alpha_mask = (warped_img[:, :, 3] / 255.0)[:, :, np.newaxis]
+                                        frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
+                                    else:
+                                        frame = cv2.addWeighted(warped_img, 0.8, frame, 0.2, 0)
+                                except Exception as ex_model:
+                                    print(f"[overlay] {model_name} warp error: {ex_model}")
 
                         # 6. Draw glowing borders
                         cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
@@ -311,11 +297,14 @@ def render_overlay(request: OverlayRequest):
                             top_pt = polygon_points[min_y_idx]
                             
                             raw_label = request_label.strip().upper()
-                            words = raw_label.split()
-                            if len(words) == 2 and len(raw_label) >= 8:
-                                lines = words
+                            if '\n' in raw_label:
+                                lines = raw_label.split('\n')
                             else:
-                                lines = [raw_label]
+                                words = raw_label.split()
+                                if len(words) == 2 and len(raw_label) >= 8:
+                                    lines = words
+                                else:
+                                    lines = [raw_label]
                                 
                             from PIL import ImageDraw
                             dummy_img = Image.new('RGBA', (1, 1))
