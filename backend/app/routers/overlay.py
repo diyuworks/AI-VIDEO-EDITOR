@@ -200,45 +200,55 @@ def render_overlay(request: OverlayRequest):
                     else:
                         # Border is complete, draw closed polygon outline with background dimming
                         fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
-                        
-                        # 1. Dim background smoothly outside plot (Very subtle so multiple highlights don't turn it pitch black)
-                        dim_factor = 1.0 - (0.15 * fade_progress)
-                        dimmed_frame = cv2.convertScaleAbs(frame, alpha=dim_factor, beta=0)
-                        
-                        # 2. Polygon Mask
-                        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-                        cv2.fillPoly(mask, [polygon_points], 255)
-                        mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-                        
-                        # 3. Pulsing alpha for plot fill
                         import math
-                        if fade_progress < 1.0:
-                            alpha = 0.35 * fade_progress
+                        
+                        if M == 2:
+                            # Draw a thick glowing line for road/distance
+                            if fade_progress < 1.0:
+                                alpha = 0.8 * fade_progress
+                            else:
+                                alpha = 0.8 + 0.2 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
+                            
+                            overlay = frame.copy()
+                            cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), color_bgr, thickness=request_border_thickness + 8, lineType=cv2.LINE_AA)
+                            cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), (255, 255, 255), thickness=max(2, request_border_thickness - 2), lineType=cv2.LINE_AA)
+                            
+                            frame = cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0)
                         else:
-                            alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
-                        
-                        # 4. Highlighted area
-                        highlighted_area = frame.copy()
-                        color_overlay = np.zeros_like(frame)
-                        cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
-                        highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
-                        
-                        # 5. Combine using mask (zero temporary memory allocation)
-                        frame = dimmed_frame.copy()
-                        frame[mask == 255] = highlighted_area[mask == 255]
+                            # 1. No background dimming to keep video 100% original
+                            
+                            # 2. Polygon Mask
+                            mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+                            cv2.fillPoly(mask, [polygon_points], 255)
+                            mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                            
+                            # 3. Pulsing alpha for plot fill
+                            if fade_progress < 1.0:
+                                alpha = 0.35 * fade_progress
+                            else:
+                                alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
+                            
+                            # 4. Highlighted area
+                            highlighted_area = frame.copy()
+                            color_overlay = np.zeros_like(frame)
+                            cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
+                            highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
+                            
+                            # 5. Combine using mask (zero temporary memory allocation)
+                            # Apply only to highlighted_area to keep original frame intact
+                            frame[mask == 255] = highlighted_area[mask == 255]
 
-                        # 6. Premium 3D Border Glow
-                        # Thick dark outer shadow
-                        border_alpha_overlay = frame.copy()
-                        cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 10, lineType=cv2.LINE_AA)
-                        frame = cv2.addWeighted(frame, 0.6, border_alpha_overlay, 0.4, 0)
+                            # 6. Premium 3D Border Glow
+                            # Thick dark outer shadow
+                            border_alpha_overlay = frame.copy()
+                            cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 10, lineType=cv2.LINE_AA)
+                            frame = cv2.addWeighted(frame, 0.6, border_alpha_overlay, 0.4, 0)
                         
-                        # Colored main border
-                        cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
-                        
-                        # Bright inner highlight for 3D ridge effect
-                        cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
-
+                            # Colored main border
+                            cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
+                            
+                            # Bright inner highlight for 3D ridge effect
+                            cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
 
                         # --- 3D FARMHOUSE PERSPECTIVE WARP OVERLAY ---
                         if region.enable_farmhouse_overlay and farmhouse_img is not None and M >= 4:
@@ -572,6 +582,12 @@ def merge_audio_back(highlighted_object_name: str, original_object_name: str):
                 os.remove(path)
             except Exception:
                 pass
+                
+    try:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(out_frames_dir, ignore_errors=True)
+    except Exception:
+        pass
 
     output_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{final_object_name}"
 

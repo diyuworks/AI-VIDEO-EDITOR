@@ -337,6 +337,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         video_duration = float(probe_video['format']['duration'])
         has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
     except Exception as e:
+        with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Source Fetch Error: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Failed to fetch or probe source video: {str(e)}")
 
     if not TEMPORARY_DISABLE_VOICEOVER:
@@ -541,9 +542,9 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
     try:
         # Video is already downloaded and probed!
         if not TEMPORARY_DISABLE_VOICEOVER and request.custom_audio_object_name:
-            # Custom Audio Mode: Video length matches audio EXACTLY, no end screen.
-            trim_duration = total_final_duration  # set from custom audio dur above
-            end_screen_duration = 0.0
+            # Custom Audio Mode: Video length matches audio EXACTLY. Last 5s is end screen.
+            end_screen_duration = 5.0
+            trim_duration = max(1.0, total_final_duration - end_screen_duration)
             outro_start_time = trim_duration
             input_video = ffmpeg.input(video_path, stream_loop=-1) # Loop video if shorter than audio
         else:
@@ -591,17 +592,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         else:
             video_for_subs = video_scaled
 
-        # Overlay logo watermark if logo.png exists in assets/ folder
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo.png")
-        if os.path.exists(logo_path):
-            logo_input = ffmpeg.input(logo_path)
-            # Apply 95% opacity for better visibility
-            logo_alpha = logo_input.filter('colorchannelmixer', aa=0.95)
-            
-            # LOGO (Bottom-Center) - 30% of reel width (increased size)
-            logo_w = int(reel_width * 0.30)
-            scaled_logo = logo_alpha.filter('scale', logo_w, -1)
-            video_for_subs = ffmpeg.overlay(video_for_subs, scaled_logo, x='(main_w-overlay_w)/2', y='main_h-overlay_h-40')
+        # Logo watermark has been removed to maintain the original video feel.
         
         if not TEMPORARY_DISABLE_VOICEOVER:
             filtered_video = video_for_subs
@@ -636,6 +627,7 @@ async def generate_reel(request: GenerateReelRequest, session: Session = Depends
         
     except ffmpeg.Error as e:
         error_message = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        with open("debug.log", "a", encoding="utf-8") as f: f.write(f"FFmpeg Final Error: {error_message}\n")
         raise HTTPException(status_code=500, detail=f"FFmpeg error: {error_message}")
     except Exception as e:
         with open("debug.log", "a") as f: f.write(f"Export Error: {str(e)}\n")

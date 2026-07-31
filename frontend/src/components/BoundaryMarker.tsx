@@ -7,18 +7,16 @@ interface Point {
 
 interface BoundaryMarkerProps {
   objectName: string;
-  onBoundaryConfirmed: (points: Point[]) => void;
   onSaveAndFinish?: (points: Point[]) => void;
-  confirmButtonText?: string;
+  onSaveAndAddAnother?: (points: Point[]) => void;
 }
 
 const API_BASE_URL = "http://localhost:8000";
 
 const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   objectName,
-  onBoundaryConfirmed,
   onSaveAndFinish,
-  confirmButtonText = "Confirm & Track Plot",
+  onSaveAndAddAnother,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -118,12 +116,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   };
 
   const handleConfirm = () => {
-    if (points.length < 1) {
-      alert("Please mark at least 1 point!");
-      return;
-    }
-    onBoundaryConfirmed(points);
-    setPoints([]);
+    // Legacy generic confirm handler - removed
   };
 
   const statusColor =
@@ -223,14 +216,24 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         >
           Reset
         </button>
-        <button
-          onClick={handleConfirm}
-          disabled={points.length < 1}
-          className="flex-[2] px-4 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl shadow-xl shadow-[#0D473B]/20 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span>{confirmButtonText}</span>
-          <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
-        </button>
+
+        {onSaveAndAddAnother && (
+          <button
+            onClick={() => {
+              if (points.length < 1) {
+                alert("Please mark at least 1 point!");
+                return;
+              }
+              onSaveAndAddAnother(points);
+              setPoints([]);
+            }}
+            disabled={points.length < 1}
+            className="flex-[2] px-4 py-3 bg-slate-600 hover:bg-slate-700 text-white font-black rounded-2xl shadow-xl shadow-slate-600/30 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <span>+ Save & Add Another Highlight</span>
+            <span className="text-xs font-medium text-slate-200">({points.length} Points Marked)</span>
+          </button>
+        )}
 
         {onSaveAndFinish && (
           <button
