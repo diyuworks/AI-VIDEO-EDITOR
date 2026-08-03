@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config";
 
 interface Point {
   x: number;
@@ -28,6 +27,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
+  onOpenTimeline?: () => void;
 }
 
 export interface ClipHighlightItem {
@@ -78,6 +78,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
   prompt: initialPrompt = "",
+  onOpenTimeline,
 }) => {
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
@@ -234,6 +235,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     } catch (err: any) {
       console.error("Upload error:", err);
       alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleLoadDemoClips = async () => {
+    try {
+      setIsUploading(true);
+      setUploadProgress("Loading Demo Clips 1 to 5...");
+      const res = await fetch(`${API_BASE_URL}/available-clips`);
+      if (!res.ok) throw new Error("Could not fetch available clips");
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        const demoClips: UploadedClip[] = data.map((c: any) => ({
+          id: c.id,
+          filename: c.filename,
+          object_name: c.object_name,
+          url: c.url,
+        }));
+        setUploadedClips(demoClips);
+        setSelectedClips(demoClips.map((c) => c.object_name));
+        setUploadProgress("Loaded 5 Demo Clips successfully! 🎉");
+        setTimeout(() => setUploadProgress(""), 2000);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to load demo clips.");
     } finally {
       setIsUploading(false);
     }
@@ -671,10 +700,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
+              <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
+                {onOpenTimeline && (
+                  <button onClick={onOpenTimeline} className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                    <span>🎛️</span> Open in Timeline Studio
+                  </button>
+                )}
               </div>
             </>
           )}

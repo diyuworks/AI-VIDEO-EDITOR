@@ -204,15 +204,17 @@ def list_available_clips(request: Request):
 
     import glob
     files = glob.glob(os.path.join(demo_dir, "*.mp4"))
-    raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_"))]
+    raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_", "merged_"))]
+    raw_clips.sort()
 
     base_url = str(request.base_url).rstrip("/")
     clips = []
     for idx, filepath in enumerate(raw_clips):
         fname = os.path.basename(filepath)
+        clean_title = fname.replace("_", " ").replace(".mp4", "")
         clips.append({
             "id": idx + 1,
-            "filename": f"Sample Plot Clip #{idx + 1} ({fname[:8]}.mp4)",
+            "filename": clean_title,
             "object_name": fname,
             "url": f"{base_url}/demo-videos/{fname}",
         })
