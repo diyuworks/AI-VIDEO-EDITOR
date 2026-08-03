@@ -621,7 +621,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
         <div className="relative max-h-full max-w-full">
           <video
             ref={videoRef}
-            src={videoUrl}
+            src={videoUrl || (rawObjectName ? `${API_BASE_URL}/raw_video/${rawObjectName}` : `${API_BASE_URL}/raw_video/clip_1.mp4`)}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             className="max-h-full max-w-full rounded-lg block"
