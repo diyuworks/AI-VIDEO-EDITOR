@@ -235,7 +235,12 @@ def merge_clips(request: MergeClipsRequest):
         # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
         joined = ffmpeg.concat(*streams, v=1, a=1, n=len(local_clip_paths)).node
-        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
+        out = ffmpeg.output(
+            joined[0], joined[1], output_path,
+            vcodec='libx264', acodec='aac',
+            video_bitrate='2M', strict='experimental',
+            preset='fast', threads=4
+        )
         
         try:
             cmd_args = ffmpeg.get_args(out)
