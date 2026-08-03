@@ -4,14 +4,17 @@ import tempfile
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from typing import List
-from sqlmodel import Session, select
-from app.database import get_session, VideoRecord
-from minio import Minio
-from minio.error import S3Error
+from sqlmodel import Session
+try:
+    from minio import Minio
+except ImportError:
+    Minio = None
+
 from app.config import (
     MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
     MINIO_BUCKET, MINIO_SECURE
 )
+from app.database import get_session, VideoRecord
 
 router = APIRouter()
 
@@ -20,7 +23,7 @@ minio_client = Minio(
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
     secure=MINIO_SECURE
-)
+) if Minio else None
 
 def init_minio():
     """Initialize MinIO bucket with a timeout so app startup never hangs."""
@@ -28,7 +31,7 @@ def init_minio():
 
     def _try_init():
         try:
-            if not minio_client.bucket_exists(MINIO_BUCKET):
+            if minio_client and not minio_client.bucket_exists(MINIO_BUCKET):
                 minio_client.make_bucket(MINIO_BUCKET)
             print("MinIO bucket initialized successfully.")
         except Exception as e:
