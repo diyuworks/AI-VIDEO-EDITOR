@@ -1158,13 +1158,13 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
                           const isBeingDragged = clip.id === draggingClipId
                           const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
                           const isBoundary = clip.overlayKind === 'boundary'
-                          const clipWidthPx = Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20)
+                          const clipWidthPx = Math.max((clip.end - clip.start) * PIXELS_PER_SECOND, 20)
                           return (
                             <button
                               key={clip.id}
                               onMouseDown={(e) => handleClipMouseDown(e, clip)}
                               className={[
-                                'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors relative',
+                                'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors',
                                 isBoundary ? 'bg-yellow-400/20' : meta.color,
                                 selected ? `border-2 ${isBoundary ? 'border-yellow-400' : meta.border}` : 'border border-transparent',
                                 isBeingDragged ? 'cursor-grabbing opacity-70 z-20 shadow-lg' : 'cursor-grab',
@@ -1190,7 +1190,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
                           onClick={handleAddClipClick}
                           className="absolute top-1.5 bottom-1.5 rounded-md bg-emerald-600/40 hover:bg-emerald-500/70 border border-emerald-400/60 flex items-center justify-center px-3 text-xs font-black text-emerald-200 transition cursor-pointer gap-1 shadow-md"
                           style={{
-                            left: lastVideoEnd * PIXELS_PER_SECOND + 4,
+                            left: lastVideoEnd * PIXELS_PER_SECOND,
                             width: 95,
                           }}
                           title="Add new video clip to timeline"
