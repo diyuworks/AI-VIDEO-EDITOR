@@ -386,8 +386,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       clearInterval(progressInterval);
       setProgressPercent(100);
-      setProgressMessage("Reel generation complete!");
-      const finalUrl = reelData.video_url || reelData.url;
+      const finalUrl = reelData?.video_url || reelData?.url || reelData?.download_url || (reelData?.merged_object_name ? `${API_BASE_URL}/demo-videos/${reelData.merged_object_name}` : null);
+      if (!finalUrl) {
+        throw new Error("No video URL returned from reel generator");
+      }
       setMultiClipVideoUrl(finalUrl);
       setMultiClipStage("done");
 
