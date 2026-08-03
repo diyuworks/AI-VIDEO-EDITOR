@@ -263,15 +263,14 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     })
   }
 
-  const handleLoadedMetadata = () => {
-    const singleDur = videoRef.current?.duration ?? 8
-    if (clipItems && clipItems.length > 1) {
-      let totalDur = 0
-      const perClipLen = Math.min(8, Math.max(4, Math.round(singleDur / clipItems.length))) || 7
-      const initialClips: Clip[] = clipItems.map((item, idx) => {
-        const startSec = totalDur
-        const endSec = totalDur + perClipLen
-        totalDur = endSec
+  useEffect(() => {
+    if (clipItems && clipItems.length > 0) {
+      let cursor = 0
+      const defaultClipLen = 6 // 6 seconds per clip
+      const gaplessClips: Clip[] = clipItems.map((item, idx) => {
+        const startSec = cursor
+        const endSec = cursor + defaultClipLen
+        cursor = endSec
         return {
           id: item.id || `clip-${idx + 1}`,
           track: 'video',
@@ -280,12 +279,19 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           label: item.label || `Clip ${idx + 1}`,
         }
       })
-      setDuration(totalDur)
-      setClips(initialClips)
-    } else {
-      setDuration(singleDur)
-      setClips([{ id: 'clip-1', track: 'video', start: 0, end: singleDur, label: 'Clip 1' }])
+      setDuration(cursor)
+      setClips(gaplessClips)
     }
+  }, [clipItems])
+
+  const handleLoadedMetadata = () => {
+    const singleDur = videoRef.current?.duration ?? 8
+    if (clipItems && clipItems.length > 0) {
+      // clipItems useEffect already handled initialization
+      return
+    }
+    setDuration(singleDur)
+    setClips([{ id: 'clip-1', track: 'video', start: 0, end: singleDur, label: 'Clip 1' }])
   }
 
   const handleTimeUpdate = () => {
