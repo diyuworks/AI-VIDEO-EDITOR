@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../../config'
 
 type TrackType = 'video' | 'overlay' | 'audio'
-type OverlayKind = 'caption' | 'boundary'
+type OverlayKind = 'caption' | 'boundary' | 'logo'
 
 interface Clip {
   id: string
@@ -11,9 +11,8 @@ interface Clip {
   end: number // seconds
   label: string
   text?: string // caption text, only used when overlayKind === 'caption'
-  overlayKind?: OverlayKind // only set for track === 'overlay'; caption clips (from AI plan or "Text") omit this and are treated as captions
-  // Land/plot boundary box, as % of the video frame (0-100), plus rotation
-  // so it can be angled to trace a real, non-axis-aligned field edge.
+  overlayKind?: OverlayKind // only set for track === 'overlay'
+  imageDataUrl?: string // image/logo sticker data URL or URL
   boxLeftPct?: number
   boxTopPct?: number
   boxWidthPct?: number
@@ -279,6 +278,42 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
         console.error('Video upload error:', err)
       }
     }
+  }
+
+  // ---- Overlay Selection & Image Overlay State & Handlers ----
+  const [overlayMenuOpen, setOverlayMenuOpen] = useState(false)
+  const imageOverlayFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageOverlaySelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string
+      if (!dataUrl) return
+
+      const start = playhead
+      const end = Math.min(playhead + 5, duration || 10)
+      const newLogoClip: Clip = {
+        id: `logo-${Date.now()}`,
+        track: 'overlay',
+        overlayKind: 'logo',
+        start,
+        end,
+        label: `🖼️ ${file.name}`,
+        imageDataUrl: dataUrl,
+        boxLeftPct: 70,
+        boxTopPct: 10,
+        boxWidthPct: 25,
+        boxHeightPct: 20,
+      }
+
+      setClips((prev) => [...prev, newLogoClip])
+      setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+      setOverlayMenuOpen(false)
+    }
+    reader.readAsDataURL(file)
   }
 
   // ---- Audio Upload State & Handlers ----
@@ -775,10 +810,13 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     !!selectedClip && playhead > selectedClip.start && playhead < selectedClip.end
 
   const activeCaption = clips.find(
-    (c) => c.track === 'overlay' && c.overlayKind !== 'boundary' && playhead >= c.start && playhead < c.end,
+    (c) => c.track === 'overlay' && c.overlayKind !== 'boundary' && c.overlayKind !== 'logo' && playhead >= c.start && playhead < c.end,
   )
   const activeBoundaries = clips.filter(
     (c) => c.track === 'overlay' && c.overlayKind === 'boundary' && playhead >= c.start && playhead < c.end,
+  )
+  const activeLogos = clips.filter(
+    (c) => c.track === 'overlay' && c.overlayKind === 'logo' && playhead >= c.start && playhead < c.end,
   )
 
   const tracks: TrackType[] = ['overlay', 'audio', 'video']
@@ -819,6 +857,23 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
             </div>
           ))}
 
+          {trackVisibility.overlay && activeLogos.map((logo) => (
+            <div
+              key={logo.id}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${logo.boxLeftPct ?? 70}%`,
+                top: `${logo.boxTopPct ?? 10}%`,
+                width: `${logo.boxWidthPct ?? 25}%`,
+                height: `${logo.boxHeightPct ?? 20}%`,
+              }}
+            >
+              {logo.imageDataUrl && (
+                <img src={logo.imageDataUrl} alt={logo.label} className="w-full h-full object-contain drop-shadow-md" />
+              )}
+            </div>
+          ))}
+
           {trackVisibility.overlay && activeCaption && (
             <div className="absolute bottom-6 left-0 right-0 flex justify-center px-6 pointer-events-none">
               <span
@@ -837,14 +892,84 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
 
       <input type="file" ref={videoFileInputRef} accept="video/*" multiple onChange={handleVideoFilesSelected} className="hidden" />
       <input type="file" ref={audioFileInputRef} accept="audio/*" onChange={handleAudioFileSelected} className="hidden" />
+      <input type="file" ref={imageOverlayFileInputRef} accept="image/*" onChange={handleImageOverlaySelected} className="hidden" />
       {audioUrl && <audio ref={audioRef} src={audioUrl} className="hidden" />}
+
+      {/* Overlay Options Choice Modal */}
+      {overlayMenuOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-canvas-raised border border-canvas-border rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>🖼️</span> Choose Overlay Type
+              </h3>
+              <button onClick={() => setOverlayMenuOpen(false)} className="text-white/50 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+                  openNewCaptionPanel()
+                }}
+                className="p-4 rounded-xl bg-teal-dim/40 hover:bg-teal-dim border border-teal/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">🔤</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Add Text / Caption Overlay</div>
+                  <div className="text-xs text-white/60">Burn subtitle or text callouts onto the video</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  imageOverlayFileInputRef.current?.click()
+                }}
+                className="p-4 rounded-xl bg-amber-dim/40 hover:bg-amber-dim border border-amber/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">🖼️</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Add Image / Logo Overlay</div>
+                  <div className="text-xs text-white/60">Upload PNG/JPG logo sticker or watermark graphic</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+                  openNewBoundaryPanel()
+                }}
+                className="p-4 rounded-xl bg-[#0D473B]/40 hover:bg-[#0D473B] border border-emerald-500/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">▭</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Mark Land Boundary</div>
+                  <div className="text-xs text-white/60">Draw plot boundary box on property footage</div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setOverlayMenuOpen(false)}
+                className="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="shrink-0 flex items-center justify-between px-4 py-2 border-y border-canvas-border bg-canvas-panel">
         <div className="flex items-center gap-1.5">
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
           <ToolbarButton icon="✂" label="Split" onClick={splitSelectedClip} disabled={!canSplit} />
           <ToolbarButton icon="🗑" label="Delete" onClick={deleteSelectedClip} disabled={!selectedClipId} />
-          <ToolbarButton icon="🖼️" label="Overlay" onClick={() => setTrackVisibility((prev) => ({ ...prev, overlay: !prev.overlay }))} />
+          <ToolbarButton icon="🖼️" label="Overlay" onClick={() => setOverlayMenuOpen(true)} />
           <ToolbarButton
             icon="T"
             label="Text"
