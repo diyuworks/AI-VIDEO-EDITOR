@@ -1190,20 +1190,6 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
                           )
                         })}
 
-                      {/* CapCut Style Inline + Add Clip Button on Video Track */}
-                      {track === 'video' && (
-                        <button
-                          onClick={handleAddClipClick}
-                          className="absolute top-1.5 bottom-1.5 rounded-md bg-emerald-600/40 hover:bg-emerald-500/70 border border-emerald-400/60 flex items-center justify-center px-3 text-xs font-black text-emerald-200 transition cursor-pointer gap-1 shadow-md"
-                          style={{
-                            left: lastVideoEnd * PIXELS_PER_SECOND + 4,
-                            width: 95,
-                          }}
-                          title="Add new video clip to timeline"
-                        >
-                          <span className="text-sm">➕</span> Add Clip
-                        </button>
-                      )}
 
                       {clips.filter((c) => c.track === track).length === 0 && track !== 'video' && (
                         <span className="text-white/15 text-xs pl-2 font-mono">
