@@ -30,7 +30,7 @@ const DRAG_MOVE_THRESHOLD_PX = 3
 const TRACK_META: Record<TrackType, { label: string; color: string; border: string }> = {
   video: { label: 'Video', color: 'bg-amber-dim', border: 'border-amber' },
   overlay: { label: 'Overlays / Captions', color: 'bg-teal-dim', border: 'border-teal' },
-  audio: { label: 'Music', color: 'bg-white/10', border: 'border-white/30' },
+  audio: { label: 'Audio', color: 'bg-white/10', border: 'border-white/30' },
 }
 
 // ---- AI plan generation (SIMULATED — see note below) ----
@@ -213,7 +213,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   // ---- Track Visibility & Mute State ----
   const [trackVisibility, setTrackVisibility] = useState<Record<TrackType, boolean>>({
     video: true,
-    overlay: true,
+    overlay: false, // Default overlay track hidden until user clicks Overlay button
     audio: true,
   })
   const [trackMuted, setTrackMuted] = useState<Record<TrackType, boolean>>({
@@ -221,6 +221,23 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     overlay: false,
     audio: false,
   })
+
+  // ---- Helper to strictly enforce gapless adjacent video clips ----
+  const enforceGaplessClips = (rawClips: Clip[]) => {
+    const videoClips = rawClips.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
+    const otherClips = rawClips.filter((c) => c.track !== 'video')
+
+    let cursor = 0
+    const snappedVideoClips: Clip[] = videoClips.map((c) => {
+      const clipLen = Math.max(c.end - c.start, 3)
+      const start = cursor
+      const end = cursor + clipLen
+      cursor = end
+      return { ...c, start, end }
+    })
+
+    return [...snappedVideoClips, ...otherClips]
+  }
 
   // ---- Video File Input for Inline + Add Clip ----
   const videoFileInputRef = useRef<HTMLInputElement>(null)
@@ -252,8 +269,10 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
               end: lastEnd + clipLen,
               label: `Clip ${videoClips.length + 1} (${data.filename})`,
             }
-            setDuration(lastEnd + clipLen)
-            return [...prev, newClip]
+            const updated = enforceGaplessClips([...prev, newClip])
+            const maxEnd = Math.max(...updated.filter((c) => c.track === 'video').map((c) => c.end), 10)
+            setDuration(maxEnd)
+            return updated
           })
         }
       } catch (err) {
@@ -298,20 +317,10 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
 
   const snapClipsBackToBack = () => {
     setClips((prev) => {
-      const videoClips = prev.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
-      const otherClips = prev.filter((c) => c.track !== 'video')
-
-      let cursor = 0
-      const snappedVideoClips: Clip[] = videoClips.map((c) => {
-        const clipLen = c.end - c.start
-        const start = cursor
-        const end = cursor + clipLen
-        cursor = end
-        return { ...c, start, end }
-      })
-
-      setDuration(cursor)
-      return [...snappedVideoClips, ...otherClips]
+      const snapped = enforceGaplessClips(prev)
+      const maxEnd = Math.max(...snapped.filter((c) => c.track === 'video').map((c) => c.end), 10)
+      setDuration(maxEnd)
+      return snapped
     })
   }
 
@@ -319,7 +328,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     if (clipItems && clipItems.length > 0) {
       let cursor = 0
       const defaultClipLen = 6 // 6 seconds per clip
-      const gaplessClips: Clip[] = clipItems.map((item, idx) => {
+      const rawClips: Clip[] = clipItems.map((item, idx) => {
         const startSec = cursor
         const endSec = cursor + defaultClipLen
         cursor = endSec
@@ -331,8 +340,10 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           label: item.label || `Clip ${idx + 1}`,
         }
       })
-      setDuration(cursor)
-      setClips(gaplessClips)
+      const gapless = enforceGaplessClips(rawClips)
+      const maxEnd = Math.max(...gapless.filter((c) => c.track === 'video').map((c) => c.end), 10)
+      setDuration(maxEnd)
+      setClips(gapless)
     }
   }, [clipItems])
 
@@ -814,9 +825,26 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
           <ToolbarButton icon="✂" label="Split" onClick={splitSelectedClip} disabled={!canSplit} />
           <ToolbarButton icon="🗑" label="Delete" onClick={deleteSelectedClip} disabled={!selectedClipId} />
-          <ToolbarButton icon="T" label="Text" onClick={openNewCaptionPanel} disabled={duration === 0} />
-          <ToolbarButton icon="▭" label="Mark Land" onClick={openNewBoundaryPanel} disabled={duration === 0} />
-          <ToolbarButton icon="♪" label="Music" onClick={handleMusicUploadClick} disabled={duration === 0} />
+          <ToolbarButton icon="🖼️" label="Overlay" onClick={() => setTrackVisibility((prev) => ({ ...prev, overlay: !prev.overlay }))} />
+          <ToolbarButton
+            icon="T"
+            label="Text"
+            onClick={() => {
+              setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+              openNewCaptionPanel()
+            }}
+            disabled={duration === 0}
+          />
+          <ToolbarButton
+            icon="▭"
+            label="Mark Land"
+            onClick={() => {
+              setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+              openNewBoundaryPanel()
+            }}
+            disabled={duration === 0}
+          />
+          <ToolbarButton icon="🎵" label="Audio" onClick={handleMusicUploadClick} disabled={duration === 0} />
           <ToolbarButton icon="🧲" label="Snap Clips" onClick={snapClipsBackToBack} disabled={clips.filter((c) => c.track === 'video').length <= 1} />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
         </div>
@@ -864,39 +892,30 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
 
         <div className="flex bg-slate-950/60 rounded-lg overflow-hidden border border-canvas-border">
           {/* Left Track Control Sidebar */}
-          <div className="w-32 shrink-0 bg-slate-900 border-r border-canvas-border flex flex-col pt-7 select-none">
+          <div className="w-28 shrink-0 bg-slate-900 border-r border-canvas-border flex flex-col pt-7 select-none">
             {tracks.map((track) => (
               <div
                 key={track}
                 className="h-[56px] border-b border-canvas-border/60 flex items-center justify-between px-2 text-xs font-bold text-white/80"
               >
-                <div className="flex items-center gap-1 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`w-2 h-2 rounded-full ${TRACK_META[track].color}`} />
-                  <span className="truncate text-[10px] font-mono uppercase">{TRACK_META[track].label.split(' ')[0]}</span>
+                  <span className="truncate text-[10px] font-mono uppercase font-bold">{TRACK_META[track].label.split(' ')[0]}</span>
                 </div>
-                <div className="flex items-center gap-0.5">
-                  <button
-                    onClick={() => setTrackVisibility((prev) => ({ ...prev, [track]: !prev[track] }))}
-                    className={`p-1 rounded hover:bg-slate-700 transition ${trackVisibility[track] ? 'text-emerald-400' : 'text-slate-500 opacity-50'}`}
-                    title={trackVisibility[track] ? 'Hide Track' : 'Show Track'}
-                  >
-                    {trackVisibility[track] ? '👁️' : '🙈'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTrackMuted((prev) => {
-                        const nextMuted = !prev[track]
-                        if (track === 'video' && videoRef.current) videoRef.current.muted = nextMuted
-                        if (track === 'audio' && audioRef.current) audioRef.current.muted = nextMuted
-                        return { ...prev, [track]: nextMuted }
-                      })
-                    }}
-                    className={`p-1 rounded hover:bg-slate-700 transition ${trackMuted[track] ? 'text-rose-400' : 'text-emerald-400'}`}
-                    title={trackMuted[track] ? 'Unmute Track' : 'Mute Track'}
-                  >
-                    {trackMuted[track] ? '🔇' : '🔊'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    setTrackMuted((prev) => {
+                      const nextMuted = !prev[track]
+                      if (track === 'video' && videoRef.current) videoRef.current.muted = nextMuted
+                      if (track === 'audio' && audioRef.current) audioRef.current.muted = nextMuted
+                      return { ...prev, [track]: nextMuted }
+                    })
+                  }}
+                  className={`p-1 rounded hover:bg-slate-700 transition ${trackMuted[track] ? 'text-rose-400' : 'text-emerald-400'}`}
+                  title={trackMuted[track] ? 'Unmute Track' : 'Mute Track'}
+                >
+                  {trackMuted[track] ? '🔇' : '🔊'}
+                </button>
               </div>
             ))}
           </div>
