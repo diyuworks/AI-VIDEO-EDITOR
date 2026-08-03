@@ -321,10 +321,12 @@ from app.routers.export import TMP_DIR
 def resolve_local_or_minio_file(object_name: str, target_path: str, is_audio: bool = False) -> bool:
     import shutil
     search_dirs = [
+        "uploaded_files",
         "demo_clips",
         TMP_DIR,
-        r"C:\Users\Diya Malvia\Downloads",
-        r"c:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\demo_clips"
+        r"C:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\uploaded_files",
+        r"C:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\demo_clips",
+        r"C:\Users\Diya Malvia\Downloads"
     ]
     
     # 1. Exact match in search directories
