@@ -13,6 +13,8 @@ interface Clip {
   text?: string // caption text, only used when overlayKind === 'caption'
   overlayKind?: OverlayKind // only set for track === 'overlay'
   imageDataUrl?: string // image/logo sticker data URL or URL
+  objectName?: string
+  videoUrl?: string
   boxLeftPct?: number
   boxTopPct?: number
   boxWidthPct?: number
@@ -267,6 +269,8 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
               start: lastEnd,
               end: lastEnd + clipLen,
               label: `Clip ${videoClips.length + 1} (${data.filename})`,
+              objectName: data.object_name,
+              videoUrl: data.url || `${API_BASE_URL}/raw_video/${data.object_name}`,
             }
             const updated = enforceGaplessClips([...prev, newClip])
             const maxEnd = Math.max(...updated.filter((c) => c.track === 'video').map((c) => c.end), 10)
@@ -373,6 +377,8 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           start: startSec,
           end: endSec,
           label: item.label || `Clip ${idx + 1}`,
+          objectName: item.objectName,
+          videoUrl: item.url,
         }
       })
       const gapless = enforceGaplessClips(rawClips)
@@ -400,6 +406,29 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     setDuration(maxEnd)
     setClips(snapped)
   }, [clips])
+
+  // ---- Active Video Clip Switching Engine ----
+  const currentVideoClipRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const activeClip = clips.find(
+      (c) => c.track === 'video' && playhead >= c.start && playhead < c.end,
+    )
+    if (activeClip && videoRef.current) {
+      const clipMediaUrl =
+        activeClip.videoUrl ||
+        (activeClip.objectName ? `${API_BASE_URL}/raw_video/${activeClip.objectName}` : videoUrl)
+      if (clipMediaUrl && currentVideoClipRef.current !== clipMediaUrl) {
+        currentVideoClipRef.current = clipMediaUrl
+        videoRef.current.src = clipMediaUrl
+        const clipOffset = Math.max(0, playhead - activeClip.start)
+        videoRef.current.currentTime = clipOffset
+        if (isPlaying) {
+          videoRef.current.play().catch(() => {})
+        }
+      }
+    }
+  }, [playhead, clips, videoUrl, isPlaying])
 
   const handleLoadedMetadata = () => {
     const singleDur = videoRef.current?.duration ?? 8
