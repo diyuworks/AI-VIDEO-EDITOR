@@ -467,7 +467,7 @@ async def export_video(req: ExportRequest):
     return {
         "success": True,
         "filename": output_filename,
-        "download_url": f"https://reel-backend.jamin24.com/export-file/{output_filename}"
+        "download_url": f"/export-file/{output_filename}"
     }
 
 @router.get("/export-file/{filename}")
