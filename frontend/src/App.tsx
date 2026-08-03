@@ -79,7 +79,11 @@ function App() {
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
               prompt={promptData?.prompt}
-              onOpenTimeline={() => setScreen('timeline')}
+              onOpenTimeline={(vUrl, objName) => {
+                if (vUrl) setVideoUrl(vUrl)
+                if (objName) setRawObjectName(objName)
+                setScreen('timeline')
+              }}
             />
           </div>
         )}

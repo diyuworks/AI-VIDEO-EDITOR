@@ -27,7 +27,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
-  onOpenTimeline?: () => void;
+  onOpenTimeline?: (videoUrl?: string, objectName?: string) => void;
 }
 
 export interface ClipHighlightItem {
@@ -705,7 +705,19 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (
-                  <button onClick={onOpenTimeline} className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                  <button
+                    onClick={() => {
+                      const activeClipObj = uploadedClips.find((c) => selectedClips.includes(c.object_name)) || uploadedClips[0];
+                      const targetUrl = activeClipObj
+                        ? activeClipObj.url
+                        : rawVideoObjectName
+                        ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
+                        : `${API_BASE_URL}/raw_video/clip_1.mp4`;
+                      const targetObjName = activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4');
+                      onOpenTimeline(targetUrl, targetObjName);
+                    }}
+                    className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                  >
                     <span>🎛️</span> Open in Timeline Studio
                   </button>
                 )}
