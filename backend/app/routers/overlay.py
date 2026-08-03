@@ -73,8 +73,12 @@ def render_overlay(request: OverlayRequest):
     # (presigned URLs ke saath cv2.VideoCapture Windows pe fail hota hai)
     temp_dir = tempfile.mkdtemp()
     source_local_path = os.path.join(temp_dir, "source_video.mp4")
+    upload_p = os.path.join("uploaded_files", request.object_name)
     demo_p = os.path.join("demo_clips", request.object_name)
-    if os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
+    if os.path.exists(upload_p) and os.path.getsize(upload_p) > 0:
+        import shutil
+        shutil.copy(upload_p, source_local_path)
+    elif os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
         import shutil
         shutil.copy(demo_p, source_local_path)
     else:
