@@ -157,14 +157,24 @@ def merge_clips(request: MergeClipsRequest):
     local_clip_paths = []
 
     try:
-        # Download clips or copy local demo clips
+        # Download clips or copy local demo / uploaded clips
         for idx, name in enumerate(request.clip_object_names):
             local_p = os.path.join(temp_dir, f"clip_{idx}.mp4")
+            upload_p = os.path.join("uploaded_files", name)
             demo_p = os.path.join("demo_clips", name)
-            if os.path.exists(demo_p):
+            raw_p = name
+            if os.path.exists(upload_p) and os.path.getsize(upload_p) > 0:
+                import shutil
+                shutil.copy(upload_p, local_p)
+                print(f"[MERGE] Clip {idx} ({name}): copied from uploaded_files")
+            elif os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
                 import shutil
                 shutil.copy(demo_p, local_p)
                 print(f"[MERGE] Clip {idx} ({name}): copied from demo_clips")
+            elif os.path.exists(raw_p) and os.path.getsize(raw_p) > 0:
+                import shutil
+                shutil.copy(raw_p, local_p)
+                print(f"[MERGE] Clip {idx} ({name}): copied from raw path")
             else:
                 try:
                     minio_client.fget_object(MINIO_BUCKET, name, local_p)
@@ -227,7 +237,6 @@ def merge_clips(request: MergeClipsRequest):
         joined = ffmpeg.concat(*streams, v=1, a=1, n=len(local_clip_paths)).node
         out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
         
-        # Print the actual ffmpeg command for debugging
         try:
             cmd_args = ffmpeg.get_args(out)
             print(f"[MERGE] FFmpeg command args: ffmpeg {' '.join(cmd_args)}")
@@ -266,8 +275,7 @@ def merge_clips(request: MergeClipsRequest):
             )
         except Exception as e:
             print(f"[MERGE] MinIO upload failed, using local URL. Error: {e}")
-            base_url = str(request.base_url).rstrip("/") if hasattr(request, 'base_url') else "http://localhost:4005"
-            presigned_url = f"{base_url}/demo-videos/{merged_id}"
+            presigned_url = f"http://localhost:8000/demo-videos/{merged_id}"
 
         # Build clip_metadata for voiceover sync
         clip_metadata = []
