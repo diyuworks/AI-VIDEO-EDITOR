@@ -1049,6 +1049,12 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleAddClipClick}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-md flex items-center gap-1.5 cursor-pointer"
+          >
+            ➕ Add Clips
+          </button>
           {onBackToQuick && (
             <button
               onClick={onBackToQuick}
