@@ -407,6 +407,38 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     setClips(snapped)
   }, [clips])
 
+  // ---- Unified Master Timeline Animation Loop ----
+  useEffect(() => {
+    let animId: number
+    let lastTime = performance.now()
+
+    const step = (now: number) => {
+      const deltaSec = (now - lastTime) / 1000
+      lastTime = now
+
+      if (isPlaying) {
+        setPlayhead((prev) => {
+          const next = prev + deltaSec
+          if (next >= duration && duration > 0) {
+            setIsPlaying(false)
+            if (videoRef.current) videoRef.current.pause()
+            if (audioRef.current) audioRef.current.pause()
+            return 0
+          }
+          return next
+        })
+      }
+      animId = requestAnimationFrame(step)
+    }
+
+    if (isPlaying) {
+      lastTime = performance.now()
+      animId = requestAnimationFrame(step)
+    }
+
+    return () => cancelAnimationFrame(animId)
+  }, [isPlaying, duration])
+
   // ---- Active Video Clip Switching Engine ----
   const currentVideoClipRef = useRef<string | null>(null)
 
@@ -418,14 +450,18 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       const clipMediaUrl =
         activeClip.videoUrl ||
         (activeClip.objectName ? `${API_BASE_URL}/raw_video/${activeClip.objectName}` : videoUrl)
+
       if (clipMediaUrl && currentVideoClipRef.current !== clipMediaUrl) {
         currentVideoClipRef.current = clipMediaUrl
         videoRef.current.src = clipMediaUrl
-        const clipOffset = Math.max(0, playhead - activeClip.start)
-        videoRef.current.currentTime = clipOffset
         if (isPlaying) {
           videoRef.current.play().catch(() => {})
         }
+      }
+
+      const clipOffset = Math.max(0, playhead - activeClip.start)
+      if (Math.abs(videoRef.current.currentTime - clipOffset) > 0.35) {
+        videoRef.current.currentTime = clipOffset
       }
     }
   }, [playhead, clips, videoUrl, isPlaying])
@@ -433,7 +469,6 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   const handleLoadedMetadata = () => {
     const singleDur = videoRef.current?.duration ?? 8
     if (clipItems && clipItems.length > 0) {
-      // clipItems useEffect already handled initialization
       return
     }
     setDuration(singleDur)
@@ -441,40 +476,32 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   }
 
   const handleTimeUpdate = () => {
-    if (videoRef.current) setPlayhead(videoRef.current.currentTime)
+    // Master timeline loop handles global playhead time across all clips
   }
 
   const togglePlay = () => {
-    if (!videoRef.current) return
     if (isPlaying) {
-      videoRef.current.pause()
+      setIsPlaying(false)
+      if (videoRef.current) videoRef.current.pause()
       if (audioRef.current) audioRef.current.pause()
     } else {
-      videoRef.current.play()
+      if (playhead >= duration && duration > 0) {
+        setPlayhead(0)
+      }
+      setIsPlaying(true)
+      if (videoRef.current) videoRef.current.play().catch(() => {})
       if (audioRef.current) {
-        audioRef.current.currentTime = videoRef.current.currentTime
+        audioRef.current.currentTime = playhead
         audioRef.current.play().catch(() => {})
       }
     }
-    setIsPlaying(!isPlaying)
   }
 
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
-    video.addEventListener('play', onPlay)
-    video.addEventListener('pause', onPause)
-    return () => {
-      video.removeEventListener('play', onPlay)
-      video.removeEventListener('pause', onPause)
-    }
-  }, [])
-
   const seekTo = (seconds: number) => {
+    const val = Math.max(0, Math.min(seconds, duration))
+    setPlayhead(val)
     if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, Math.min(seconds, duration))
+      videoRef.current.currentTime = val
     }
   }
 
