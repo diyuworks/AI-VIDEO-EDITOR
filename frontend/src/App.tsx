@@ -35,11 +35,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-800 flex flex-col">
-      <Jamin24Header
-        activeScreen={screen === 'timeline' ? 'timeline' : 'reel'}
-        onToggleTimeline={() => setScreen((s) => (s === 'reel' ? 'timeline' : 'reel'))}
-      />
-      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
+
+      <main className="flex-1 flex flex-col items-center justify-start p-4 sm:p-8 pt-8 sm:pt-12">
         {screen === 'upload' && (
           <UploadPage
             onContinue={(data) => {
