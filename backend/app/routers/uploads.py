@@ -52,41 +52,34 @@ def upload_video(file: UploadFile = File(...), session: Session = Depends(get_se
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"{uuid.uuid4().hex}{ext}"
-    contents = file.file.read()
-    size_mb = len(contents) / (1024 * 1024)
-    if size_mb > MAX_FILE_SIZE_MB:
+    # Stream directly to disk to prevent RAM overload and blocking
+    import shutil
+    
+    if getattr(file, "size", 0) and file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large")
 
-    # Always save a local copy in demo_clips for guaranteed 100% offline & fast processing
     demo_dir = "demo_clips"
     os.makedirs(demo_dir, exist_ok=True)
-    import shutil
     local_path = os.path.join(demo_dir, object_name)
+    
+    file.file.seek(0)
     with open(local_path, "wb") as f:
-        f.write(contents)
+        shutil.copyfileobj(file.file, f)
+        
+    size_mb = os.path.getsize(local_path) / (1024 * 1024)
 
     # Try MinIO upload in background thread with 3s timeout (local copy is already safe)
     import threading
     def _minio_upload():
-        temp_dir = tempfile.mkdtemp()
-        temp_upload_path = os.path.join(temp_dir, object_name)
         try:
-            shutil.copy(local_path, temp_upload_path)
             minio_client.fput_object(
                 MINIO_BUCKET,
                 object_name,
-                temp_upload_path,
+                local_path,
                 content_type=file.content_type or "video/mp4",
             )
         except Exception as e:
             print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
-        finally:
-            try:
-                if os.path.exists(temp_upload_path):
-                    os.remove(temp_upload_path)
-                os.rmdir(temp_dir)
-            except Exception:
-                pass
 
     t = threading.Thread(target=_minio_upload, daemon=True)
     t.start()
@@ -211,15 +204,17 @@ def list_available_clips(request: Request):
 
     import glob
     files = glob.glob(os.path.join(demo_dir, "*.mp4"))
-    raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_"))]
+    raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_", "merged_"))]
+    raw_clips.sort()
 
     base_url = str(request.base_url).rstrip("/")
     clips = []
     for idx, filepath in enumerate(raw_clips):
         fname = os.path.basename(filepath)
+        clean_title = fname.replace("_", " ").replace(".mp4", "")
         clips.append({
             "id": idx + 1,
-            "filename": f"Sample Plot Clip #{idx + 1} ({fname[:8]}.mp4)",
+            "filename": clean_title,
             "object_name": fname,
             "url": f"{base_url}/demo-videos/{fname}",
         })

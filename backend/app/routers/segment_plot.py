@@ -1,4 +1,4 @@
-﻿"""
+"""
 Real click-to-segment-and-track plot boundary endpoint.
 
 Combines the two R&D-proven pieces into one real feature:
@@ -34,10 +34,8 @@ from typing import List, Optional
 
 import cv2
 import numpy as np
-import torch
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from segment_anything import sam_model_registry, SamPredictor
 
 from app.config import MINIO_BUCKET
 from app.routers.uploads import minio_client
@@ -46,19 +44,18 @@ router = APIRouter()
 
 CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "models", "sam_vit_b_01ec64.pth")
 MODEL_TYPE = "vit_b"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# The actual proven-reliable window from real testing Ã¢â‚¬â€ NOT arbitrary.
+# The actual proven-reliable window from real testing — NOT arbitrary.
 # Tracking held up cleanly through ~20s, started visibly loosening by ~25-30s.
 # Capped conservatively below that edge rather than right at it.
 MAX_TRACK_SECONDS = 18.0
 TRACK_SCALE = 0.5  # downscale factor for tracking speed, per the real perf test
 
-_sam_predictor: Optional[SamPredictor] = None
+_sam_predictor = None
 
 
-def get_predictor() -> SamPredictor:
-    """Lazy-load SAM once per process, not per-request Ã¢â‚¬â€ loading the
+def get_predictor():
+    """Lazy-load SAM once per process, not per-request — loading the
     checkpoint is expensive and shouldn't happen on every call."""
     global _sam_predictor
     if _sam_predictor is None:
@@ -67,9 +64,15 @@ def get_predictor() -> SamPredictor:
                 status_code=500,
                 detail=f"SAM checkpoint not found at {CHECKPOINT_PATH}. See module docstring for download instructions.",
             )
-        sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH)
-        sam.to(DEVICE)
-        _sam_predictor = SamPredictor(sam)
+        try:
+            import torch
+            from segment_anything import sam_model_registry, SamPredictor
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH)
+            sam.to(device)
+            _sam_predictor = SamPredictor(sam)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load SAM model: {e}")
     return _sam_predictor
 
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config";
 
 interface Point {
   x: number;
@@ -28,8 +27,30 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
+  onOpenTimeline?: () => void;
 }
 
+export interface ClipHighlightItem {
+  points: Point[];
+  label?: string;
+  price?: string;
+  size?: string;
+  roadInfo?: string;
+  highlightColor?: string;
+  enableFarmhouse?: boolean;
+  enableFountain?: boolean;
+  enablePetrolPump?: boolean;
+  textPosition?: string;
+}
+
+export interface ClipState {
+  highlights: ClipHighlightItem[];
+  isDone: boolean;
+  isTracking?: boolean;
+  highlightedObjectName?: string;
+}
+
+// deprecated, remove later
 export interface ClipHighlight {
   points: Point[];
   label?: string;
@@ -57,6 +78,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
   prompt: initialPrompt = "",
+  onOpenTimeline,
 }) => {
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
@@ -74,7 +96,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [progressStage, setProgressStage] = useState<string>("idle");
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
   const [selectedClips, setSelectedClips] = useState<string[]>([]);
-  const [clipHighlights, setClipHighlights] = useState<Record<string, ClipHighlight>>({});
+  const [clipHighlights, setClipHighlights] = useState<Record<string, ClipState>>({});
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
@@ -218,6 +240,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
+  const handleLoadDemoClips = async () => {
+    try {
+      setIsUploading(true);
+      setUploadProgress("Loading Demo Clips 1 to 5...");
+      const res = await fetch(`${API_BASE_URL}/available-clips`);
+      if (!res.ok) throw new Error("Could not fetch available clips");
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        const demoClips: UploadedClip[] = data.map((c: any) => ({
+          id: c.id,
+          filename: c.filename,
+          object_name: c.object_name,
+          url: c.url,
+        }));
+        setUploadedClips(demoClips);
+        setSelectedClips(demoClips.map((c) => c.object_name));
+        setUploadProgress("Loaded 5 Demo Clips successfully! 🎉");
+        setTimeout(() => setUploadProgress(""), 2000);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to load demo clips.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleRemoveClip = (clipName: string) => {
     setUploadedClips((prev) => prev.filter((c) => c.object_name !== clipName));
     setSelectedClips((prev) => prev.filter((c) => c !== clipName));
@@ -233,11 +283,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     return true;
   };
 
-  const handleGenerateMultiClipReel = async () => {
+    const handleGenerateMultiClipReel = async () => {
     try {
       setMultiClipError(null);
 
-      const clipsToMerge = selectedClips.map((clip) => {
+      const orderedSelectedClips = uploadedClips
+        .map(c => c.object_name)
+        .filter(clip => selectedClips.includes(clip));
+
+      const clipsToMerge = orderedSelectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
         return highlight && highlight.highlightedObjectName
           ? highlight.highlightedObjectName
@@ -249,14 +303,16 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       setProgressMessage("Starting multi-clip reel pipeline...");
       setMultiClipStage("merging_clips");
       
-      const clipInfoForMerge = selectedClips.map((clip) => {
-        const highlight = clipHighlights[clip];
-        const combinedLabel = highlight?.label || "";
-        const combinedPrice = highlight?.price || "";
-        const combinedSize = highlight?.size || "";
-        const combinedRoad = highlight?.roadInfo || "";
-        const hasFh = highlight?.enableFarmhouse || false;
-        const hasFt = highlight?.enableFountain || false;
+      const clipInfoForMerge = orderedSelectedClips.map((clip) => {
+        const state = clipHighlights[clip];
+        const hArr = state?.highlights || [];
+        
+        const combinedLabel = hArr.map(h => h.label).filter(Boolean).join(" and ") || "";
+        const combinedPrice = hArr.map(h => h.price).filter(Boolean).join(" and ") || "";
+        const combinedSize = hArr.map(h => h.size).filter(Boolean).join(" and ") || "";
+        const combinedRoad = hArr.map(h => h.roadInfo).filter(Boolean).join(" and ") || "";
+        const hasFh = hArr.some(h => h.enableFarmhouse);
+        const hasFt = hArr.some(h => h.enableFountain);
 
         return {
           object_name: clip,
@@ -328,50 +384,98 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   };
 
   const handleMultiClipBoundaryConfirmed = async (
-    clipName: string, 
+    clipName: string,
     points: Point[],
     label: string,
-    enableFarmhouse: boolean,
-    enableFountain: boolean,
-    enablePetrolPump: boolean,
-    textPosition: string,
-    price?: string,
-    size?: string,
-    roadInfo?: string,
-    highlightColor?: string
+    fh: boolean,
+    ft: boolean,
+    pp: boolean,
+    tp: string,
+    pr: string,
+    sz: string,
+    rd: string,
+    clr: string
   ) => {
-    const highlight: ClipHighlight = {
-        points, label, price, size, roadInfo, highlightColor, enableFarmhouse, enableFountain, enablePetrolPump, textPosition, isDone: false, isTracking: true
+    const newItem: ClipHighlightItem = {
+      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
     
-    setClipHighlights((prev) => ({
-      ...prev,
-      [clipName]: highlight,
-    }));
-
-    try {
-      const outputName = await processMultiClipHighlight(clipName, highlight);
-      setClipHighlights((prev) => ({
+    // Add to state
+    setClipHighlights((prev) => {
+      const existing = prev[clipName]?.highlights || [];
+      const updatedHighlights = [...existing, newItem];
+      
+      // Fire and forget the async tracking
+      processMultiClipHighlight(clipName, updatedHighlights).then(outputName => {
+         setClipHighlights((p) => ({
+           ...p,
+           [clipName]: { ...p[clipName], highlightedObjectName: outputName, isDone: true, isTracking: false }
+         }));
+      }).catch(err => {
+         setMultiClipError("Failed to track boundaries for clip");
+         setClipHighlights((p) => ({ ...p, [clipName]: { ...p[clipName], isDone: false, isTracking: false } }));
+      });
+      
+      return {
         ...prev,
-        [clipName]: { ...prev[clipName], highlightedObjectName: outputName, isDone: true, isTracking: false }
-      }));
-    } catch (err) {
-      setMultiClipError("Failed to track boundaries for clip");
-      setClipHighlights((prev) => ({ ...prev, [clipName]: { ...prev[clipName], isDone: false, isTracking: false } }));
-    }
+        [clipName]: {
+          highlights: updatedHighlights,
+          isDone: false,
+          isTracking: true
+        }
+      };
+    });
   };
 
-  const processMultiClipHighlight = async (clipName: string, highlight: ClipHighlight) => {
-    try {
-      if (!highlight.points || highlight.points.length === 0) return;
+  const handleAddAnotherHighlight = (
+    clipName: string,
+    points: Point[],
+    label: string,
+    fh: boolean,
+    ft: boolean,
+    pp: boolean,
+    tp: string,
+    pr: string,
+    sz: string,
+    rd: string,
+    clr: string
+  ) => {
+    const newItem: ClipHighlightItem = {
+      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
+    };
+    setClipHighlights((prev) => {
+      const existing = prev[clipName]?.highlights || [];
+      return {
+        ...prev,
+        [clipName]: {
+          ...prev[clipName],
+          highlights: [...existing, newItem],
+          isDone: false
+        }
+      };
+    });
+    // Reset inputs for next highlight
+    setActiveMarkingLabel("");
+    setPlotPrice("");
+    setPlotSize("");
+    setRoadInfo("");
+  };
 
-      // Step 1: Track the boundary using /track-boundary
-      const trackingRes = await fetch(`${API_BASE_URL}/track-boundary`, {
+  const processMultiClipHighlight = async (clipName: string, highlights: ClipHighlightItem[]) => {
+    try {
+      if (!highlights || highlights.length === 0) return;
+
+      const trackingPayloads = highlights.map(h => ({
+        initial_points: h.points
+      }));
+
+      // Step 1: Track the boundaries using /track-boundary
+      const trackingRes = await fetch(`${API_BASE_URL}/track-boundary-multi`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           object_name: clipName,
-          initial_points: highlight.points,  // [{ x, y }, ...]
+          highlights: trackingPayloads,
         }),
       });
       if (!trackingRes.ok) {
@@ -379,7 +483,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         throw new Error(`Tracking failed: ${errText}`);
       }
       const trackingData = await trackingRes.json();
-      const polygonPerFrame = trackingData.polygon_per_frame;
+
+      // Formulate render payload array matching backend expectation
+      const renderHighlights = highlights.map((h, i) => {
+          let autoColor = h.highlightColor || "#FFEB3B";
+          if (h.points.length === 2) {
+              autoColor = "#FFEB3B"; // Yellow for roads/lines
+          } else if (h.points.length >= 3) {
+              autoColor = "#FFEB3B"; // Yellow for plots as requested
+          }
+          
+          return {
+              polygon_per_frame: trackingData.polygons_per_frame[i],
+              highlight_color: autoColor,
+              border_thickness: 8,
+              label: h.label || undefined,
+              price: h.price || undefined,
+              size: h.size || undefined,
+              road_info: h.roadInfo || undefined,
+              enable_farmhouse_overlay: h.enableFarmhouse || false,
+              enable_fountain_overlay: h.enableFountain || false,
+              enable_petrol_pump_overlay: h.enablePetrolPump || false,
+              text_position: h.textPosition || "middle",
+          };
+      });
 
       // Step 2: Render overlay using /render-overlay
       const renderRes = await fetch(`${API_BASE_URL}/render-overlay`, {
@@ -387,17 +514,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           object_name: clipName,
-          polygon_per_frame: polygonPerFrame,
-          highlight_color: highlight.highlightColor || "#FFEB3B",
-          border_thickness: 8,
-          label: highlight.label || undefined,
-          price: highlight.price || undefined,
-          size: highlight.size || undefined,
-          road_info: highlight.roadInfo || undefined,
-          enable_farmhouse_overlay: highlight.enableFarmhouse || false,
-          enable_fountain_overlay: highlight.enableFountain || false,
-          enable_petrol_pump_overlay: highlight.enablePetrolPump || false,
-          text_position: highlight.textPosition || "middle",
+          regions: renderHighlights
         }),
       });
       if (!renderRes.ok) {
@@ -498,8 +615,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     {uploadedClips.map((clip, clipIndex) => {
                       const clipName = clip.object_name;
                       const isSelected = selectedClips.includes(clipName);
+                      const isDone = clipHighlights[clipName]?.isDone;
                       return (
                         <div key={clip.id} className={`p-4 pb-4 rounded-2xl border flex flex-col items-center justify-between transition relative min-h-[190px] ${isSelected ? "border-[#0D473B] bg-emerald-50/60 shadow-md ring-2 ring-[#0D473B]/20" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                          {/* Removed PROCESSED badge as per user request */}
                           <div className="flex items-center gap-1.5 absolute top-2.5 left-2.5">
                             <button onClick={() => moveClipUp(clipIndex)} disabled={clipIndex === 0} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">◀</button>
                             <button onClick={() => moveClipDown(clipIndex)} disabled={clipIndex === uploadedClips.length - 1} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">▶</button>
@@ -522,17 +641,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                     <span>✅</span> AI Tracked & Highlighted
                                   </div>
                                 )}
-                                {clipHighlights[clipName]?.label && (
-                                  <div className="font-bold text-slate-800 truncate">
-                                    🏷️ <span className="text-[#0D473B]">{clipHighlights[clipName]?.label}</span>
+                                {clipHighlights[clipName]?.highlights && clipHighlights[clipName]?.highlights.length > 0 && (
+                                  <div className="font-bold text-slate-800">
+                                    🏷️ <span className="text-[#0D473B]">{clipHighlights[clipName].highlights.length} Highlight(s) Added</span>
                                   </div>
                                 )}
                                 <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
-                                  {clipHighlights[clipName]?.price && <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">💰 {clipHighlights[clipName]?.price}</span>}
-                                  {clipHighlights[clipName]?.size && <span className="bg-blue-100 text-blue-900 px-1.5 py-0.5 rounded font-bold">📐 {clipHighlights[clipName]?.size}</span>}
-                                  {clipHighlights[clipName]?.roadInfo && <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded font-bold">🛣️ {clipHighlights[clipName]?.roadInfo}</span>}
-                                  {clipHighlights[clipName]?.enableFarmhouse && <span className="bg-emerald-200 text-emerald-950 px-1.5 py-0.5 rounded font-bold">🏡 Farmhouse</span>}
-                                  {clipHighlights[clipName]?.enableFountain && <span className="bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded font-bold">🚰 Fountain</span>}
+                                  {clipHighlights[clipName]?.highlights?.some(h => h.enableFarmhouse) && <span className="bg-emerald-200 text-emerald-950 px-1.5 py-0.5 rounded font-bold">🏡 Farmhouse</span>}
+                                  {clipHighlights[clipName]?.highlights?.some(h => h.enableFountain) && <span className="bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded font-bold">🚰 Fountain</span>}
                                 </div>
                               </div>
                             )}
@@ -544,16 +660,18 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             {isSelected && (
                               <div className="w-full space-y-2">
                                 <button onClick={() => {
+                                      const state = clipHighlights[clipName];
+                                      const firstHighlight = state?.highlights?.[0];
                                       setActiveMarkingClip(clipName);
-                                      setActiveMarkingLabel(clipHighlights[clipName]?.label || clip.filename.split(".")[0]);
-                                      setPlotPrice(clipHighlights[clipName]?.price || "");
-                                      setPlotSize(clipHighlights[clipName]?.size || "");
-                                      setRoadInfo(clipHighlights[clipName]?.roadInfo || "");
-                                      setHighlightColor(clipHighlights[clipName]?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(clipHighlights[clipName]?.enableFarmhouse || false);
-                                      setEnableFountain(clipHighlights[clipName]?.enableFountain || false);
+                                      setActiveMarkingLabel(firstHighlight?.label || clip.filename.split(".")[0]);
+                                      setPlotPrice(firstHighlight?.price || "");
+                                      setPlotSize(firstHighlight?.size || "");
+                                      setRoadInfo(firstHighlight?.roadInfo || "");
+                                      setHighlightColor(firstHighlight?.highlightColor || "#FFEB3B");
+                                      setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
+                                      setEnableFountain(firstHighlight?.enableFountain || false);
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
-                                  {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlight" : "✏️ Highlight Plot"}
+                                  {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlights" : "✏️ Highlight Plot"}
                                 </button>
                               </div>
                             )}
@@ -582,10 +700,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
+              <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
+                {onOpenTimeline && (
+                  <button onClick={onOpenTimeline} className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                    <span>🎛️</span> Open in Timeline Studio
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -780,8 +903,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
                 <BoundaryMarker
                   objectName={activeMarkingClip}
-                  confirmButtonText="➕ Save & Add Another Highlight"
-                  onBoundaryConfirmed={async (points) => {
+                  onSaveAndAddAnother={(points) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
                     const pr = plotPrice;
@@ -792,17 +914,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     const ft = enableFountain;
                     const pp = enablePetrolPump;
                     const tp = textPosition || "middle";
-                    
-                    // Reset form inputs for next highlight
-                    setActiveMarkingLabel("");
-                    setPlotPrice("");
-                    setPlotSize("");
-                    setRoadInfo("");
-                    setEnableFarmhouse(false);
-                    setEnableFountain(false);
-                    setEnablePetrolPump(false);
-                    
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+
+                    if (!clipName) return;
+                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
                   }}
                   onSaveAndFinish={async (points) => {
                     const clipName = activeMarkingClip;
@@ -815,7 +929,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     const ft = enableFountain;
                     const pp = enablePetrolPump;
                     const tp = textPosition || "middle";
-                    
+
+                    if (!clipName) return;
                     setActiveMarkingClip(null);
                     await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
                   }}

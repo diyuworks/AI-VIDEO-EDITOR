@@ -1,4 +1,4 @@
-import json
+import json as simplejson
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
@@ -99,13 +99,13 @@ You MUST use the "User's EXACT Script" word-for-word exactly as it is provided a
 DO NOT rewrite, do not summarize, do not add any extra intro or outro hooks. 
 Your ONLY job is to take the EXACT words from the User's EXACT Script and split them across the video segments below.
 If the script is in Hindi or English, LEAVE IT AS IS. Do not translate. Just output the EXACT words.
-Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
+Structured options: {simplejson.dumps(request.structured_options) if request.structured_options else "None"}
 """
     else:
         context += f"""
 User's Request/Prompt: {request.prompt or "No specific prompt given"}
 CRITICAL USER REQUIREMENT: You MUST strictly incorporate the User's Request/Prompt above into the voiceover script. (e.g. if they say "1.8 vigha, farmhouse, highway najik", you must include these details beautifully in the real estate script).
-Structured options: {json.dumps(request.structured_options) if request.structured_options else "None"}
+Structured options: {simplejson.dumps(request.structured_options) if request.structured_options else "None"}
 """
 
     # Inject clip timeline for Segment-Based context-aware narration
@@ -238,7 +238,7 @@ Return ONLY valid JSON, no extra text or markdown formatting.
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:]
         
-        editing_plan = json.loads(raw_text)
+        editing_plan = simplejson.loads(raw_text)
 
         # Provide a fallback if LLM didn't return segments properly
         if "segments" not in editing_plan:
@@ -250,7 +250,7 @@ Return ONLY valid JSON, no extra text or markdown formatting.
         if "outro_text" not in editing_plan:
             editing_plan["outro_text"] = "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો."
 
-    except json.JSONDecodeError:
+    except simplejson.JSONDecodeError:
         raise HTTPException(status_code=500, detail="AI response was not valid JSON")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Groq API error: {str(e)}")

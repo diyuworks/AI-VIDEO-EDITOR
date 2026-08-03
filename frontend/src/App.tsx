@@ -35,6 +35,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-800 flex flex-col">
+      <Jamin24Header
+        activeScreen={screen === 'timeline' ? 'timeline' : 'reel'}
+        onToggleTimeline={() => setScreen((s) => (s === 'reel' ? 'timeline' : 'reel'))}
+      />
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
         {screen === 'upload' && (
           <UploadPage
@@ -63,11 +67,14 @@ function App() {
         )}
 
         {screen === 'timeline' && (
-          <TimelineEditorPage
-            videoUrl={videoUrl || ''}
-            referenceResults={referenceResults}
-            rawObjectName={rawObjectName || undefined}
-          />
+          <div className="w-full max-w-7xl">
+            <TimelineEditorPage
+              videoUrl={videoUrl || ''}
+              referenceResults={referenceResults}
+              rawObjectName={rawObjectName || undefined}
+              onBackToQuick={() => setScreen('reel')}
+            />
+          </div>
         )}
 
         {screen === 'reel' && (
@@ -76,6 +83,7 @@ function App() {
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
               prompt={promptData?.prompt}
+              onOpenTimeline={() => setScreen('timeline')}
             />
           </div>
         )}
