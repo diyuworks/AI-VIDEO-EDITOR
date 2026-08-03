@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config";
 
 const TypewriterText = ({ text }: { text: string }) => {
   const [typedText, setTypedText] = useState("");
@@ -42,6 +41,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
+  onOpenTimeline?: () => void;
 }
 
 export interface ClipHighlightItem {
@@ -92,6 +92,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
   prompt: initialPrompt = "",
+  onOpenTimeline,
 }) => {
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
@@ -253,6 +254,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
+  const handleLoadDemoClips = async () => {
+    try {
+      setIsUploading(true);
+      setUploadProgress("Loading Demo Clips 1 to 5...");
+      const res = await fetch(`${API_BASE_URL}/available-clips`);
+      if (!res.ok) throw new Error("Could not fetch available clips");
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        const demoClips: UploadedClip[] = data.map((c: any) => ({
+          id: c.id,
+          filename: c.filename,
+          object_name: c.object_name,
+          url: c.url,
+        }));
+        setUploadedClips(demoClips);
+        setSelectedClips(demoClips.map((c) => c.object_name));
+        setUploadProgress("Loaded 5 Demo Clips successfully! 🎉");
+        setTimeout(() => setUploadProgress(""), 2000);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to load demo clips.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleRemoveClip = (clipName: string) => {
     setUploadedClips((prev) => prev.filter((c) => c.object_name !== clipName));
     setSelectedClips((prev) => prev.filter((c) => c !== clipName));
@@ -265,7 +294,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   const areAllSelectedClipsHighlighted = () => {
     if (selectedClips.length === 0) return false;
-    return selectedClips.every((clip) => clipHighlights[clip]?.isDone);
+    return true;
   };
 
     const handleGenerateMultiClipReel = async () => {
@@ -685,15 +714,15 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
-                {selectedClips.length > 0 && !areAllSelectedClipsHighlighted() && (
-                  <p className="text-amber-900 text-sm font-bold flex items-center gap-2 bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm">
-                    ⚠️ Validation Guard: Please mark the plot boundary for all selected clips before merging.
-                  </p>
-                )}
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || !areAllSelectedClipsHighlighted() || isUploading} className="w-full py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40">
+              <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
+                {onOpenTimeline && (
+                  <button onClick={onOpenTimeline} className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                    <span>🎛️</span> Open in Timeline Studio
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -878,7 +907,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       <span className="text-amber-500">✅</span> AI will automatically track these boundary points throughout the entire drone video!
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-amber-500">✅</span> 3D Models (Farmhouse/Fountain) will be perspectively locked to your custom marked boundary.
+                      <span className="text-amber-500">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
                     </li>
                   </ul>
                 </div>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type TrackType = 'video' | 'overlay' | 'audio'
 type OverlayKind = 'caption' | 'boundary'
@@ -136,6 +136,7 @@ interface TimelineEditorPageProps {
   videoUrl: string
   rawObjectName?: string
   referenceResults?: any[]
+  onBackToQuick?: () => void
 }
 
 // Drag session data. Lives in a ref (not state) so mousemove/mouseup handlers
@@ -149,7 +150,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -626,11 +627,23 @@ export default function TimelineEditorPage({ videoUrl }: TimelineEditorPageProps
           <ToolbarButton icon="♪" label="Music" disabled />
           <ToolbarButton icon="✨" label="Effects" disabled />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
-          <span className="text-white/20 text-xs font-mono ml-2">(Music / Effects — coming next)</span>
         </div>
-        <button className="px-5 py-2 rounded-lg bg-amber text-canvas font-medium text-sm hover:bg-amber-bright transition-colors">
-          Export
-        </button>
+        <div className="flex items-center gap-2">
+          {onBackToQuick && (
+            <button
+              onClick={onBackToQuick}
+              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium text-xs transition"
+            >
+              ⬅️ Quick Generator
+            </button>
+          )}
+          <button 
+            onClick={() => alert("Exporting reel synced to timeline audio & clips...")}
+            className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-sm transition-colors shadow-md"
+          >
+            🚀 Export Reel
+          </button>
+        </div>
       </div>
 
       {hasGeneratedPlan && rationale.length > 0 && (

@@ -2,7 +2,7 @@ import uuid
 import os
 import tempfile
 from io import BytesIO
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from typing import List
 from sqlmodel import Session, select
 from app.database import get_session, VideoRecord
@@ -157,7 +157,7 @@ def list_videos(session: Session = Depends(get_session)):
 
 
 @router.get("/past-reels")
-def list_past_reels():
+def list_past_reels(request: Request):
     """Returns a list of all previously generated AI real estate reels."""
     demo_dir = "demo_clips"
     if not os.path.exists(demo_dir):
@@ -168,11 +168,10 @@ def list_past_reels():
     from datetime import datetime
 
     files = glob.glob(os.path.join(demo_dir, "*"))
-    # Filter files starting with reel_, final_, or highlighted_
     reel_files = [f for f in files if os.path.basename(f).startswith(("reel_", "final_", "highlighted_")) and f.endswith(".mp4")]
     
-    # Sort newest first
     reel_files.sort(key=os.path.getmtime, reverse=True)
+    base_url = str(request.base_url).rstrip("/")
 
     for idx, filepath in enumerate(reel_files):
         fname = os.path.basename(filepath)
@@ -180,7 +179,6 @@ def list_past_reels():
         mtime = os.path.getmtime(filepath)
         formatted_date = datetime.fromtimestamp(mtime).strftime("%d %b %Y, %I:%M %p")
         
-        # Friendly title
         clean_name = fname.replace("reel_", "").replace("final_", "").replace("highlighted_", "")
         title = f"Jamin24 Real Estate Reel #{len(reel_files) - idx}"
 
@@ -189,7 +187,7 @@ def list_past_reels():
             "filename": fname,
             "title": title,
             "clean_name": clean_name,
-            "url": f"http://localhost:8000/demo-videos/{fname}",
+            "url": f"{base_url}/demo-videos/{fname}",
             "size_mb": size_mb,
             "created_at": formatted_date,
         })
@@ -197,7 +195,49 @@ def list_past_reels():
     return reels
 
 
-from fastapi import Request
+@router.get("/available-clips")
+def list_available_clips(request: Request):
+    """Returns a list of raw footage clips available on the server for instant testing."""
+    demo_dir = "demo_clips"
+    if not os.path.exists(demo_dir):
+        return []
+
+    import glob
+    files = glob.glob(os.path.join(demo_dir, "*.mp4"))
+    raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_", "merged_"))]
+    raw_clips.sort()
+
+    base_url = str(request.base_url).rstrip("/")
+    clips = []
+    for idx, filepath in enumerate(raw_clips):
+        fname = os.path.basename(filepath)
+        clean_title = fname.replace("_", " ").replace(".mp4", "")
+        clips.append({
+            "id": idx + 1,
+            "filename": clean_title,
+            "object_name": fname,
+            "url": f"{base_url}/demo-videos/{fname}",
+        })
+
+    return clips
+
+
+@router.delete("/past-reels/{filename}")
+def delete_past_reel(filename: str):
+    """Deletes a past generated reel file from local storage."""
+    safe_filename = os.path.basename(filename)
+    demo_dir = "demo_clips"
+    filepath = os.path.join(demo_dir, safe_filename)
+
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+            return {"success": True, "message": f"Deleted {safe_filename}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not delete file: {str(e)}")
+    else:
+        raise HTTPException(status_code=404, detail="Reel file not found")
+
 
 @router.post("/visit")
 async def track_visit(request: Request):
@@ -210,4 +250,5 @@ async def track_visit(request: Request):
     from app.services.email_service import notify_website_visit
     notify_website_visit(client_ip=client_ip, user_agent=user_agent)
     return {"status": "ok"}
+
 

@@ -131,6 +131,22 @@ def render_overlay(request: OverlayRequest):
             road_info=request.road_info
         ))
 
+    # Load 3D assets directory
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+
+    pil_font = None
+    from PIL import Image, ImageDraw, ImageFont
+    font_size = max(42, int(width / 13))
+    for font_path in [r'C:\Windows\Fonts\ariblk.ttf', r'C:\Windows\Fonts\impact.ttf', r'C:\Windows\Fonts\segoeuib.ttf', r'C:\Windows\Fonts\arialbd.ttf']:
+        if os.path.exists(font_path):
+            try:
+                pil_font = ImageFont.truetype(font_path, font_size)
+                break
+            except Exception:
+                pass
+    if pil_font is None:
+        pil_font = ImageFont.load_default()
+
     if len(all_regions) > 0:
         # Animation timings
         ANIM_FRAMES = int(fps * 0.4) 

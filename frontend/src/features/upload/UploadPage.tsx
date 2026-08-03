@@ -10,9 +10,11 @@ interface ReferenceVideo {
   uploadResult?: UploadResult
 }
 
+import { API_BASE_URL } from '../../config'
+
 const MAX_REFERENCE_VIDEOS = 5
-const UPLOAD_ENDPOINT = 'http://localhost:8000/upload'
-const UPLOAD_REFERENCE_ENDPOINT = 'http://localhost:8000/upload-reference'
+const UPLOAD_ENDPOINT = `${API_BASE_URL}/upload`
+const UPLOAD_REFERENCE_ENDPOINT = `${API_BASE_URL}/upload-reference`
 
 interface UploadResult {
   success: boolean
@@ -103,7 +105,7 @@ export default function UploadPage({ onContinue }: UploadPageProps) {
     }
 
     xhr.onerror = () => {
-      setErrorMessage('Could not reach the backend. Is it running on localhost:8000?')
+      setErrorMessage('Could not reach the backend. Is it running on localhost:4005?')
       setSourceState('error')
     }
 

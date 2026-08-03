@@ -42,19 +42,12 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-import torch
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MINIO_BUCKET
 from app.routers.uploads import minio_client
-from app.routers.segment_plot import (
-    get_predictor,
-    CHECKPOINT_PATH,
-    MODEL_TYPE,
-    sam_model_registry,
-    SamPredictor,
-)
+from app.routers.segment_plot import get_predictor, CHECKPOINT_PATH, MODEL_TYPE
 
 router = APIRouter()
 
@@ -87,25 +80,29 @@ def extract_polygon(mask: np.ndarray) -> np.ndarray:
     return approx.reshape(-1, 2).astype(np.float32)
 
 
-def run_sam_with_fallback(predictor: SamPredictor, frame_rgb: np.ndarray, click_x: int, click_y: int):
+def run_sam_with_fallback(predictor, frame_rgb: np.ndarray, click_x: int, click_y: int):
     point_coords = np.array([[click_x, click_y]])
     point_labels = np.array([1])
     try:
-        predictor.set_image(frame_rgb)
         masks, scores, _ = predictor.predict(
             point_coords=point_coords, point_labels=point_labels, multimask_output=True
         )
-    except (torch.OutOfMemoryError, RuntimeError) as e:
-        if isinstance(e, torch.OutOfMemoryError) or "out of memory" in str(e).lower() or "cuda" in str(e).lower():
+    except Exception as e:
+        if "out of memory" in str(e).lower() or "cuda" in str(e).lower():
             print("CUDA Out Of Memory or CUDA error during SAM inference. Falling back to CPU...")
-            torch.cuda.empty_cache()
-            sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH)
-            sam.to("cpu")
-            predictor = SamPredictor(sam)
-            predictor.set_image(frame_rgb)
-            masks, scores, _ = predictor.predict(
-                point_coords=point_coords, point_labels=point_labels, multimask_output=True
-            )
+            try:
+                import torch
+                from segment_anything import sam_model_registry, SamPredictor
+                torch.cuda.empty_cache()
+                sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH)
+                sam.to("cpu")
+                predictor = SamPredictor(sam)
+                predictor.set_image(frame_rgb)
+                masks, scores, _ = predictor.predict(
+                    point_coords=point_coords, point_labels=point_labels, multimask_output=True
+                )
+            except Exception as ex_cpu:
+                raise ex_cpu
         else:
             raise e
     return masks, scores

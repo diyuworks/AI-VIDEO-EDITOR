@@ -3,11 +3,13 @@ import React from "react";
 interface Jamin24HeaderProps {
   onToggleTimeline?: () => void;
   showTimelineToggle?: boolean;
+  activeScreen?: 'reel' | 'timeline';
 }
 
 export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
   onToggleTimeline,
   showTimelineToggle = true,
+  activeScreen = 'reel',
 }) => {
   return (
     <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm">
@@ -32,43 +34,38 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
           </div>
         </div>
 
-        {/* NAVIGATION LINKS */}
-        <nav className="hidden lg:flex items-center gap-6 text-sm font-semibold text-slate-700">
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">🧭</span> Browse Jamin
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">🗺️</span> Map View
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">💼</span> Builder Portal
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">🏷️</span> Pricing Plans
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">ℹ️</span> About Us
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:text-[#0D473B] transition">
-            <span className="text-base">📞</span> Contact Us
-          </a>
-        </nav>
+        {/* NAVIGATION / MODE TABS */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200 shadow-inner">
+          <button
+            onClick={() => activeScreen !== 'reel' && onToggleTimeline && onToggleTimeline()}
+            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ${
+              activeScreen === 'reel'
+                ? 'bg-[#0D473B] text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>⚡</span>
+            <span>Quick Reel Mode</span>
+          </button>
+          <button
+            onClick={() => activeScreen !== 'timeline' && onToggleTimeline && onToggleTimeline()}
+            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ${
+              activeScreen === 'timeline'
+                ? 'bg-[#0D473B] text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>🎬</span>
+            <span>Timeline Studio</span>
+          </button>
+        </div>
 
         {/* ACTION BUTTONS */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700">
             <span>🎙️</span>
-            <span>🌐 EN</span>
+            <span>🌐 GUJ / EN</span>
           </div>
-
-          {showTimelineToggle && onToggleTimeline && (
-            <button
-              onClick={onToggleTimeline}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-full text-[10px] sm:text-xs md:text-sm shadow-md transition flex items-center gap-1.5"
-            >
-              <span className="hidden sm:inline">✨</span> <span className="sm:hidden">✨</span> <span className="hidden sm:inline">Timeline Editor</span><span className="sm:hidden">Timeline</span>
-            </button>
-          )}
 
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0D473B] font-bold text-xs sm:text-sm cursor-pointer hover:bg-emerald-100 transition">

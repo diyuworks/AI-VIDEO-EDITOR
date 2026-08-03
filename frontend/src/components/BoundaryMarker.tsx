@@ -11,7 +11,7 @@ interface BoundaryMarkerProps {
   onSaveAndAddAnother?: (points: Point[]) => void;
 }
 
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config";
 
 const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   objectName,
@@ -216,7 +216,6 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         >
           Reset
         </button>
-
         {onSaveAndAddAnother && (
           <button
             onClick={() => {
