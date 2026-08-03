@@ -133,9 +133,17 @@ function buildMockPlan(
   return { clips: [...videoClips, ...captionClips], rationale }
 }
 
+export interface VideoClipItem {
+  id: string
+  objectName: string
+  url: string
+  label: string
+}
+
 interface TimelineEditorPageProps {
   videoUrl: string
   rawObjectName?: string
+  clipItems?: VideoClipItem[]
   referenceResults?: any[]
   onBackToQuick?: () => void
 }
@@ -151,7 +159,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQuick }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -203,10 +211,27 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
   const [rationale, setRationale] = useState<string[]>([])
 
   const handleLoadedMetadata = () => {
-    const d = videoRef.current?.duration ?? 0
-    setDuration(d)
-    setClips([{ id: 'clip-1', track: 'video', start: 0, end: d, label: 'Clip 1' }])
-    setPlanModalOpen(true)
+    const singleDur = videoRef.current?.duration ?? 10
+    if (clipItems && clipItems.length > 1) {
+      let totalDur = 0
+      const initialClips: Clip[] = clipItems.map((item, idx) => {
+        const startSec = totalDur
+        const endSec = totalDur + singleDur
+        totalDur = endSec
+        return {
+          id: item.id || `clip-${idx + 1}`,
+          track: 'video',
+          start: startSec,
+          end: endSec,
+          label: item.label || `Clip ${idx + 1}`,
+        }
+      })
+      setDuration(totalDur)
+      setClips(initialClips)
+    } else {
+      setDuration(singleDur)
+      setClips([{ id: 'clip-1', track: 'video', start: 0, end: singleDur, label: 'Clip 1' }])
+    }
   }
 
   const handleTimeUpdate = () => {
@@ -616,15 +641,15 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
   const tickCount = Math.ceil(duration / tickInterval) + 1
 
   return (
-    <div className="min-h-screen bg-canvas text-white font-body flex flex-col">
-      <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh] relative">
-        <div className="relative max-h-full max-w-full">
+    <div className="h-screen max-h-screen bg-canvas text-white font-body flex flex-col overflow-hidden">
+      <div className="flex-1 flex items-center justify-center bg-black p-2 relative overflow-hidden min-h-0">
+        <div className="relative h-full flex items-center justify-center max-h-full max-w-full">
           <video
             ref={videoRef}
             src={videoUrl || (rawObjectName ? `${API_BASE_URL}/raw_video/${rawObjectName}` : `${API_BASE_URL}/raw_video/clip_1.mp4`)}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
-            className="max-h-full max-w-full rounded-lg block"
+            className="max-h-full max-w-full h-auto object-contain rounded-lg block shadow-2xl"
           />
 
           {activeBoundaries.map((b) => (
@@ -663,7 +688,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-6 py-3 border-y border-canvas-border bg-canvas-panel">
+      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-y border-canvas-border bg-canvas-panel">
         <div className="flex items-center gap-1.5">
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
           <ToolbarButton icon="✂" label="Split" onClick={splitSelectedClip} disabled={!canSplit} />
@@ -694,7 +719,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
       </div>
 
       {hasGeneratedPlan && rationale.length > 0 && (
-        <div className="px-6 py-2.5 bg-teal-dim/30 border-b border-canvas-border">
+        <div className="shrink-0 px-4 py-2 bg-teal-dim/30 border-b border-canvas-border">
           <div className="flex items-start gap-2">
             <span className="text-teal text-sm mt-0.5">✦</span>
             <ul className="text-xs text-white/70 space-y-0.5">
@@ -706,7 +731,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQu
         </div>
       )}
 
-      <div className="bg-canvas-raised px-6 py-4">
+      <div className="shrink-0 bg-canvas-raised px-4 py-3 border-t border-canvas-border">
         <div className="flex items-center justify-between mb-2">
           <span className="font-mono text-xs text-white/40">
             {formatTime(playhead)} / {formatTime(duration)}

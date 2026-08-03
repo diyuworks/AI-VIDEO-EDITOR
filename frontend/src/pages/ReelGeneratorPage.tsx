@@ -27,7 +27,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
-  onOpenTimeline?: (videoUrl?: string, objectName?: string) => void;
+  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[]) => void;
 }
 
 export interface ClipHighlightItem {
@@ -714,7 +714,18 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
                         : `${API_BASE_URL}/raw_video/clip_1.mp4`;
                       const targetObjName = activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4');
-                      onOpenTimeline(targetUrl, targetObjName);
+
+                      const items = selectedClips.map((objName, idx) => {
+                        const found = uploadedClips.find((c) => c.object_name === objName);
+                        return {
+                          id: `clip-${idx + 1}`,
+                          objectName: objName,
+                          url: found ? found.url : `${API_BASE_URL}/raw_video/${objName}`,
+                          label: `Clip ${idx + 1} (${objName})`,
+                        };
+                      });
+
+                      onOpenTimeline(targetUrl, targetObjName, items);
                     }}
                     className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >

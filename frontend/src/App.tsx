@@ -21,6 +21,8 @@ function App() {
   const [rawObjectName, setRawObjectName] = useState<string | null>(null)
   const [promptData, setPromptData] = useState<PromptData | null>(null)
 
+  const [clipItems, setClipItems] = useState<any[]>([])
+
   useEffect(() => {
     // Silent website visit notification to the backend
     fetch(`${API_BASE_URL}/visit`, {
@@ -35,7 +37,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-800 flex flex-col">
-      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
+      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4">
         {screen === 'upload' && (
           <UploadPage
             onContinue={(data) => {
@@ -63,11 +65,12 @@ function App() {
         )}
 
         {screen === 'timeline' && (
-          <div className="w-full max-w-7xl">
+          <div className="w-full h-screen">
             <TimelineEditorPage
               videoUrl={videoUrl || ''}
               referenceResults={referenceResults}
               rawObjectName={rawObjectName || undefined}
+              clipItems={clipItems}
               onBackToQuick={() => setScreen('reel')}
             />
           </div>
@@ -79,9 +82,10 @@ function App() {
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
               prompt={promptData?.prompt}
-              onOpenTimeline={(vUrl, objName) => {
+              onOpenTimeline={(vUrl, objName, items) => {
                 if (vUrl) setVideoUrl(vUrl)
                 if (objName) setRawObjectName(objName)
+                if (items && items.length > 0) setClipItems(items)
                 setScreen('timeline')
               }}
             />
