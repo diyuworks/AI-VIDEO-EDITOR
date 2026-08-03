@@ -36,19 +36,7 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
 
 
 
-        {/* ACTION BUTTONS */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700">
-            <span>🎙️</span>
-            <span>🌐 GUJ / EN</span>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0D473B] font-bold text-xs sm:text-sm cursor-pointer hover:bg-emerald-100 transition">
-              👤
-            </div>
-          </div>
-        </div>
 
       </div>
     </header>
