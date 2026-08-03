@@ -165,13 +165,13 @@ def render_overlay(request: OverlayRequest):
     if pil_font is None:
         pil_font = ImageFont.load_default()
 
+    frame_idx = 0
     if len(all_regions) > 0:
         # Animation timings
         ANIM_FRAMES = int(fps * 0.4) 
         FADE_FRAMES = int(fps * 0.25)
         
-        frame_idx = 0
-        total_tracked_frames = max(len(r.polygon_per_frame) for r in all_regions)
+        total_tracked_frames = max(len(r.polygon_per_frame or []) for r in all_regions)
 
         while True:
             success, frame = cap.read()
@@ -190,10 +190,11 @@ def render_overlay(request: OverlayRequest):
                 request_text_position = region.text_position
                 request_border_thickness = region.border_thickness
 
-                if frame_idx < len(region.polygon_per_frame):
-                    raw_pts = np.array(region.polygon_per_frame[frame_idx], dtype=np.float32)
-                elif len(region.polygon_per_frame) > 0:
-                    raw_pts = np.array(region.polygon_per_frame[-1], dtype=np.float32)
+                poly_frames = region.polygon_per_frame or []
+                if frame_idx < len(poly_frames):
+                    raw_pts = np.array(poly_frames[frame_idx], dtype=np.float32)
+                elif len(poly_frames) > 0:
+                    raw_pts = np.array(poly_frames[-1], dtype=np.float32)
                 else:
                     raw_pts = None
 
