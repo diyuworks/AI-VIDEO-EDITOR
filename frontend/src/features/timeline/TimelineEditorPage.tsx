@@ -348,25 +348,23 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   }, [clipItems])
 
   useEffect(() => {
-    setClips((prev) => {
-      const videoClips = prev.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
-      if (videoClips.length <= 1) return prev
+    const videoClips = clips.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
+    if (videoClips.length <= 1) return
 
-      let hasGap = false
-      for (let i = 0; i < videoClips.length - 1; i++) {
-        if (Math.abs(videoClips[i + 1].start - videoClips[i].end) > 0.05) {
-          hasGap = true
-          break
-        }
+    let hasGap = false
+    for (let i = 0; i < videoClips.length - 1; i++) {
+      if (Math.abs(videoClips[i + 1].start - videoClips[i].end) > 0.01) {
+        hasGap = true
+        break
       }
-      if (!hasGap) return prev
+    }
+    if (!hasGap) return
 
-      const snapped = enforceGaplessClips(prev)
-      const maxEnd = Math.max(...snapped.filter((c) => c.track === 'video').map((c) => c.end), 10)
-      setDuration(maxEnd)
-      return snapped
-    })
-  }, [clips.length])
+    const snapped = enforceGaplessClips(clips)
+    const maxEnd = Math.max(...snapped.filter((c) => c.track === 'video').map((c) => c.end), 10)
+    setDuration(maxEnd)
+    setClips(snapped)
+  }, [clips])
 
   const handleLoadedMetadata = () => {
     const singleDur = videoRef.current?.duration ?? 8
