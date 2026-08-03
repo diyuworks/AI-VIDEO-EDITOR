@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { API_BASE_URL } from '../../config'
 
 type TrackType = 'video' | 'overlay' | 'audio'
 type OverlayKind = 'caption' | 'boundary'
@@ -150,7 +151,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, onBackToQuick }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, rawObjectName, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -159,6 +160,12 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+
+  // ---- Timeline Export state ----
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)
+  const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // ---- Caption panel state ----
   const [captionPanelOpen, setCaptionPanelOpen] = useState(false)
@@ -269,6 +276,45 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
 
   const skipPlanGeneration = () => {
     setPlanModalOpen(false)
+  }
+
+  // ---- Backend Export ----
+  const handleExportReel = async () => {
+    setIsExporting(true)
+    setExportProgress(15)
+    setExportError(null)
+
+    try {
+      setExportProgress(40)
+      const res = await fetch(`${API_BASE_URL}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          object_name: rawObjectName || 'clip_1.mp4',
+          clips: clips,
+        }),
+      })
+
+      setExportProgress(85)
+      if (!res.ok) {
+        const errText = await res.text()
+        throw new Error(`Export failed: ${errText}`)
+      }
+
+      const data = await res.json()
+      setExportProgress(100)
+
+      if (data.download_url) {
+        setExportedVideoUrl(data.download_url)
+      } else {
+        throw new Error('No download URL returned from backend server.')
+      }
+    } catch (err: any) {
+      console.error('Timeline Export error:', err)
+      setExportError(err.message || 'Timeline export failed.')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   // ---- Clip operations ----
@@ -638,10 +684,11 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
             </button>
           )}
           <button 
-            onClick={() => alert("Exporting reel synced to timeline audio & clips...")}
-            className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-sm transition-colors shadow-md"
+            onClick={handleExportReel}
+            disabled={isExporting || duration === 0}
+            className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-sm transition-colors shadow-md disabled:opacity-40 flex items-center gap-2 cursor-pointer"
           >
-            🚀 Export Reel
+            {isExporting ? '⏳ Exporting Reel...' : '🚀 Export Reel'}
           </button>
         </div>
       </div>
@@ -695,23 +742,26 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
                       const isBeingDragged = clip.id === draggingClipId
                       const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
                       const isBoundary = clip.overlayKind === 'boundary'
+                      const clipWidthPx = Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20)
                       return (
                         <button
                           key={clip.id}
                           onMouseDown={(e) => handleClipMouseDown(e, clip)}
                           className={[
-                            'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors',
+                            'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors relative',
                             isBoundary ? 'bg-yellow-400/20' : meta.color,
                             selected ? `border-2 ${isBoundary ? 'border-yellow-400' : meta.border}` : 'border border-transparent',
                             isBeingDragged ? 'cursor-grabbing opacity-70 z-20 shadow-lg' : 'cursor-grab',
                           ].join(' ')}
                           style={{
                             left: clip.start * PIXELS_PER_SECOND,
-                            width: Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20),
+                            width: clipWidthPx,
                             transform: ghostOffset ? `translateX(${ghostOffset}px)` : undefined,
                           }}
                         >
-                          <span className={`truncate pointer-events-none ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
+                          {clip.track === 'video' && <FilmstripPreview widthPx={clipWidthPx} />}
+                          {clip.track === 'audio' && <AudioWaveformPreview widthPx={clipWidthPx} />}
+                          <span className={`truncate pointer-events-none z-10 font-bold ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
                             {isBoundary ? `▭ ${clip.label}` : clip.label}
                           </span>
                         </button>
@@ -983,6 +1033,95 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
           </div>
         </div>
       )}
+      {/* EXPORT RESULT & PROGRESS MODAL POPUP */}
+      {(isExporting || exportedVideoUrl || exportError) && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-4">
+          <div className="bg-canvas-raised border border-canvas-border rounded-3xl p-6 sm:p-8 max-w-lg w-full text-white shadow-2xl flex flex-col items-center gap-6 relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => { setExportedVideoUrl(null); setExportError(null); }}
+              className="absolute top-4 right-4 text-white/50 hover:text-white bg-white/10 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm"
+              title="Close"
+            >
+              ✕
+            </button>
+
+            {isExporting && (
+              <div className="flex flex-col items-center gap-4 text-center py-6 w-full">
+                <div className="animate-spin h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full" />
+                <h3 className="text-xl font-bold text-amber-400">Rendering Timeline Reel...</h3>
+                <div className="w-full bg-slate-700 rounded-full h-4 overflow-hidden border border-slate-600">
+                  <div className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full transition-all duration-300 shadow-md" style={{ width: `${exportProgress}%` }} />
+                </div>
+                <p className="text-xs text-white/60 font-mono">OpenCV & FFmpeg timeline rendering in progress ({exportProgress}%)</p>
+              </div>
+            )}
+
+            {exportedVideoUrl && (
+              <div className="flex flex-col items-center gap-4 text-center w-full">
+                <h3 className="text-2xl font-black text-emerald-400 flex items-center gap-2">
+                  🎉 Export Complete!
+                </h3>
+                <video src={exportedVideoUrl} controls autoPlay className="max-w-xs w-full rounded-2xl border-2 border-emerald-500 shadow-2xl" />
+                <div className="flex gap-3 w-full justify-center">
+                  <a
+                    href={exportedVideoUrl}
+                    download="exported_reel.mp4"
+                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold rounded-xl text-sm transition shadow-lg flex items-center gap-2 cursor-pointer"
+                  >
+                    ⬇️ Download Exported Reel
+                  </a>
+                  <button
+                    onClick={() => setExportedVideoUrl(null)}
+                    className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {exportError && (
+              <div className="flex flex-col items-center gap-3 text-center py-4">
+                <p className="text-rose-400 font-bold text-sm">Export Error: {exportError}</p>
+                <button onClick={() => setExportError(null)} className="px-4 py-2 bg-rose-600 text-white font-bold rounded-lg text-xs">
+                  Try Again
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FilmstripPreview({ widthPx }: { widthPx: number }) {
+  const numFrames = Math.max(1, Math.floor(widthPx / 45))
+  return (
+    <div className="absolute inset-0 flex items-center justify-between opacity-30 pointer-events-none overflow-hidden px-1">
+      {Array.from({ length: numFrames }).map((_, i) => (
+        <div key={i} className="h-7 w-9 bg-slate-700/80 border border-slate-500/40 rounded flex items-center justify-center text-[8px] text-white/50 select-none">
+          🎞️
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AudioWaveformPreview({ widthPx }: { widthPx: number }) {
+  const numBars = Math.max(4, Math.floor(widthPx / 6))
+  return (
+    <div className="absolute inset-0 flex items-center justify-around opacity-40 pointer-events-none px-1">
+      {Array.from({ length: numBars }).map((_, i) => {
+        const heightPct = 25 + Math.sin(i * 0.8) * 35 + (i % 3) * 15
+        return (
+          <div
+            key={i}
+            className="w-1 bg-gradient-to-t from-emerald-400 to-amber-300 rounded-full"
+            style={{ height: `${Math.min(95, Math.max(15, heightPct))}%` }}
+          />
+        )
+      })}
     </div>
   )
 }
