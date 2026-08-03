@@ -210,19 +210,22 @@ def list_past_reels(request: Request):
 @router.get("/available-clips")
 def list_available_clips(request: Request):
     """Returns a list of raw footage clips available on the server for instant testing."""
-    demo_dir = "demo_clips"
-    if not os.path.exists(demo_dir):
-        return []
-
     import glob
-    files = glob.glob(os.path.join(demo_dir, "*.mp4"))
+    demo_files = glob.glob(os.path.join("demo_clips", "*.mp4")) if os.path.exists("demo_clips") else []
+    upload_files = glob.glob(os.path.join("uploaded_files", "*.mp4")) if os.path.exists("uploaded_files") else []
+    files = demo_files + upload_files
+
     raw_clips = [f for f in files if not os.path.basename(f).startswith(("reel_", "final_", "highlighted_", "merged_"))]
     raw_clips.sort()
 
     base_url = str(request.base_url).rstrip("/")
     clips = []
+    seen = set()
     for idx, filepath in enumerate(raw_clips):
         fname = os.path.basename(filepath)
+        if fname in seen:
+            continue
+        seen.add(fname)
         clean_title = fname.replace("_", " ").replace(".mp4", "")
         clips.append({
             "id": idx + 1,
@@ -259,8 +262,12 @@ async def track_visit(request: Request):
         client_ip = forwarded_for.split(",")[0].strip()
     user_agent = request.headers.get("user-agent", "Unknown")
 
-    from app.services.email_service import notify_website_visit
-    notify_website_visit(client_ip=client_ip, user_agent=user_agent)
+    try:
+        from app.services.email_service import notify_website_visit
+        notify_website_visit(client_ip=client_ip, user_agent=user_agent)
+    except Exception as e:
+        print(f"[visit notification warning]: {e}")
+
     return {"status": "ok"}
 
 
