@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { API_BASE_URL } from '../../config'
 
 type TrackType = 'video' | 'overlay' | 'audio'
-type OverlayKind = 'caption' | 'boundary'
+type OverlayKind = 'caption' | 'boundary' | 'logo'
 
 interface Clip {
   id: string
@@ -10,9 +11,10 @@ interface Clip {
   end: number // seconds
   label: string
   text?: string // caption text, only used when overlayKind === 'caption'
-  overlayKind?: OverlayKind // only set for track === 'overlay'; caption clips (from AI plan or "Text") omit this and are treated as captions
-  // Land/plot boundary box, as % of the video frame (0-100), plus rotation
-  // so it can be angled to trace a real, non-axis-aligned field edge.
+  overlayKind?: OverlayKind // only set for track === 'overlay'
+  imageDataUrl?: string // image/logo sticker data URL or URL
+  objectName?: string
+  videoUrl?: string
   boxLeftPct?: number
   boxTopPct?: number
   boxWidthPct?: number
@@ -29,7 +31,7 @@ const DRAG_MOVE_THRESHOLD_PX = 3
 const TRACK_META: Record<TrackType, { label: string; color: string; border: string }> = {
   video: { label: 'Video', color: 'bg-amber-dim', border: 'border-amber' },
   overlay: { label: 'Overlays / Captions', color: 'bg-teal-dim', border: 'border-teal' },
-  audio: { label: 'Music', color: 'bg-white/10', border: 'border-white/30' },
+  audio: { label: 'Audio', color: 'bg-white/10', border: 'border-white/30' },
 }
 
 // ---- AI plan generation (SIMULATED — see note below) ----
@@ -132,9 +134,17 @@ function buildMockPlan(
   return { clips: [...videoClips, ...captionClips], rationale }
 }
 
+export interface VideoClipItem {
+  id: string
+  objectName: string
+  url: string
+  label: string
+}
+
 interface TimelineEditorPageProps {
   videoUrl: string
   rawObjectName?: string
+  clipItems?: VideoClipItem[]
   referenceResults?: any[]
   onBackToQuick?: () => void
 }
@@ -150,7 +160,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, onBackToQuick }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -159,6 +169,12 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+
+  // ---- Timeline Export state ----
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)
+  const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // ---- Caption panel state ----
   const [captionPanelOpen, setCaptionPanelOpen] = useState(false)
@@ -195,43 +211,297 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
   const [generationStepIndex, setGenerationStepIndex] = useState(0)
   const [rationale, setRationale] = useState<string[]>([])
 
-  const handleLoadedMetadata = () => {
-    const d = videoRef.current?.duration ?? 0
-    setDuration(d)
-    setClips([{ id: 'clip-1', track: 'video', start: 0, end: d, label: 'Clip 1' }])
-    setPlanModalOpen(true)
+  // ---- Track Visibility & Mute State ----
+  const [trackVisibility, setTrackVisibility] = useState<Record<TrackType, boolean>>({
+    video: true,
+    overlay: false, // Default overlay track hidden until user clicks Overlay button
+    audio: true,
+  })
+  const [trackMuted, setTrackMuted] = useState<Record<TrackType, boolean>>({
+    video: false,
+    overlay: false,
+    audio: false,
+  })
+
+  // ---- Helper to strictly enforce gapless adjacent video clips ----
+  const enforceGaplessClips = (rawClips: Clip[]) => {
+    const videoClips = rawClips.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
+    const otherClips = rawClips.filter((c) => c.track !== 'video')
+
+    let cursor = 0
+    const snappedVideoClips: Clip[] = videoClips.map((c) => {
+      const clipLen = Math.max(c.end - c.start, 3)
+      const start = cursor
+      const end = cursor + clipLen
+      cursor = end
+      return { ...c, start, end }
+    })
+
+    return [...snappedVideoClips, ...otherClips]
   }
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) setPlayhead(videoRef.current.currentTime)
+  // ---- Video File Input for Inline + Add Clip ----
+  const videoFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAddClipClick = () => {
+    videoFileInputRef.current?.click()
   }
 
-  const togglePlay = () => {
-    if (!videoRef.current) return
-    if (isPlaying) {
-      videoRef.current.pause()
-    } else {
-      videoRef.current.play()
+  const handleVideoFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const formData = new FormData()
+      formData.append('file', file)
+      try {
+        const res = await fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData })
+        if (res.ok) {
+          const data = await res.json()
+          setClips((prev) => {
+            const videoClips = prev.filter((c) => c.track === 'video')
+            const lastEnd = videoClips.length > 0 ? Math.max(...videoClips.map((c) => c.end)) : 0
+            const clipLen = 6
+            const newClip: Clip = {
+              id: `clip-added-${Date.now()}-${i}`,
+              track: 'video',
+              start: lastEnd,
+              end: lastEnd + clipLen,
+              label: `Clip ${videoClips.length + 1} (${data.filename})`,
+              objectName: data.object_name,
+              videoUrl: data.url || `${API_BASE_URL}/raw_video/${data.object_name}`,
+            }
+            const updated = enforceGaplessClips([...prev, newClip])
+            const maxEnd = Math.max(...updated.filter((c) => c.track === 'video').map((c) => c.end), 10)
+            setDuration(maxEnd)
+            return updated
+          })
+        }
+      } catch (err) {
+        console.error('Video upload error:', err)
+      }
     }
-    setIsPlaying(!isPlaying)
+  }
+
+  // ---- Overlay Selection & Image Overlay State & Handlers ----
+  const [overlayMenuOpen, setOverlayMenuOpen] = useState(false)
+  const imageOverlayFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageOverlaySelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string
+      if (!dataUrl) return
+
+      const start = playhead
+      const end = Math.min(playhead + 5, duration || 10)
+      const newLogoClip: Clip = {
+        id: `logo-${Date.now()}`,
+        track: 'overlay',
+        overlayKind: 'logo',
+        start,
+        end,
+        label: `🖼️ ${file.name}`,
+        imageDataUrl: dataUrl,
+        boxLeftPct: 70,
+        boxTopPct: 10,
+        boxWidthPct: 25,
+        boxHeightPct: 20,
+      }
+
+      setClips((prev) => [...prev, newLogoClip])
+      setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+      setOverlayMenuOpen(false)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // ---- Audio Upload State & Handlers ----
+  const audioFileInputRef = useRef<HTMLInputElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+
+  const handleMusicUploadClick = () => {
+    audioFileInputRef.current?.click()
+  }
+
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const localUrl = URL.createObjectURL(file)
+    setAudioUrl(localUrl)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData }).catch((err) =>
+      console.warn('Audio upload warning:', err),
+    )
+
+    const audioClipLen = duration > 0 ? duration : 30
+    const newAudioClip: Clip = {
+      id: `audio-${Date.now()}`,
+      track: 'audio',
+      start: 0,
+      end: audioClipLen,
+      label: `🎵 ${file.name}`,
+    }
+
+    setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
+  }
+
+  const snapClipsBackToBack = () => {
+    setClips((prev) => {
+      const snapped = enforceGaplessClips(prev)
+      const maxEnd = Math.max(...snapped.filter((c) => c.track === 'video').map((c) => c.end), 10)
+      setDuration(maxEnd)
+      return snapped
+    })
   }
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
-    video.addEventListener('play', onPlay)
-    video.addEventListener('pause', onPause)
-    return () => {
-      video.removeEventListener('play', onPlay)
-      video.removeEventListener('pause', onPause)
+    if (clipItems && clipItems.length > 0) {
+      let cursor = 0
+      const defaultClipLen = 6 // 6 seconds per clip
+      const rawClips: Clip[] = clipItems.map((item, idx) => {
+        const startSec = cursor
+        const endSec = cursor + defaultClipLen
+        cursor = endSec
+        return {
+          id: item.id || `clip-${idx + 1}`,
+          track: 'video',
+          start: startSec,
+          end: endSec,
+          label: item.label || `Clip ${idx + 1}`,
+          objectName: item.objectName,
+          videoUrl: item.url,
+        }
+      })
+      const gapless = enforceGaplessClips(rawClips)
+      const maxEnd = Math.max(...gapless.filter((c) => c.track === 'video').map((c) => c.end), 10)
+      setDuration(maxEnd)
+      setClips(gapless)
     }
-  }, [])
+  }, [clipItems])
+
+  useEffect(() => {
+    const videoClips = clips.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
+    if (videoClips.length <= 1) return
+
+    let hasGap = false
+    for (let i = 0; i < videoClips.length - 1; i++) {
+      if (Math.abs(videoClips[i + 1].start - videoClips[i].end) > 0.01) {
+        hasGap = true
+        break
+      }
+    }
+    if (!hasGap) return
+
+    const snapped = enforceGaplessClips(clips)
+    const maxEnd = Math.max(...snapped.filter((c) => c.track === 'video').map((c) => c.end), 10)
+    setDuration(maxEnd)
+    setClips(snapped)
+  }, [clips])
+
+  // ---- Unified Master Timeline Animation Loop ----
+  useEffect(() => {
+    let animId: number
+    let lastTime = performance.now()
+
+    const step = (now: number) => {
+      const deltaSec = (now - lastTime) / 1000
+      lastTime = now
+
+      if (isPlaying) {
+        setPlayhead((prev) => {
+          const next = prev + deltaSec
+          if (next >= duration && duration > 0) {
+            setIsPlaying(false)
+            if (videoRef.current) videoRef.current.pause()
+            if (audioRef.current) audioRef.current.pause()
+            return 0
+          }
+          return next
+        })
+      }
+      animId = requestAnimationFrame(step)
+    }
+
+    if (isPlaying) {
+      lastTime = performance.now()
+      animId = requestAnimationFrame(step)
+    }
+
+    return () => cancelAnimationFrame(animId)
+  }, [isPlaying, duration])
+
+  // ---- Active Video Clip Switching Engine ----
+  const currentVideoClipRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const activeClip = clips.find(
+      (c) => c.track === 'video' && playhead >= c.start && playhead < c.end,
+    )
+    if (activeClip && videoRef.current) {
+      const clipMediaUrl =
+        activeClip.videoUrl ||
+        (activeClip.objectName ? `${API_BASE_URL}/raw_video/${activeClip.objectName}` : videoUrl)
+
+      if (clipMediaUrl && currentVideoClipRef.current !== clipMediaUrl) {
+        currentVideoClipRef.current = clipMediaUrl
+        videoRef.current.src = clipMediaUrl
+        if (isPlaying) {
+          videoRef.current.play().catch(() => {})
+        }
+      }
+
+      const clipOffset = Math.max(0, playhead - activeClip.start)
+      if (Math.abs(videoRef.current.currentTime - clipOffset) > 0.35) {
+        videoRef.current.currentTime = clipOffset
+      }
+    }
+  }, [playhead, clips, videoUrl, isPlaying])
+
+  const handleLoadedMetadata = () => {
+    const singleDur = videoRef.current?.duration ?? 8
+    if (clipItems && clipItems.length > 0) {
+      return
+    }
+    setDuration(singleDur)
+    setClips([{ id: 'clip-1', track: 'video', start: 0, end: singleDur, label: 'Clip 1' }])
+  }
+
+  const handleTimeUpdate = () => {
+    // Master timeline loop handles global playhead time across all clips
+  }
+
+  const togglePlay = () => {
+    if (isPlaying) {
+      setIsPlaying(false)
+      if (videoRef.current) videoRef.current.pause()
+      if (audioRef.current) audioRef.current.pause()
+    } else {
+      if (playhead >= duration && duration > 0) {
+        setPlayhead(0)
+      }
+      setIsPlaying(true)
+      if (videoRef.current) videoRef.current.play().catch(() => {})
+      if (audioRef.current) {
+        audioRef.current.currentTime = playhead
+        audioRef.current.play().catch(() => {})
+      }
+    }
+  }
 
   const seekTo = (seconds: number) => {
+    const val = Math.max(0, Math.min(seconds, duration))
+    setPlayhead(val)
     if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, Math.min(seconds, duration))
+      videoRef.current.currentTime = val
     }
   }
 
@@ -269,6 +539,45 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
 
   const skipPlanGeneration = () => {
     setPlanModalOpen(false)
+  }
+
+  // ---- Backend Export ----
+  const handleExportReel = async () => {
+    setIsExporting(true)
+    setExportProgress(15)
+    setExportError(null)
+
+    try {
+      setExportProgress(40)
+      const res = await fetch(`${API_BASE_URL}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          object_name: rawObjectName || 'clip_1.mp4',
+          clips: clips,
+        }),
+      })
+
+      setExportProgress(85)
+      if (!res.ok) {
+        const errText = await res.text()
+        throw new Error(`Export failed: ${errText}`)
+      }
+
+      const data = await res.json()
+      setExportProgress(100)
+
+      if (data.download_url) {
+        setExportedVideoUrl(data.download_url)
+      } else {
+        throw new Error('No download URL returned from backend server.')
+      }
+    } catch (err: any) {
+      console.error('Timeline Export error:', err)
+      setExportError(err.message || 'Timeline export failed.')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   // ---- Clip operations ----
@@ -557,31 +866,34 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
     !!selectedClip && playhead > selectedClip.start && playhead < selectedClip.end
 
   const activeCaption = clips.find(
-    (c) => c.track === 'overlay' && c.overlayKind !== 'boundary' && playhead >= c.start && playhead < c.end,
+    (c) => c.track === 'overlay' && c.overlayKind !== 'boundary' && c.overlayKind !== 'logo' && playhead >= c.start && playhead < c.end,
   )
   const activeBoundaries = clips.filter(
     (c) => c.track === 'overlay' && c.overlayKind === 'boundary' && playhead >= c.start && playhead < c.end,
   )
+  const activeLogos = clips.filter(
+    (c) => c.track === 'overlay' && c.overlayKind === 'logo' && playhead >= c.start && playhead < c.end,
+  )
 
-  const tracks: TrackType[] = ['video', 'overlay', 'audio']
-  const timelineWidth = Math.max(duration * PIXELS_PER_SECOND, 600)
+  const tracks: TrackType[] = ['overlay', 'audio', 'video']
+  const timelineWidth = Math.max(duration * PIXELS_PER_SECOND + 120, 600)
 
   const tickInterval = duration > 30 ? 5 : 1
   const tickCount = Math.ceil(duration / tickInterval) + 1
 
   return (
-    <div className="min-h-screen bg-canvas text-white font-body flex flex-col">
-      <div className="flex-1 flex items-center justify-center bg-black py-8 px-6 min-h-[45vh] relative">
-        <div className="relative max-h-full max-w-full">
+    <div className="h-screen max-h-screen bg-canvas text-white font-body flex flex-col overflow-hidden">
+      <div className="flex-1 flex items-center justify-center bg-black p-2 relative overflow-hidden min-h-0">
+        <div className="relative h-full flex items-center justify-center max-h-full max-w-full">
           <video
             ref={videoRef}
-            src={videoUrl}
+            src={videoUrl || (rawObjectName ? `${API_BASE_URL}/raw_video/${rawObjectName}` : `${API_BASE_URL}/raw_video/clip_1.mp4`)}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
-            className="max-h-full max-w-full rounded-lg block"
+            className="max-h-full max-w-full h-auto object-contain rounded-lg block shadow-2xl"
           />
 
-          {activeBoundaries.map((b) => (
+          {trackVisibility.overlay && activeBoundaries.map((b) => (
             <div
               key={b.id}
               className="absolute pointer-events-none"
@@ -601,7 +913,24 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
             </div>
           ))}
 
-          {activeCaption && (
+          {trackVisibility.overlay && activeLogos.map((logo) => (
+            <div
+              key={logo.id}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${logo.boxLeftPct ?? 70}%`,
+                top: `${logo.boxTopPct ?? 10}%`,
+                width: `${logo.boxWidthPct ?? 25}%`,
+                height: `${logo.boxHeightPct ?? 20}%`,
+              }}
+            >
+              {logo.imageDataUrl && (
+                <img src={logo.imageDataUrl} alt={logo.label} className="w-full h-full object-contain drop-shadow-md" />
+              )}
+            </div>
+          ))}
+
+          {trackVisibility.overlay && activeCaption && (
             <div className="absolute bottom-6 left-0 right-0 flex justify-center px-6 pointer-events-none">
               <span
                 className="text-white font-display font-semibold text-xl sm:text-2xl text-center leading-snug"
@@ -617,15 +946,106 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-6 py-3 border-y border-canvas-border bg-canvas-panel">
+      <input type="file" ref={videoFileInputRef} accept="video/*" multiple onChange={handleVideoFilesSelected} className="hidden" />
+      <input type="file" ref={audioFileInputRef} accept="audio/*" onChange={handleAudioFileSelected} className="hidden" />
+      <input type="file" ref={imageOverlayFileInputRef} accept="image/*" onChange={handleImageOverlaySelected} className="hidden" />
+      {audioUrl && <audio ref={audioRef} src={audioUrl} className="hidden" />}
+
+      {/* Overlay Options Choice Modal */}
+      {overlayMenuOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-canvas-raised border border-canvas-border rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>🖼️</span> Choose Overlay Type
+              </h3>
+              <button onClick={() => setOverlayMenuOpen(false)} className="text-white/50 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+                  openNewCaptionPanel()
+                }}
+                className="p-4 rounded-xl bg-teal-dim/40 hover:bg-teal-dim border border-teal/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">🔤</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Add Text / Caption Overlay</div>
+                  <div className="text-xs text-white/60">Burn subtitle or text callouts onto the video</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  imageOverlayFileInputRef.current?.click()
+                }}
+                className="p-4 rounded-xl bg-amber-dim/40 hover:bg-amber-dim border border-amber/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">🖼️</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Add Image / Logo Overlay</div>
+                  <div className="text-xs text-white/60">Upload PNG/JPG logo sticker or watermark graphic</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setOverlayMenuOpen(false)
+                  setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+                  openNewBoundaryPanel()
+                }}
+                className="p-4 rounded-xl bg-[#0D473B]/40 hover:bg-[#0D473B] border border-emerald-500/40 text-left flex items-center gap-3 transition cursor-pointer"
+              >
+                <span className="text-2xl">▭</span>
+                <div>
+                  <div className="font-bold text-white text-sm">Mark Land Boundary</div>
+                  <div className="text-xs text-white/60">Draw plot boundary box on property footage</div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setOverlayMenuOpen(false)}
+                className="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-y border-canvas-border bg-canvas-panel">
         <div className="flex items-center gap-1.5">
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
           <ToolbarButton icon="✂" label="Split" onClick={splitSelectedClip} disabled={!canSplit} />
           <ToolbarButton icon="🗑" label="Delete" onClick={deleteSelectedClip} disabled={!selectedClipId} />
-          <ToolbarButton icon="T" label="Text" onClick={openNewCaptionPanel} disabled={duration === 0} />
-          <ToolbarButton icon="▭" label="Mark Land" onClick={openNewBoundaryPanel} disabled={duration === 0} />
-          <ToolbarButton icon="♪" label="Music" disabled />
-          <ToolbarButton icon="✨" label="Effects" disabled />
+          <ToolbarButton icon="🖼️" label="Overlay" onClick={() => setOverlayMenuOpen(true)} />
+          <ToolbarButton
+            icon="T"
+            label="Text"
+            onClick={() => {
+              setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+              openNewCaptionPanel()
+            }}
+            disabled={duration === 0}
+          />
+          <ToolbarButton
+            icon="▭"
+            label="Mark Land"
+            onClick={() => {
+              setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+              openNewBoundaryPanel()
+            }}
+            disabled={duration === 0}
+          />
+          <ToolbarButton icon="🎵" label="Audio" onClick={handleMusicUploadClick} disabled={duration === 0} />
+          <ToolbarButton icon="🧲" label="Snap Clips" onClick={snapClipsBackToBack} disabled={clips.filter((c) => c.track === 'video').length <= 1} />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
         </div>
         <div className="flex items-center gap-2">
@@ -638,16 +1058,17 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
             </button>
           )}
           <button 
-            onClick={() => alert("Exporting reel synced to timeline audio & clips...")}
-            className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-sm transition-colors shadow-md"
+            onClick={handleExportReel}
+            disabled={isExporting || duration === 0}
+            className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-sm transition-colors shadow-md disabled:opacity-40 flex items-center gap-2 cursor-pointer"
           >
-            🚀 Export Reel
+            {isExporting ? '⏳ Exporting Reel...' : '🚀 Export Reel'}
           </button>
         </div>
       </div>
 
       {hasGeneratedPlan && rationale.length > 0 && (
-        <div className="px-6 py-2.5 bg-teal-dim/30 border-b border-canvas-border">
+        <div className="shrink-0 px-4 py-2 bg-teal-dim/30 border-b border-canvas-border">
           <div className="flex items-start gap-2">
             <span className="text-teal text-sm mt-0.5">✦</span>
             <ul className="text-xs text-white/70 space-y-0.5">
@@ -659,7 +1080,7 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
         </div>
       )}
 
-      <div className="bg-canvas-raised px-6 py-4">
+      <div className="shrink-0 bg-canvas-raised px-4 py-3 border-t border-canvas-border">
         <div className="flex items-center justify-between mb-2">
           <span className="font-mono text-xs text-white/40">
             {formatTime(playhead)} / {formatTime(duration)}
@@ -669,61 +1090,124 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
           </span>
         </div>
 
-        <div ref={timelineScrollRef} className="overflow-x-auto">
-          <div style={{ width: timelineWidth }}>
-            <div onClick={handleRulerClick} className="relative h-6 border-b border-canvas-border cursor-pointer select-none">
-              {Array.from({ length: tickCount }).map((_, i) => (
-                <div key={i} className="absolute top-0 h-full flex flex-col items-start" style={{ left: i * tickInterval * PIXELS_PER_SECOND }}>
-                  <div className="w-px h-2 bg-white/20" />
-                  <span className="text-[10px] text-white/30 font-mono">{formatTime(i * tickInterval)}</span>
+        <div className="flex bg-slate-950/60 rounded-lg overflow-hidden border border-canvas-border">
+          {/* Left Track Control Sidebar */}
+          <div className="w-28 shrink-0 bg-slate-900 border-r border-canvas-border flex flex-col pt-7 select-none">
+            {tracks.map((track) => (
+              <div
+                key={track}
+                className="h-[56px] border-b border-canvas-border/60 flex items-center justify-between px-2 text-xs font-bold text-white/80"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full ${TRACK_META[track].color}`} />
+                  <span className="truncate text-[10px] font-mono uppercase font-bold">{TRACK_META[track].label.split(' ')[0]}</span>
                 </div>
-              ))}
-            </div>
+                <button
+                  onClick={() => {
+                    setTrackMuted((prev) => {
+                      const nextMuted = !prev[track]
+                      if (track === 'video' && videoRef.current) videoRef.current.muted = nextMuted
+                      if (track === 'audio' && audioRef.current) audioRef.current.muted = nextMuted
+                      return { ...prev, [track]: nextMuted }
+                    })
+                  }}
+                  className={`p-1 rounded hover:bg-slate-700 transition ${trackMuted[track] ? 'text-rose-400' : 'text-emerald-400'}`}
+                  title={trackMuted[track] ? 'Unmute Track' : 'Mute Track'}
+                >
+                  {trackMuted[track] ? '🔇' : '🔊'}
+                </button>
+              </div>
+            ))}
+          </div>
 
-            <div className="relative mt-1">
-              <div className="absolute top-0 bottom-0 w-px bg-amber z-10 pointer-events-none" style={{ left: playhead * PIXELS_PER_SECOND }}>
-                <div className="w-2.5 h-2.5 rounded-full bg-amber -translate-x-1/2" />
+          {/* Right Scrollable Timeline Tracks */}
+          <div ref={timelineScrollRef} className="flex-1 overflow-x-auto">
+            <div style={{ width: timelineWidth }}>
+              <div onClick={handleRulerClick} className="relative h-6 border-b border-canvas-border cursor-pointer select-none">
+                {Array.from({ length: tickCount }).map((_, i) => (
+                  <div key={i} className="absolute top-0 h-full flex flex-col items-start" style={{ left: i * tickInterval * PIXELS_PER_SECOND }}>
+                    <div className="w-px h-2 bg-white/20" />
+                    <span className="text-[10px] text-white/30 font-mono">{formatTime(i * tickInterval)}</span>
+                  </div>
+                ))}
               </div>
 
-              {tracks.map((track) => (
-                <div key={track} className="relative border-b border-canvas-border/60 flex items-center select-none" style={{ height: TRACK_HEIGHT }}>
-                  {clips
-                    .filter((c) => c.track === track)
-                    .map((clip) => {
-                      const meta = TRACK_META[clip.track]
-                      const selected = clip.id === selectedClipId
-                      const isBeingDragged = clip.id === draggingClipId
-                      const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
-                      const isBoundary = clip.overlayKind === 'boundary'
-                      return (
-                        <button
-                          key={clip.id}
-                          onMouseDown={(e) => handleClipMouseDown(e, clip)}
-                          className={[
-                            'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors',
-                            isBoundary ? 'bg-yellow-400/20' : meta.color,
-                            selected ? `border-2 ${isBoundary ? 'border-yellow-400' : meta.border}` : 'border border-transparent',
-                            isBeingDragged ? 'cursor-grabbing opacity-70 z-20 shadow-lg' : 'cursor-grab',
-                          ].join(' ')}
-                          style={{
-                            left: clip.start * PIXELS_PER_SECOND,
-                            width: Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20),
-                            transform: ghostOffset ? `translateX(${ghostOffset}px)` : undefined,
-                          }}
-                        >
-                          <span className={`truncate pointer-events-none ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
-                            {isBoundary ? `▭ ${clip.label}` : clip.label}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  {clips.filter((c) => c.track === track).length === 0 && (
-                    <span className="text-white/15 text-xs pl-2 font-mono">
-                      {track === 'overlay' ? 'Overlays / Captions — click "Text" or "Mark Land" to add one' : `${TRACK_META[track].label} — empty`}
-                    </span>
-                  )}
+              <div className="relative mt-1">
+                <div className="absolute top-0 bottom-0 w-px bg-amber z-10 pointer-events-none" style={{ left: playhead * PIXELS_PER_SECOND }}>
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber -translate-x-1/2" />
                 </div>
-              ))}
+
+                {tracks.map((track) => {
+                  const isVisible = trackVisibility[track]
+                  const videoClipsOnTrack = clips.filter((c) => c.track === 'video')
+                  const lastVideoEnd = videoClipsOnTrack.length > 0 ? Math.max(...videoClipsOnTrack.map((c) => c.end)) : 0
+
+                  return (
+                    <div
+                      key={track}
+                      className={`relative border-b border-canvas-border/60 flex items-center select-none transition-opacity ${
+                        isVisible ? 'opacity-100' : 'opacity-30 pointer-events-none'
+                      }`}
+                      style={{ height: TRACK_HEIGHT }}
+                    >
+                      {clips
+                        .filter((c) => c.track === track)
+                        .map((clip) => {
+                          const meta = TRACK_META[clip.track]
+                          const selected = clip.id === selectedClipId
+                          const isBeingDragged = clip.id === draggingClipId
+                          const ghostOffset = isBeingDragged && clip.track === 'video' ? dragOffsetPx : 0
+                          const isBoundary = clip.overlayKind === 'boundary'
+                          const clipWidthPx = Math.max((clip.end - clip.start) * PIXELS_PER_SECOND - 4, 20)
+                          return (
+                            <button
+                              key={clip.id}
+                              onMouseDown={(e) => handleClipMouseDown(e, clip)}
+                              className={[
+                                'absolute top-1.5 bottom-1.5 rounded-md flex items-center px-2.5 text-xs font-medium overflow-hidden transition-colors relative',
+                                isBoundary ? 'bg-yellow-400/20' : meta.color,
+                                selected ? `border-2 ${isBoundary ? 'border-yellow-400' : meta.border}` : 'border border-transparent',
+                                isBeingDragged ? 'cursor-grabbing opacity-70 z-20 shadow-lg' : 'cursor-grab',
+                              ].join(' ')}
+                              style={{
+                                left: clip.start * PIXELS_PER_SECOND,
+                                width: clipWidthPx,
+                                transform: ghostOffset ? `translateX(${ghostOffset}px)` : undefined,
+                              }}
+                            >
+                              {clip.track === 'video' && <FilmstripPreview widthPx={clipWidthPx} />}
+                              {clip.track === 'audio' && <AudioWaveformPreview widthPx={clipWidthPx} />}
+                              <span className={`truncate pointer-events-none z-10 font-bold ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
+                                {isBoundary ? `▭ ${clip.label}` : clip.label}
+                              </span>
+                            </button>
+                          )
+                        })}
+
+                      {/* CapCut Style Inline + Add Clip Button on Video Track */}
+                      {track === 'video' && (
+                        <button
+                          onClick={handleAddClipClick}
+                          className="absolute top-1.5 bottom-1.5 rounded-md bg-emerald-600/40 hover:bg-emerald-500/70 border border-emerald-400/60 flex items-center justify-center px-3 text-xs font-black text-emerald-200 transition cursor-pointer gap-1 shadow-md"
+                          style={{
+                            left: lastVideoEnd * PIXELS_PER_SECOND + 4,
+                            width: 95,
+                          }}
+                          title="Add new video clip to timeline"
+                        >
+                          <span className="text-sm">➕</span> Add Clip
+                        </button>
+                      )}
+
+                      {clips.filter((c) => c.track === track).length === 0 && track !== 'video' && (
+                        <span className="text-white/15 text-xs pl-2 font-mono">
+                          {track === 'overlay' ? 'Overlays / Captions — click "Text" or "Mark Land" to add' : `${TRACK_META[track].label} — empty`}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -983,6 +1467,95 @@ export default function TimelineEditorPage({ videoUrl, onBackToQuick }: Timeline
           </div>
         </div>
       )}
+      {/* EXPORT RESULT & PROGRESS MODAL POPUP */}
+      {(isExporting || exportedVideoUrl || exportError) && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-4">
+          <div className="bg-canvas-raised border border-canvas-border rounded-3xl p-6 sm:p-8 max-w-lg w-full text-white shadow-2xl flex flex-col items-center gap-6 relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => { setExportedVideoUrl(null); setExportError(null); }}
+              className="absolute top-4 right-4 text-white/50 hover:text-white bg-white/10 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm"
+              title="Close"
+            >
+              ✕
+            </button>
+
+            {isExporting && (
+              <div className="flex flex-col items-center gap-4 text-center py-6 w-full">
+                <div className="animate-spin h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full" />
+                <h3 className="text-xl font-bold text-amber-400">Rendering Timeline Reel...</h3>
+                <div className="w-full bg-slate-700 rounded-full h-4 overflow-hidden border border-slate-600">
+                  <div className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full transition-all duration-300 shadow-md" style={{ width: `${exportProgress}%` }} />
+                </div>
+                <p className="text-xs text-white/60 font-mono">OpenCV & FFmpeg timeline rendering in progress ({exportProgress}%)</p>
+              </div>
+            )}
+
+            {exportedVideoUrl && (
+              <div className="flex flex-col items-center gap-4 text-center w-full">
+                <h3 className="text-2xl font-black text-emerald-400 flex items-center gap-2">
+                  🎉 Export Complete!
+                </h3>
+                <video src={exportedVideoUrl} controls autoPlay className="max-w-xs w-full rounded-2xl border-2 border-emerald-500 shadow-2xl" />
+                <div className="flex gap-3 w-full justify-center">
+                  <a
+                    href={exportedVideoUrl}
+                    download="exported_reel.mp4"
+                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold rounded-xl text-sm transition shadow-lg flex items-center gap-2 cursor-pointer"
+                  >
+                    ⬇️ Download Exported Reel
+                  </a>
+                  <button
+                    onClick={() => setExportedVideoUrl(null)}
+                    className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {exportError && (
+              <div className="flex flex-col items-center gap-3 text-center py-4">
+                <p className="text-rose-400 font-bold text-sm">Export Error: {exportError}</p>
+                <button onClick={() => setExportError(null)} className="px-4 py-2 bg-rose-600 text-white font-bold rounded-lg text-xs">
+                  Try Again
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FilmstripPreview({ widthPx }: { widthPx: number }) {
+  const numFrames = Math.max(1, Math.floor(widthPx / 45))
+  return (
+    <div className="absolute inset-0 flex items-center justify-between opacity-30 pointer-events-none overflow-hidden px-1">
+      {Array.from({ length: numFrames }).map((_, i) => (
+        <div key={i} className="h-7 w-9 bg-slate-700/80 border border-slate-500/40 rounded flex items-center justify-center text-[8px] text-white/50 select-none">
+          🎞️
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AudioWaveformPreview({ widthPx }: { widthPx: number }) {
+  const numBars = Math.max(4, Math.floor(widthPx / 6))
+  return (
+    <div className="absolute inset-0 flex items-center justify-around opacity-40 pointer-events-none px-1">
+      {Array.from({ length: numBars }).map((_, i) => {
+        const heightPct = 25 + Math.sin(i * 0.8) * 35 + (i % 3) * 15
+        return (
+          <div
+            key={i}
+            className="w-1 bg-gradient-to-t from-emerald-400 to-amber-300 rounded-full"
+            style={{ height: `${Math.min(95, Math.max(15, heightPct))}%` }}
+          />
+        )
+      })}
     </div>
   )
 }

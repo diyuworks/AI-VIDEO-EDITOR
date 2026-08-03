@@ -34,31 +34,7 @@ export const Jamin24Header: React.FC<Jamin24HeaderProps> = ({
           </div>
         </div>
 
-        {/* NAVIGATION / MODE TABS */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200 shadow-inner">
-          <button
-            onClick={() => activeScreen !== 'reel' && onToggleTimeline && onToggleTimeline()}
-            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ${
-              activeScreen === 'reel'
-                ? 'bg-[#0D473B] text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span>⚡</span>
-            <span>Quick Reel Mode</span>
-          </button>
-          <button
-            onClick={() => activeScreen !== 'timeline' && onToggleTimeline && onToggleTimeline()}
-            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ${
-              activeScreen === 'timeline'
-                ? 'bg-[#0D473B] text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span>🎬</span>
-            <span>Timeline Studio</span>
-          </button>
-        </div>
+
 
 
 

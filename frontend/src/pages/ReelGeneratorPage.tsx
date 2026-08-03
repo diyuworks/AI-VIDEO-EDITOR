@@ -41,7 +41,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
-  onOpenTimeline?: () => void;
+  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[]) => void;
 }
 
 export interface ClipHighlightItem {
@@ -719,7 +719,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (
-                  <button onClick={onOpenTimeline} className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                  <button
+                    onClick={() => {
+                      const activeClipObj = uploadedClips.find((c) => selectedClips.includes(c.object_name)) || uploadedClips[0];
+                      const targetUrl = activeClipObj
+                        ? activeClipObj.url
+                        : rawVideoObjectName
+                        ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
+                        : `${API_BASE_URL}/raw_video/clip_1.mp4`;
+                      const targetObjName = activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4');
+
+                      const items = selectedClips.map((objName, idx) => {
+                        const found = uploadedClips.find((c) => c.object_name === objName);
+                        return {
+                          id: `clip-${idx + 1}`,
+                          objectName: objName,
+                          url: found ? found.url : `${API_BASE_URL}/raw_video/${objName}`,
+                          label: `Clip ${idx + 1} (${objName})`,
+                        };
+                      });
+
+                      onOpenTimeline(targetUrl, targetObjName, items);
+                    }}
+                    className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                  >
                     <span>🎛️</span> Open in Timeline Studio
                   </button>
                 )}
