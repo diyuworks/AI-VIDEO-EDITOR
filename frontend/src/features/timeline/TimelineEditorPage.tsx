@@ -210,13 +210,67 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   const [generationStepIndex, setGenerationStepIndex] = useState(0)
   const [rationale, setRationale] = useState<string[]>([])
 
+  // ---- Audio Upload State & Handlers ----
+  const audioFileInputRef = useRef<HTMLInputElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+
+  const handleMusicUploadClick = () => {
+    audioFileInputRef.current?.click()
+  }
+
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const localUrl = URL.createObjectURL(file)
+    setAudioUrl(localUrl)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData }).catch((err) =>
+      console.warn('Audio upload warning:', err),
+    )
+
+    const audioClipLen = duration > 0 ? duration : 30
+    const newAudioClip: Clip = {
+      id: `audio-${Date.now()}`,
+      track: 'audio',
+      start: 0,
+      end: audioClipLen,
+      label: `🎵 ${file.name}`,
+    }
+
+    setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
+  }
+
+  const snapClipsBackToBack = () => {
+    setClips((prev) => {
+      const videoClips = prev.filter((c) => c.track === 'video').sort((a, b) => a.start - b.start)
+      const otherClips = prev.filter((c) => c.track !== 'video')
+
+      let cursor = 0
+      const snappedVideoClips: Clip[] = videoClips.map((c) => {
+        const clipLen = c.end - c.start
+        const start = cursor
+        const end = cursor + clipLen
+        cursor = end
+        return { ...c, start, end }
+      })
+
+      setDuration(cursor)
+      return [...snappedVideoClips, ...otherClips]
+    })
+  }
+
   const handleLoadedMetadata = () => {
-    const singleDur = videoRef.current?.duration ?? 10
+    const singleDur = videoRef.current?.duration ?? 8
     if (clipItems && clipItems.length > 1) {
       let totalDur = 0
+      const perClipLen = Math.min(8, Math.max(4, Math.round(singleDur / clipItems.length))) || 7
       const initialClips: Clip[] = clipItems.map((item, idx) => {
         const startSec = totalDur
-        const endSec = totalDur + singleDur
+        const endSec = totalDur + perClipLen
         totalDur = endSec
         return {
           id: item.id || `clip-${idx + 1}`,
@@ -242,8 +296,13 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     if (!videoRef.current) return
     if (isPlaying) {
       videoRef.current.pause()
+      if (audioRef.current) audioRef.current.pause()
     } else {
       videoRef.current.play()
+      if (audioRef.current) {
+        audioRef.current.currentTime = videoRef.current.currentTime
+        audioRef.current.play().catch(() => {})
+      }
     }
     setIsPlaying(!isPlaying)
   }
@@ -688,6 +747,9 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
         </div>
       </div>
 
+      <input type="file" ref={audioFileInputRef} accept="audio/*" onChange={handleAudioFileSelected} className="hidden" />
+      {audioUrl && <audio ref={audioRef} src={audioUrl} className="hidden" />}
+
       <div className="shrink-0 flex items-center justify-between px-4 py-2 border-y border-canvas-border bg-canvas-panel">
         <div className="flex items-center gap-1.5">
           <ToolbarButton icon={isPlaying ? '⏸' : '▶'} label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay} />
@@ -695,8 +757,8 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           <ToolbarButton icon="🗑" label="Delete" onClick={deleteSelectedClip} disabled={!selectedClipId} />
           <ToolbarButton icon="T" label="Text" onClick={openNewCaptionPanel} disabled={duration === 0} />
           <ToolbarButton icon="▭" label="Mark Land" onClick={openNewBoundaryPanel} disabled={duration === 0} />
-          <ToolbarButton icon="♪" label="Music" disabled />
-          <ToolbarButton icon="✨" label="Effects" disabled />
+          <ToolbarButton icon="♪" label="Music" onClick={handleMusicUploadClick} disabled={duration === 0} />
+          <ToolbarButton icon="🧲" label="Snap Clips" onClick={snapClipsBackToBack} disabled={clips.filter((c) => c.track === 'video').length <= 1} />
           <ToolbarButton icon="✦" label="AI Plan" onClick={() => setPlanModalOpen(true)} disabled={duration === 0} />
         </div>
         <div className="flex items-center gap-2">
