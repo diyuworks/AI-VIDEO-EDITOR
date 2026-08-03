@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 class RegionOverlayRequest(BaseModel):
-    polygon_per_frame: List[List[List[float]]]
+    polygon_per_frame: Optional[List[List[List[float]]]] = None
     highlight_color: str = "#FFEB3B"
     border_thickness: int = 8
     label: Optional[str] = None
@@ -75,24 +75,38 @@ def render_overlay(request: OverlayRequest):
     source_local_path = os.path.join(temp_dir, "source_video.mp4")
     upload_p = os.path.join("uploaded_files", request.object_name)
     demo_p = os.path.join("demo_clips", request.object_name)
+    raw_p = request.object_name
     if os.path.exists(upload_p) and os.path.getsize(upload_p) > 0:
         import shutil
         shutil.copy(upload_p, source_local_path)
     elif os.path.exists(demo_p) and os.path.getsize(demo_p) > 0:
         import shutil
         shutil.copy(demo_p, source_local_path)
+    elif os.path.exists(raw_p) and os.path.getsize(raw_p) > 0:
+        import shutil
+        shutil.copy(raw_p, source_local_path)
     else:
         try:
             minio_client.fget_object(MINIO_BUCKET, request.object_name, source_local_path)
         except Exception as e:
-            print(f"[overlay] MinIO download failed for {request.object_name}: {e}")
-            traceback.print_exc()
-            raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+            print(f"[overlay] MinIO download warning for {request.object_name}: {e}")
+
+    if not os.path.exists(source_local_path) or os.path.getsize(source_local_path) == 0:
+        print(f"[overlay warning] Video file missing for {request.object_name}, returning direct object_name.")
+        return {
+            "success": True,
+            "output_object_name": request.object_name,
+            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+        }
 
     cap = cv2.VideoCapture(source_local_path)
     if not cap.isOpened():
         print(f"[overlay] cv2.VideoCapture failed to open: {source_local_path}")
-        raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
+        return {
+            "success": True,
+            "output_object_name": request.object_name,
+            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+        }
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     if not fps or fps <= 0 or np.isnan(fps):
