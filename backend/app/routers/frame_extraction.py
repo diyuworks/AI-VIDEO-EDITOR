@@ -12,14 +12,12 @@ router = APIRouter()
 
 @router.get("/extract-frame/{object_name}")
 def extract_frame(object_name: str, timestamp: float = 0.0):
-    """
-    Video ka ek specific frame nikalta hai aur image ke roop mein return karta hai.
-    timestamp: kis second ka frame chahiye (default: 0.0 = first frame)
-    """
+    import time
+    t0 = time.time()
     from app.routers.uploads import minio_client
     from app.config import MINIO_BUCKET
-
-    # Step A: Try local demo_clips DIRECTLY (zero-copy, instant), then fall back to MinIO
+    t_import = time.time()
+    
     demo_p = os.path.join("demo_clips", object_name)
     temp_path = None
 
@@ -33,26 +31,25 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
         except Exception as e:
             raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
         video_path = temp_path
-
-    # Step B: OpenCV se video kholo
-    cap = cv2.VideoCapture(video_path)
+    
+    t_file = time.time()
+    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+    t_open = time.time()
 
     if not cap.isOpened():
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not open video for reading")
 
-    # Step C: Sahi timestamp pe jump karo if needed
     if timestamp > 0.0:
         fps = cap.get(cv2.CAP_PROP_FPS)
         frame_number = int(timestamp * fps) if fps > 0 else 0
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
-    # Step D: Frame padho
     success, frame = cap.read()
     cap.release()
+    t_read = time.time()
 
-    # Cleanup temp file if used
     if temp_path and os.path.exists(temp_path):
         try:
             os.remove(temp_path)
@@ -63,12 +60,11 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
     if not success:
         raise HTTPException(status_code=400, detail="Could not read frame from video")
 
-    # Step E: Frame ko JPEG image mein encode karo
     success, encoded_image = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to encode frame as image")
-
-    # Step F: Image ko response ke roop mein bhejo
+    t_encode = time.time()
+    with open("debug_extract.log", "a") as f:
+        f.write(f"DEBUG EXTRACT: import {t_import-t0:.3f} | file {t_file-t_import:.3f} | open {t_open-t_file:.3f} | read {t_read-t_open:.3f} | encode {t_encode-t_read:.3f}\n")
+    
     return StreamingResponse(
         io.BytesIO(encoded_image.tobytes()),
         media_type="image/jpeg"

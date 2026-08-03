@@ -214,10 +214,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     const newlySelected: string[] = [];
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setUploadProgress(`Uploading ${file.name} (${i + 1}/${files.length})...`);
-
+      const uploadPromises = Array.from(files).map(async (file, i) => {
         const formData = new FormData();
         formData.append("file", file);
 
@@ -232,15 +229,22 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         }
 
         const data = await res.json();
-        const clip: UploadedClip = {
-          id: data.id,
-          filename: data.filename,
-          object_name: data.object_name,
-          url: data.url,
+        return {
+          clip: {
+            id: data.id,
+            filename: data.filename,
+            object_name: data.object_name,
+            url: data.url,
+          },
+          object_name: data.object_name
         };
-        newClips.push(clip);
-        newlySelected.push(data.object_name);
-      }
+      });
+
+      setUploadProgress(`Uploading ${files.length} clips...`);
+      const results = await Promise.all(uploadPromises);
+      
+      const newClips = results.map(r => r.clip);
+      const newlySelected = results.map(r => r.object_name);
 
       setUploadedClips((prev) => [...newClips, ...prev]);
       setSelectedClips((prev) => [...newlySelected, ...prev]);
@@ -632,7 +636,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       const isDone = clipHighlights[clipName]?.isDone;
                       return (
                         <div key={clip.id} className={`p-4 pb-4 rounded-2xl border flex flex-col items-center justify-between transition relative min-h-[190px] ${isSelected ? "border-[#0D473B] bg-emerald-50/60 shadow-md ring-2 ring-[#0D473B]/20" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                          {/* Removed PROCESSED badge as per user request */}
+                          {isDone && (
+                            <div className="absolute -top-2 -left-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white shadow-sm flex items-center gap-1 z-10">
+                              ✅ Ready
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 absolute top-2.5 left-2.5">
                             <button onClick={() => moveClipUp(clipIndex)} disabled={clipIndex === 0} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">◀</button>
                             <button onClick={() => moveClipDown(clipIndex)} disabled={clipIndex === uploadedClips.length - 1} className="text-slate-600 hover:text-[#0D473B] text-xs font-bold px-1.5 py-0.5 rounded-lg bg-slate-100 border disabled:opacity-30">▶</button>
@@ -715,7 +723,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 cursor-pointer">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading || !selectedClips.every(c => clipHighlights[c]?.isDone)} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (

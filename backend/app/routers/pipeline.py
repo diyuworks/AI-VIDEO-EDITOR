@@ -306,37 +306,12 @@ def merge_clips(request: MergeClipsRequest):
             raise e
         raise HTTPException(status_code=500, detail=f"Merge failed: {str(e)}")
 
+import uuid as _uuid
+import ffmpeg
+from app.routers.uploads import minio_client
+from app.config import MINIO_BUCKET, MINIO_ENDPOINT
+from app.routers.export import TMP_DIR
 
-@router.post("/generate-reel")
-async def generate_reel(request: GenerateReelRequest, session: Session = Depends(get_session)):
-    """
-    Master pipeline: Highlighted video + AI Script + AI Voiceover + Captions = Final Reel
-    NOTE: This is a backend-only pipeline. For live-preview, use the TimelineEditor logic.
-    """
-    from app.routers.uploads import minio_client
-    from app.config import MINIO_BUCKET, MINIO_ENDPOINT
-
-    TEMPORARY_DISABLE_VOICEOVER = False  # Set to False to restore AI script, voiceover & captions
-
-    if request.job_id:
-        update_progress(request.job_id, 50, "scripting", "Generating Gujarati AI voiceover script with Gemini...")
-
-    temp_dir = tempfile.mkdtemp()
-    generated_script = ""
-    word_boundaries = []
-    audio_path = None
-    outro_audio_path = None
-    
-    import uuid as _uuid
-    import ffmpeg
-    export_id = str(_uuid.uuid4())
-    
-    # Download highlighted video to tmp_exports EARLY so we can get its exact duration
-    from app.routers.export import TMP_DIR
-    video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")
-    srt_path = os.path.join(TMP_DIR, f"{export_id}_subs.srt")
-    output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
-    
 def resolve_local_or_minio_file(object_name: str, target_path: str, is_audio: bool = False) -> bool:
     import shutil
     search_dirs = [
@@ -402,6 +377,12 @@ async def generate_full_reel(
     """
     temp_dir = tempfile.mkdtemp()
     export_id = str(_uuid.uuid4())
+    
+    TEMPORARY_DISABLE_VOICEOVER = False
+    generated_script = ""
+    word_boundaries = []
+    audio_path = None
+    outro_audio_path = None
     
     # Download highlighted video to tmp_exports EARLY so we can get its exact duration
     video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")

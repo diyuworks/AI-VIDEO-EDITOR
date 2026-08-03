@@ -233,53 +233,6 @@ def render_overlay(request: OverlayRequest):
                             cv2.line(frame, p_start_tuple, p_end, (0, 0, 0), thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
                             cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request_border_thickness, lineType=cv2.LINE_AA)
                     else:
-                        alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
-                    
-                    # 4. Highlighted area
-                    highlighted_area = frame.copy()
-                    color_overlay = np.zeros_like(frame)
-                    cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
-                    highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
-                    
-                    # 5. Combine using mask (zero temporary memory allocation)
-                    frame = dimmed_frame.copy()
-                    frame[mask == 255] = highlighted_area[mask == 255]
-
-                    # Determine active 3D overlays and compute sequential time slots
-                    active_overlays = []
-                    if farmhouse_img is not None: active_overlays.append(("farmhouse", farmhouse_img))
-                    if fountain_img is not None: active_overlays.append(("fountain", fountain_img))
-                    if petrol_pump_img is not None: active_overlays.append(("petrol_pump", petrol_pump_img))
-
-                    num_active = len(active_overlays)
-                    current_asset_img = None
-                    if num_active > 0:
-                        slot_len = total_tracked_frames / float(num_active)
-                        active_slot_idx = min(num_active - 1, int(frame_idx / slot_len))
-                        current_asset_name, current_asset_img = active_overlays[active_slot_idx]
-
-                    if current_asset_img is not None and M >= 4:
-                        try:
-                            img_h, img_w = current_asset_img.shape[:2]
-                            src_pts = np.float32([[0, 0], [img_w, 0], [img_w, img_h], [0, img_h]])
-                            dst_pts = polygon_points[:4].astype(np.float32)
-                            M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                            warped_img = cv2.warpPerspective(current_asset_img, M_persp, (width, height))
-                            if warped_img.shape[2] == 4:
-                                alpha_mask = (warped_img[:, :, 3] / 255.0)[:, :, np.newaxis]
-                                frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
-                            else:
-                                frame = cv2.addWeighted(warped_img, 0.8, frame, 0.2, 0)
-                        except Exception as ex_overlay:
-                            print(f"[overlay] 3D overlay warp error: {ex_overlay}")
-
-                    # 6. Draw glowing borders
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request.border_thickness + 4, lineType=cv2.LINE_AA)
-                    cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request.border_thickness + 1, lineType=cv2.LINE_AA)
-                    
-                    # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
-                    if request.label and pil_font:
-                        min_y_idx = np.argmin(polygon_points[:, 1])
                         # Border is complete, draw closed polygon outline with background dimming
                         fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
                         import math
