@@ -189,8 +189,8 @@ async def export_reel(request: ReelExportRequest):
         reel_width = int(min(width, height * 9 / 16))
         reel_height = int(min(height, width * 16 / 9))
         
-        # Setup end screen image stream (5 seconds)
-        image_stream = ffmpeg.input("assets/end_screen.PNG", loop=1, t=5)
+        # Setup end screen image stream
+        image_stream = ffmpeg.input("assets/end_screen_animated.mp4")
         image_scaled = (
             image_stream
             .filter('fps', fps=25)
