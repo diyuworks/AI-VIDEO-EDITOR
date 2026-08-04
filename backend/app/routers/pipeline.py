@@ -120,6 +120,7 @@ class GenerateReelRequest(BaseModel):
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
     custom_audio_object_name: Optional[str] = None
     max_clip_duration: Optional[float] = None  # Trim clip/video to max duration in seconds (e.g. 6.0 for demo)
+    include_outro: Optional[bool] = None  # Whether to append 5s end screen logo (default False for 6s demo cut)
     job_id: Optional[str] = None
 
 PipelineRequest = GenerateReelRequest
@@ -406,7 +407,17 @@ async def generate_full_reel(
 
         probe_video = ffmpeg.probe(video_path)
         video_info = next(s for s in probe_video['streams'] if s['codec_type'] == 'video')
-        video_duration = float(probe_video['format']['duration'])
+        raw_vid_dur = float(probe_video['format']['duration'])
+
+        if request.max_clip_duration and request.max_clip_duration > 0:
+            video_duration = min(raw_vid_dur, float(request.max_clip_duration))
+        else:
+            video_duration = raw_vid_dur
+
+        include_outro = request.include_outro if request.include_outro is not None else (False if (request.max_clip_duration and request.max_clip_duration <= 6.0) else True)
+        end_screen_duration = 5.0 if include_outro else 0.0
+        total_final_duration = video_duration + end_screen_duration
+
         has_audio = any(s['codec_type'] == 'audio' for s in probe_video['streams'])
     except Exception as e:
         with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Source Fetch Error: {str(e)}\n")
@@ -491,7 +502,7 @@ async def generate_full_reel(
                     except Exception as e:
                         with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Warning: Failed to fetch reference captions: {str(e)}\n")
 
-                # 1. Target script duration to main video clips duration + 5s logo screen
+                # 1. Target script duration to main video clips duration (+ 5s logo screen if include_outro)
                 plan_req = EditingPlanRequest(
                     object_name=request.raw_video_object_name,
                     reference_object_name=request.reference_object_name,
@@ -499,7 +510,7 @@ async def generate_full_reel(
                     prompt=request.prompt,
                     use_exact_script=request.use_exact_script,
                     structured_options=request.structured_options,
-                    duration_seconds=video_duration + 5.0,  # Now includes 5s end screen for seamless outro
+                    duration_seconds=total_final_duration,
                     clip_metadata=request.clip_metadata  # Timeline info for context-aware narration
                 )
                 plan_req = generate_editing_plan(plan_req, session)
@@ -511,8 +522,6 @@ async def generate_full_reel(
             # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
             try:
                 import shutil
-                # Set total_final_duration for TTS path (video + 5s end screen)
-                total_final_duration = video_duration + 5.0
                 segments = plan_req["editing_plan"].get("segments", [])
                 outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
                 
@@ -530,7 +539,7 @@ async def generate_full_reel(
                         target_dur = clip_metadata_list[idx].get("duration", 0)
                         clip_start = clip_metadata_list[idx].get("start_time", 0)
                     else:
-                        target_dur = 5.0 # fallback
+                        target_dur = video_duration / max(1, len(segments)) # fallback
                         clip_start = 0.0
                     
                     # Generate TTS for segment
@@ -580,8 +589,8 @@ async def generate_full_reel(
                         audio_padded = ffmpeg.input(seg_audio_path).audio.filter('apad').filter('atrim', duration=target_dur)
                         segment_audio_streams.append(audio_padded)
     
-                # Generate Outro TTS
-                if outro_text:
+                # Generate Outro TTS (only if include_outro is True)
+                if include_outro and outro_text:
                     outro_req = TTSRequest(text=outro_text)
                     outro_res = await generate_tts(outro_req)
                     outro_source = os.path.join("tts_output", f"{outro_res['audio_id']}.mp3")
@@ -631,9 +640,9 @@ async def generate_full_reel(
                 input_video = ffmpeg.input(video_path, stream_loop=-1)
                 video_node = input_video.video
         else:
-            # Normal AI TTS Mode: Video + 5s End Screen
+            # Normal AI TTS Mode: Video (+ 5s End Screen if include_outro)
             trim_duration = video_duration
-            end_screen_duration = 5.0  # Fixed 5s logo end screen
+            end_screen_duration = 5.0 if include_outro else 0.0
             total_final_duration = video_duration + end_screen_duration
             outro_start_time = video_duration
             input_video = ffmpeg.input(video_path)

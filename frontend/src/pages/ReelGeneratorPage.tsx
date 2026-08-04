@@ -330,7 +330,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       const clipsToMerge = orderedSelectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
-        return highlight && highlight.highlightedObjectName
+        return highlight && highlight.isDone && highlight.highlightedObjectName
           ? highlight.highlightedObjectName
           : clip;
       });
@@ -402,6 +402,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           clip_metadata: mergeData.clip_metadata || null,
           custom_audio_object_name: customAudioObjectName,
           max_clip_duration: maxClipDuration,
+          include_outro: maxClipDuration === 6 ? false : true,
           job_id: jobId,
         }),
       });
@@ -776,7 +777,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading || !selectedClips.every(c => clipHighlights[c]?.isDone)} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (
