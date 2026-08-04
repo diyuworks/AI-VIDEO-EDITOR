@@ -654,9 +654,9 @@ async def generate_full_reel(
         reel_height = int(min(height, width * 16 / 9))
         
         # Setup end screen image stream (5 seconds logo card) if duration > 0
-        end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen.PNG")
+        end_screen_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "end_screen_animated.mp4")
         if os.path.exists(end_screen_path) and end_screen_duration > 0:
-            image_stream = ffmpeg.input(end_screen_path, loop=1, t=end_screen_duration)
+            image_stream = ffmpeg.input(end_screen_path)
             
             image_scaled = (
                 image_stream
