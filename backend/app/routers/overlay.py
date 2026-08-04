@@ -96,7 +96,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
         }
 
     cap = cv2.VideoCapture(source_local_path)
@@ -105,7 +105,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
         }
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -205,8 +205,17 @@ def render_overlay(request: OverlayRequest):
                     raw_pts = raw_pts * scale_factor
                 polygon_points = raw_pts.astype(np.int32)
                 M = len(polygon_points)
+
+                if M >= 3:
+                    # Safeguard: Sort points in clockwise perimeter order around centroid to prevent self-intersecting spikes
+                    cx_m = np.mean(polygon_points[:, 0])
+                    cy_m = np.mean(polygon_points[:, 1])
+                    angles_m = np.arctan2(polygon_points[:, 1] - cy_m, polygon_points[:, 0] - cx_m)
+                    sort_order = np.argsort(angles_m)
+                    polygon_points = polygon_points[sort_order]
                 
                 if M >= 1:
+                    alpha = 0.35
                     if frame_idx < ANIM_FRAMES:
                         # Live tracing dynamic border drawing animation
                         t = frame_idx / ANIM_FRAMES

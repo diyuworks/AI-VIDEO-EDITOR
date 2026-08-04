@@ -1,6 +1,8 @@
 import os
 import tempfile
 import subprocess
+import uuid as _uuid
+import ffmpeg
 from datetime import timedelta
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends
@@ -128,6 +130,67 @@ class MergeClipsRequest(BaseModel):
     job_id: Optional[str] = None
 
 
+from app.routers.export import TMP_DIR
+
+
+def resolve_local_or_minio_file(object_name: str, target_path: str, is_audio: bool = False) -> bool:
+    import shutil
+    from app.routers.uploads import minio_client
+    from app.config import MINIO_BUCKET
+
+    if not object_name:
+        return False
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    search_dirs = [
+        "uploaded_files",
+        "demo_clips",
+        TMP_DIR,
+        os.path.join(base_dir, "uploaded_files"),
+        os.path.join(base_dir, "demo_clips"),
+        os.path.join(base_dir, "backend", "uploaded_files"),
+        os.path.join(base_dir, "backend", "demo_clips"),
+    ]
+    
+    # 1. Exact match in search directories
+    for d in search_dirs:
+        p = os.path.join(d, os.path.basename(object_name))
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            shutil.copy(p, target_path)
+            print(f"[resolve] Found exact match for {object_name} in {d}")
+            return True
+            
+    # 2. Direct absolute path check
+    if os.path.exists(object_name) and os.path.getsize(object_name) > 0:
+        shutil.copy(object_name, target_path)
+        print(f"[resolve] Found direct path match for {object_name}")
+        return True
+
+    # 3. Substring fuzzy match in search directories (no random latest-file fallback)
+    valid_exts = ('.mp3', '.wav', '.m4a', '.aac') if is_audio else ('.mp4', '.mov', '.avi', '.webm')
+    clean_obj = os.path.basename(object_name).lower()
+    for d in search_dirs:
+        if os.path.exists(d):
+            for fn in os.listdir(d):
+                if fn.lower().endswith(valid_exts):
+                    if clean_obj in fn.lower() or fn.lower() in clean_obj:
+                        shutil.copy(os.path.join(d, fn), target_path)
+                        print(f"[resolve] Fuzzy matched {object_name} -> {fn} in {d}")
+                        return True
+
+    # 4. Try MinIO
+    try:
+        if minio_client:
+            minio_client.fget_object(MINIO_BUCKET, object_name, target_path)
+            print(f"[resolve] Downloaded {object_name} from MinIO")
+            return True
+    except Exception as me:
+        print(f"[resolve] MinIO fetch failed for {object_name}: {me}")
+
+    print(f"[resolve] WARNING: Could not resolve file '{object_name}'!")
+    return False
+
+
 @router.post("/merge-clips")
 def merge_clips(request: MergeClipsRequest):
     """
@@ -157,25 +220,12 @@ def merge_clips(request: MergeClipsRequest):
     local_clip_paths = []
 
     try:
-        # Download clips or copy local demo clips
+        # Download clips or copy local demo / uploaded clips using robust resolver
         for idx, name in enumerate(request.clip_object_names):
             local_p = os.path.join(temp_dir, f"clip_{idx}.mp4")
-            demo_p = os.path.join("demo_clips", name)
-            if os.path.exists(demo_p):
-                import shutil
-                shutil.copy(demo_p, local_p)
-                print(f"[MERGE] Clip {idx} ({name}): copied from demo_clips")
-            else:
-                try:
-                    minio_client.fget_object(MINIO_BUCKET, name, local_p)
-                    print(f"[MERGE] Clip {idx} ({name}): downloaded from MinIO")
-                except Exception as e:
-                    print(f"[MERGE] ERROR: Clip {idx} ({name}) not found: {e}")
-                    raise HTTPException(status_code=404, detail=f"Clip {name} not found: {str(e)}")
-            
-            # Verify file exists and has content
+            resolve_local_or_minio_file(name, local_p, is_audio=False)
             file_size = os.path.getsize(local_p)
-            print(f"[MERGE] Clip {idx} file size: {file_size} bytes")
+            print(f"[MERGE] Clip {idx} ({name}) resolved, size: {file_size} bytes")
             local_clip_paths.append(local_p)
 
         print(f"[MERGE] Total clips downloaded: {len(local_clip_paths)}")
@@ -191,11 +241,10 @@ def merge_clips(request: MergeClipsRequest):
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             raw_duration = float(probe['format']['duration'])
             
-            # Apply Reference Reel Cut Pacing: Trim long clips to ~3.5s segments
-            # matching the 3.44s cut length profile from reference analysis
-            target_cut = min(raw_duration, 3.5) if len(local_clip_paths) >= 3 else min(raw_duration, 5.0)
+            # Use FULL clip duration as uploaded - no forced trimming
+            target_cut = raw_duration
             clip_durations.append(target_cut)
-            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s, has_audio={has_audio}")
+            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s (full duration), has_audio={has_audio}")
             
             # Normalize video to 9:16 (720x1280), 25fps, yuv420p and trim to target_cut
             vid = (
@@ -225,9 +274,13 @@ def merge_clips(request: MergeClipsRequest):
         # Concatenate all normalized streams
         output_path = os.path.join(temp_dir, "output_merged.mp4")
         joined = ffmpeg.concat(*streams, v=1, a=1, n=len(local_clip_paths)).node
-        out = ffmpeg.output(joined[0], joined[1], output_path, vcodec='libx264', acodec='aac', video_bitrate='2M', strict='experimental')
+        out = ffmpeg.output(
+            joined[0], joined[1], output_path,
+            vcodec='libx264', acodec='aac',
+            video_bitrate='2M', strict='experimental',
+            preset='ultrafast', threads=2, max_muxing_queue_size=1024
+        )
         
-        # Print the actual ffmpeg command for debugging
         try:
             cmd_args = ffmpeg.get_args(out)
             print(f"[MERGE] FFmpeg command args: ffmpeg {' '.join(cmd_args)}")
@@ -266,8 +319,7 @@ def merge_clips(request: MergeClipsRequest):
             )
         except Exception as e:
             print(f"[MERGE] MinIO upload failed, using local URL. Error: {e}")
-            base_url = str(request.base_url).rstrip("/") if hasattr(request, 'base_url') else "http://localhost:4005"
-            presigned_url = f"{base_url}/demo-videos/{merged_id}"
+            presigned_url = f"http://localhost:4005/demo-videos/{merged_id}"
 
         # Build clip_metadata for voiceover sync
         clip_metadata = []
@@ -306,63 +358,8 @@ def merge_clips(request: MergeClipsRequest):
             raise e
         raise HTTPException(status_code=500, detail=f"Merge failed: {str(e)}")
 
-import uuid as _uuid
-import ffmpeg
-from app.routers.uploads import minio_client
-from app.config import MINIO_BUCKET, MINIO_ENDPOINT
-from app.routers.export import TMP_DIR
 
-def resolve_local_or_minio_file(object_name: str, target_path: str, is_audio: bool = False) -> bool:
-    import shutil
-    search_dirs = [
-        "demo_clips",
-        TMP_DIR,
-        r"C:\Users\Diya Malvia\Downloads",
-        r"c:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\demo_clips"
-    ]
-    
-    # 1. Exact match in search directories
-    for d in search_dirs:
-        p = os.path.join(d, object_name)
-        if os.path.exists(p):
-            shutil.copy(p, target_path)
-            print(f"[resolve] Found exact match for {object_name} in {d}")
-            return True
-            
-    # 2. Direct absolute path check
-    if os.path.exists(object_name):
-        shutil.copy(object_name, target_path)
-        print(f"[resolve] Found direct path match for {object_name}")
-        return True
 
-    # 3. Try MinIO
-    try:
-        minio_client.fget_object(MINIO_BUCKET, object_name, target_path)
-        print(f"[resolve] Downloaded {object_name} from MinIO")
-        return True
-    except Exception as me:
-        print(f"[resolve] MinIO fetch failed for {object_name}: {me}")
-
-    # 4. Fuzzy match in search directories
-    valid_exts = ('.mp3', '.wav', '.m4a', '.aac') if is_audio else ('.mp4', '.mov', '.avi', '.webm')
-    for d in search_dirs:
-        if os.path.exists(d):
-            # Check matching filename substring
-            for fn in os.listdir(d):
-                if fn.lower().endswith(valid_exts):
-                    if object_name.lower() in fn.lower() or fn.lower() in object_name.lower():
-                        shutil.copy(os.path.join(d, fn), target_path)
-                        print(f"[resolve] Fuzzy matched {object_name} -> {fn} in {d}")
-                        return True
-            # Fallback to latest file with valid extension
-            files = [os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith(valid_exts)]
-            if files:
-                files.sort(key=os.path.getmtime, reverse=True)
-                shutil.copy(files[0], target_path)
-                print(f"[resolve] Fallback to latest file {files[0]} in {d}")
-                return True
-
-    raise HTTPException(status_code=404, detail=f"File {object_name} not found locally or in MinIO")
 
 
 @router.post("/generate-reel")
@@ -375,7 +372,17 @@ async def generate_full_reel(
     Accepts raw video, optional boundary tracking, optional reference reel style, and prompt.
     Produces a 9:16 vertical MP4 video ready for Instagram / YouTube Shorts.
     """
+    from app.routers.uploads import minio_client
+    from app.config import MINIO_BUCKET
+
+    TEMPORARY_DISABLE_VOICEOVER = False
+
     temp_dir = tempfile.mkdtemp()
+    generated_script = ""
+    word_boundaries = []
+    audio_path = None
+    outro_audio_path = None
+
     export_id = str(_uuid.uuid4())
     
     TEMPORARY_DISABLE_VOICEOVER = False
@@ -456,7 +463,7 @@ async def generate_full_reel(
                     custom_audio_dur = video_duration # fallback
 
                 total_final_duration = custom_audio_dur
-                final_audio_stream = ffmpeg.input(custom_audio_path).audio.filter('atrim', duration=total_final_duration)
+                final_audio_stream = ffmpeg.input(custom_audio_path).audio.filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('volume', '1.5').filter('atrim', duration=total_final_duration)
                 
                 if request.job_id:
                     update_progress(request.job_id, 70, "merging", "Custom audio ready. Merging into video...")
@@ -499,6 +506,8 @@ async def generate_full_reel(
             # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
             try:
                 import shutil
+                # Set total_final_duration for TTS path (video + 5s end screen)
+                total_final_duration = video_duration + 5.0
                 segments = plan_req["editing_plan"].get("segments", [])
                 outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
                 
@@ -584,11 +593,11 @@ async def generate_full_reel(
                     outro_audio_stream = ffmpeg.input(outro_audio_path).audio.filter('apad').filter('atrim', duration=5.0)
                     segment_audio_streams.append(outro_audio_stream)
     
-                # Concat all audio streams into a single perfect timeline
+                # Concat all audio streams into a single perfect timeline and trim strictly to total_final_duration
                 if len(segment_audio_streams) > 1:
-                    final_audio_stream = ffmpeg.concat(*segment_audio_streams, v=0, a=1)
+                    final_audio_stream = ffmpeg.concat(*segment_audio_streams, v=0, a=1).filter('atrim', duration=total_final_duration)
                 elif len(segment_audio_streams) == 1:
-                    final_audio_stream = segment_audio_streams[0]
+                    final_audio_stream = segment_audio_streams[0].filter('atrim', duration=total_final_duration)
                 else:
                     # Fallback empty audio
                     final_audio_stream = ffmpeg.input('anullsrc', f='lavfi', t=total_final_duration).audio
@@ -679,17 +688,18 @@ async def generate_full_reel(
             filtered_video = video_for_subs
             
             if has_audio and not request.custom_audio_object_name:
-                # Loop original audio to cover the full duration (video + 5s outro)
-                # Lower volume to 15% so it acts as background music behind the voiceover
-                bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.15').filter('atrim', duration=total_final_duration)
+                # Ensure voiceover is loud and clear (1.8x volume)
+                voiced = final_audio_stream.filter('volume', '1.8').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atrim', duration=total_final_duration)
+                # Lower background music volume to 10% - NO stream_loop to prevent infinite extension
+                bg_audio = ffmpeg.input(video_path).audio.filter('volume', '0.10').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('apad').filter('atrim', duration=total_final_duration)
                 
-                # Mix the TTS voiceover with the background audio
-                final_audio = ffmpeg.filter([final_audio_stream, bg_audio], 'amix', inputs=2, duration='longest')
+                # Mix the voiceover with background audio strictly trimmed to total_final_duration
+                final_audio = ffmpeg.filter([voiced, bg_audio], 'amix', inputs=2, duration='first', dropout_transition=0).filter('atrim', duration=total_final_duration)
             else:
-                final_audio = final_audio_stream
+                final_audio = final_audio_stream.filter('volume', '1.5').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atrim', duration=total_final_duration)
                 
-            # Use the mixed audio stream
-            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac', strict='experimental', **{'b:v': '5000k', 'preset': 'ultrafast'})
+            # Use the mixed audio stream with 192k AAC audio encoding
+            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac', **{'b:v': '5000k', 'b:a': '192k', 'preset': 'ultrafast'})
         else:
             filtered_video = video_for_subs
             if has_audio:
@@ -742,8 +752,7 @@ async def generate_full_reel(
         )
     except Exception as ex_m:
         print(f"[pipeline warning] MinIO upload threw {ex_m}, using local demo-videos URL...")
-        base_url = str(request.base_url).rstrip("/") if hasattr(request, 'base_url') else "http://localhost:4005"
-        presigned_url = f"{base_url}/demo-videos/{final_object_name}"
+        presigned_url = f"http://localhost:4005/demo-videos/{final_object_name}"
 
     if request.job_id:
         update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")

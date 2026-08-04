@@ -44,50 +44,60 @@ def init_minio():
         print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
 
 
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac"}
+ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac", ".flv", ".wmv", ".3gp", ".m4v", ".mpg", ".mpeg", ".ogg", ".ogv"}
 MAX_FILE_SIZE_MB = 500
 
 
 @router.post("/upload")
-def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
-    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+async def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    filename = file.filename or "uploaded_clip.mp4"
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".mp4"
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+        ext = ".mp4"  # Default fallback extension
 
     object_name = f"{uuid.uuid4().hex}{ext}"
-    # Stream directly to disk to prevent RAM overload and blocking
-    import shutil
-    
-    if getattr(file, "size", 0) and file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large")
-
     demo_dir = "demo_clips"
     os.makedirs(demo_dir, exist_ok=True)
     local_path = os.path.join(demo_dir, object_name)
-    
-    file.file.seek(0)
-    with open(local_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-        
+
+    try:
+        await file.seek(0)
+    except Exception:
+        pass
+
+    try:
+        with open(local_path, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
+    except Exception as e:
+        if os.path.exists(local_path):
+            os.remove(local_path)
+        raise HTTPException(status_code=400, detail=f"Failed to process file stream: {str(e)}")
+
     size_mb = os.path.getsize(local_path) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        if os.path.exists(local_path):
+            os.remove(local_path)
+        raise HTTPException(status_code=400, detail="File size exceeds 500MB limit")
 
     # Try MinIO upload in background thread with 3s timeout (local copy is already safe)
     import threading
     def _minio_upload():
         try:
-            minio_client.fput_object(
-                MINIO_BUCKET,
-                object_name,
-                local_path,
-                content_type=file.content_type or "video/mp4",
-            )
+            if minio_client:
+                minio_client.fput_object(
+                    MINIO_BUCKET,
+                    object_name,
+                    local_path,
+                    content_type=file.content_type or "video/mp4",
+                )
         except Exception as e:
             print(f"[upload warning] MinIO upload threw {e}, using local storage copy...")
 
     t = threading.Thread(target=_minio_upload, daemon=True)
     t.start()
 
-    file_url = f"http://localhost:8000/demo-videos/{object_name}"
+    file_url = f"http://localhost:4005/demo-videos/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,
@@ -120,35 +130,45 @@ def upload_video(file: UploadFile = File(...), session: Session = Depends(get_se
 
 
 @router.post("/upload-reference")
-def upload_reference_video(file: UploadFile = File(...)):
-    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+async def upload_reference_video(file: UploadFile = File(...)):
+    filename = file.filename or "reference.mp4"
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     object_name = f"ref_{uuid.uuid4().hex}{ext}"
-    contents = file.file.read()
-    size_mb = len(contents) / (1024 * 1024)
-    if size_mb > MAX_FILE_SIZE_MB:
-        raise HTTPException(status_code=400, detail="File too large")
-
-    # Always save a local copy in demo_clips for guaranteed offline processing
     demo_dir = "demo_clips"
     os.makedirs(demo_dir, exist_ok=True)
     local_ref_path = os.path.join(demo_dir, object_name)
-    with open(local_ref_path, "wb") as f:
-        f.write(contents)
 
     try:
-        # Calculate optimal part_size to avoid S3 multipart upload timeouts
-        part_size = max(10 * 1024 * 1024, len(contents) // 100) if len(contents) > 10 * 1024 * 1024 else 0
-        minio_client.put_object(
-            MINIO_BUCKET,
-            object_name,
-            data=BytesIO(contents),
-            length=len(contents),
-            content_type=file.content_type,
-            part_size=part_size
-        )
+        await file.seek(0)
+    except Exception:
+        pass
+
+    try:
+        with open(local_ref_path, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
+    except Exception as e:
+        if os.path.exists(local_ref_path):
+            os.remove(local_ref_path)
+        raise HTTPException(status_code=400, detail=f"Failed to process reference file: {str(e)}")
+
+    size_mb = os.path.getsize(local_ref_path) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        if os.path.exists(local_ref_path):
+            os.remove(local_ref_path)
+        raise HTTPException(status_code=400, detail="File too large")
+
+    try:
+        if minio_client:
+            minio_client.fput_object(
+                MINIO_BUCKET,
+                object_name,
+                local_ref_path,
+                content_type=file.content_type or "video/mp4",
+            )
     except Exception as e:
         print(f"[upload-reference warning] MinIO upload threw {e}, using local storage copy...")
 
