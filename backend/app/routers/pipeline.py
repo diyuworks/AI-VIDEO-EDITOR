@@ -119,6 +119,7 @@ class GenerateReelRequest(BaseModel):
     structured_options: Optional[dict] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
     custom_audio_object_name: Optional[str] = None
+    max_clip_duration: Optional[float] = None  # Trim clip/video to max duration in seconds (e.g. 6.0 for demo)
     job_id: Optional[str] = None
 
 PipelineRequest = GenerateReelRequest
@@ -127,6 +128,7 @@ PipelineRequest = GenerateReelRequest
 class MergeClipsRequest(BaseModel):
     clip_object_names: list  # e.g. ["clip_1.mp4", "clip_2.mp4", ...]
     clip_info: Optional[List[dict]] = None  # [{object_name, label, has_farmhouse, has_fountain}]
+    max_clip_duration: Optional[float] = None  # Target cut limit per clip in seconds (e.g. 6.0 for demo)
     job_id: Optional[str] = None
 
 
@@ -240,11 +242,14 @@ def merge_clips(request: MergeClipsRequest):
             probe = ffmpeg.probe(p)
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             raw_duration = float(probe['format']['duration'])
-            
-            # Use FULL clip duration as uploaded - no forced trimming
-            target_cut = raw_duration
+            # Trim clip if max_clip_duration requested (e.g. 6.0s for demo), otherwise full clip duration
+            if request.max_clip_duration and request.max_clip_duration > 0:
+                target_cut = min(raw_duration, float(request.max_clip_duration))
+            else:
+                target_cut = raw_duration
+
             clip_durations.append(target_cut)
-            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s (full duration), has_audio={has_audio}")
+            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s, has_audio={has_audio}")
             
             # Normalize video to 9:16 (720x1280), 25fps, yuv420p and trim to target_cut
             vid = (

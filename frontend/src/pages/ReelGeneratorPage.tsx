@@ -98,6 +98,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
   const [useExactScript, setUseExactScript] = useState<boolean>(false);
+  const [maxClipDuration, setMaxClipDuration] = useState<number | null>(6); // Default 6 seconds for demo reel clips
 
   // Multi-Clip States (Always start empty for a clean workspace)
   const [multiClipStage, setMultiClipStage] = useState<"idle" | "merging_clips" | "generating_reel" | "done" | "error">("idle");
@@ -381,6 +382,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: JSON.stringify({
           clip_object_names: clipsToMerge,
           clip_info: clipInfoForMerge,
+          max_clip_duration: maxClipDuration,
           job_id: jobId,
         }),
       });
@@ -399,6 +401,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           use_exact_script: useExactScript,
           clip_metadata: mergeData.clip_metadata || null,
           custom_audio_object_name: customAudioObjectName,
+          max_clip_duration: maxClipDuration,
           job_id: jobId,
         }),
       });
@@ -743,6 +746,31 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         ❌ Remove (Use AI Voice)
                       </button>
                     )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="text-sm">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      ⏱️ Demo Clip Duration Limit
+                    </span>
+                    <p className="text-slate-500 text-xs mt-1">Cut clips to 6s for quick demo. Audio and voiceover automatically sync to match.</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMaxClipDuration(6)}
+                      className={`px-4 py-2.5 rounded-xl font-bold text-xs transition border ${maxClipDuration === 6 ? "bg-[#0D473B] text-white border-[#0D473B] shadow-md" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
+                    >
+                      ⚡ 6 Seconds Cut (Demo)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMaxClipDuration(null)}
+                      className={`px-4 py-2.5 rounded-xl font-bold text-xs transition border ${maxClipDuration === null ? "bg-[#0D473B] text-white border-[#0D473B] shadow-md" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
+                    >
+                      🎬 Full Duration
+                    </button>
                   </div>
                 </div>
               </div>
