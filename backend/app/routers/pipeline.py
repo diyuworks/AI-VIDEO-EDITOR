@@ -241,11 +241,10 @@ def merge_clips(request: MergeClipsRequest):
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             raw_duration = float(probe['format']['duration'])
             
-            # Apply Reference Reel Cut Pacing: Trim long clips to ~3.5s segments
-            # matching the 3.44s cut length profile from reference analysis
-            target_cut = min(raw_duration, 3.5) if len(local_clip_paths) >= 3 else min(raw_duration, 5.0)
+            # Use FULL clip duration as uploaded - no forced trimming
+            target_cut = raw_duration
             clip_durations.append(target_cut)
-            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s, has_audio={has_audio}")
+            print(f"[MERGE] Clip {clip_idx}: raw_duration={raw_duration:.2f}s -> target_cut={target_cut:.2f}s (full duration), has_audio={has_audio}")
             
             # Normalize video to 9:16 (720x1280), 25fps, yuv420p and trim to target_cut
             vid = (
@@ -507,6 +506,8 @@ async def generate_full_reel(
             # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
             try:
                 import shutil
+                # Set total_final_duration for TTS path (video + 5s end screen)
+                total_final_duration = video_duration + 5.0
                 segments = plan_req["editing_plan"].get("segments", [])
                 outro_text = plan_req["editing_plan"].get("outro_text", "જમીન અંગે વધુ માહિતી માટે અમને સંપર્ક કરો.")
                 
@@ -689,8 +690,8 @@ async def generate_full_reel(
             if has_audio and not request.custom_audio_object_name:
                 # Ensure voiceover is loud and clear (1.8x volume)
                 voiced = final_audio_stream.filter('volume', '1.8').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atrim', duration=total_final_duration)
-                # Lower background music volume to 10%
-                bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.10').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('atrim', duration=total_final_duration)
+                # Lower background music volume to 10% - NO stream_loop to prevent infinite extension
+                bg_audio = ffmpeg.input(video_path).audio.filter('volume', '0.10').filter('aformat', sample_rates='44100', channel_layouts='stereo').filter('apad').filter('atrim', duration=total_final_duration)
                 
                 # Mix the voiceover with background audio strictly trimmed to total_final_duration
                 final_audio = ffmpeg.filter([voiced, bg_audio], 'amix', inputs=2, duration='first', dropout_transition=0).filter('atrim', duration=total_final_duration)

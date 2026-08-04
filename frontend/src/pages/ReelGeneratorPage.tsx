@@ -161,8 +161,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     if (!file) return;
 
     setIsTranscribing(true);
-    setCustomAudioObjectName(null); 
-    
+    setCustomAudioObjectName(null);
+
     try {
       const uploadFormData = new FormData();
       uploadFormData.append("file", file);
@@ -195,7 +195,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     } finally {
       setIsTranscribing(false);
       if (event.target) {
-        event.target.value = ""; 
+        event.target.value = "";
       }
     }
   };
@@ -219,7 +219,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     const newlySelected: string[] = [];
 
     try {
-      const uploadPromises = Array.from(files).map(async (file, i) => {
+      const fileList = Array.from(files);
+      const results: { clip: UploadedClip; object_name: string }[] = [];
+
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        setUploadProgress(`Uploading clip ${i + 1} of ${fileList.length} (${file.name})...`);
+
         const formData = new FormData();
         formData.append("file", file);
 
@@ -229,25 +235,29 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         });
 
         if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.detail || `Upload failed for ${file.name}`);
+          let errMsg = `Upload failed for ${file.name}`;
+          try {
+            const errData = await res.json();
+            errMsg = errData.detail || errMsg;
+          } catch {
+            const text = await res.text();
+            errMsg = text || errMsg;
+          }
+          throw new Error(errMsg);
         }
 
         const data = await res.json();
-        return {
+        results.push({
           clip: {
             id: data.id,
             filename: data.filename,
             object_name: data.object_name,
             url: data.url,
           },
-          object_name: data.object_name
-        };
-      });
+          object_name: data.object_name,
+        });
+      }
 
-      setUploadProgress(`Uploading ${files.length} clips...`);
-      const results = await Promise.all(uploadPromises);
-      
       const newClips = results.map(r => r.clip);
       const newlySelected = results.map(r => r.object_name);
 
@@ -260,6 +270,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       alert(`Upload failed: ${err.message}`);
     } finally {
       setIsUploading(false);
+      if (event.target) {
+        event.target.value = "";
+      }
     }
   };
 
@@ -306,7 +319,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     return true;
   };
 
-    const handleGenerateMultiClipReel = async () => {
+  const handleGenerateMultiClipReel = async () => {
     try {
       setMultiClipError(null);
 
@@ -325,11 +338,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       setProgressPercent(5);
       setProgressMessage("Starting multi-clip reel pipeline...");
       setMultiClipStage("merging_clips");
-      
+
       const clipInfoForMerge = orderedSelectedClips.map((clip) => {
         const state = clipHighlights[clip];
         const hArr = state?.highlights || [];
-        
+
         const combinedLabel = hArr.map(h => h.label).filter(Boolean).join(" and ") || "";
         const combinedPrice = hArr.map(h => h.price).filter(Boolean).join(" and ") || "";
         const combinedSize = hArr.map(h => h.size).filter(Boolean).join(" and ") || "";
@@ -359,9 +372,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               if (data.stage) setProgressStage(data.stage);
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }, 400);
-      
+
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -424,23 +437,23 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     const newItem: ClipHighlightItem = {
       points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
-    
+
     // Add to state
     setClipHighlights((prev) => {
       const existing = prev[clipName]?.highlights || [];
       const updatedHighlights = [...existing, newItem];
-      
+
       // Fire and forget the async tracking
       processMultiClipHighlight(clipName, updatedHighlights).then(outputName => {
-         setClipHighlights((p) => ({
-           ...p,
-           [clipName]: { ...p[clipName], highlightedObjectName: outputName, isDone: true, isTracking: false }
-         }));
+        setClipHighlights((p) => ({
+          ...p,
+          [clipName]: { ...p[clipName], highlightedObjectName: outputName, isDone: true, isTracking: false }
+        }));
       }).catch(err => {
-         setMultiClipError("Failed to track boundaries for clip");
-         setClipHighlights((p) => ({ ...p, [clipName]: { ...p[clipName], isDone: false, isTracking: false } }));
+        setMultiClipError("Failed to track boundaries for clip");
+        setClipHighlights((p) => ({ ...p, [clipName]: { ...p[clipName], isDone: false, isTracking: false } }));
       });
-      
+
       return {
         ...prev,
         [clipName]: {
@@ -511,26 +524,26 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       // Formulate render payload array matching backend expectation
       const renderHighlights = highlights.map((h, i) => {
-          let autoColor = h.highlightColor || "#FFEB3B";
-          if (h.points.length === 2) {
-              autoColor = "#FFEB3B"; // Yellow for roads/lines
-          } else if (h.points.length >= 3) {
-              autoColor = "#FFEB3B"; // Yellow for plots as requested
-          }
-          
-          return {
-              polygon_per_frame: trackingData.polygons_per_frame[i],
-              highlight_color: autoColor,
-              border_thickness: 8,
-              label: h.label || undefined,
-              price: h.price || undefined,
-              size: h.size || undefined,
-              road_info: h.roadInfo || undefined,
-              enable_farmhouse_overlay: h.enableFarmhouse || false,
-              enable_fountain_overlay: h.enableFountain || false,
-              enable_petrol_pump_overlay: h.enablePetrolPump || false,
-              text_position: h.textPosition || "middle",
-          };
+        let autoColor = h.highlightColor || "#FFEB3B";
+        if (h.points.length === 2) {
+          autoColor = "#FFEB3B"; // Yellow for roads/lines
+        } else if (h.points.length >= 3) {
+          autoColor = "#FFEB3B"; // Yellow for plots as requested
+        }
+
+        return {
+          polygon_per_frame: trackingData.polygons_per_frame[i],
+          highlight_color: autoColor,
+          border_thickness: 8,
+          label: h.label || undefined,
+          price: h.price || undefined,
+          size: h.size || undefined,
+          road_info: h.roadInfo || undefined,
+          enable_farmhouse_overlay: h.enableFarmhouse || false,
+          enable_fountain_overlay: h.enableFountain || false,
+          enable_petrol_pump_overlay: h.enablePetrolPump || false,
+          text_position: h.textPosition || "middle",
+        };
       });
 
       // Step 2: Render overlay using /render-overlay
@@ -656,7 +669,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                           <div className="flex flex-col items-center text-center w-full mt-4">
                             <div className="text-2xl">📍</div>
                             <span className="font-bold text-sm text-[#0D473B] mt-1.5 truncate w-full" title={clip.filename}>{clip.filename}</span>
-                            
+
                             {/* Plot Highlight Summary Info Badges */}
                             {clipHighlights[clipName] && (
                               <div className="w-full mt-2 space-y-1 text-left bg-emerald-50/90 p-2 rounded-xl border border-emerald-200/80 text-[11px]">
@@ -689,16 +702,16 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             {isSelected && (
                               <div className="w-full space-y-2">
                                 <button onClick={() => {
-                                      const state = clipHighlights[clipName];
-                                      const firstHighlight = state?.highlights?.[0];
-                                      setActiveMarkingClip(clipName);
-                                      setActiveMarkingLabel(firstHighlight?.label || clip.filename.split(".")[0]);
-                                      setPlotPrice(firstHighlight?.price || "");
-                                      setPlotSize(firstHighlight?.size || "");
-                                      setRoadInfo(firstHighlight?.roadInfo || "");
-                                      setHighlightColor(firstHighlight?.highlightColor || "#FFEB3B");
-                                      setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
-                                      setEnableFountain(firstHighlight?.enableFountain || false);
+                                  const state = clipHighlights[clipName];
+                                  const firstHighlight = state?.highlights?.[0];
+                                  setActiveMarkingClip(clipName);
+                                  setActiveMarkingLabel(firstHighlight?.label || clip.filename.split(".")[0]);
+                                  setPlotPrice(firstHighlight?.price || "");
+                                  setPlotSize(firstHighlight?.size || "");
+                                  setRoadInfo(firstHighlight?.roadInfo || "");
+                                  setHighlightColor(firstHighlight?.highlightColor || "#FFEB3B");
+                                  setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
+                                  setEnableFountain(firstHighlight?.enableFountain || false);
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
                                   {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlights" : "✏️ Highlight Plot"}
                                 </button>
@@ -745,8 +758,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       const targetUrl = activeClipObj
                         ? activeClipObj.url
                         : rawVideoObjectName
-                        ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
-                        : `${API_BASE_URL}/raw_video/clip_1.mp4`;
+                          ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
+                          : `${API_BASE_URL}/raw_video/clip_1.mp4`;
                       const targetObjName = activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4');
 
                       const items = selectedClips.map((objName, idx) => {
@@ -845,7 +858,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
               {/* LEFT COLUMN: Form Details */}
               <div className="w-full lg:w-[45%] flex flex-col gap-6 lg:gap-8">
-                
+
                 <div className="flex flex-col gap-6">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -997,8 +1010,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           </div>
         </div>
       )}
-      </div>
-      );
+    </div>
+  );
 };
 
-      export default ReelGeneratorPage;
+export default ReelGeneratorPage;
