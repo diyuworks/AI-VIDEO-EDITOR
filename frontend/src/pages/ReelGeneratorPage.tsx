@@ -200,6 +200,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     }
   };
 
+  const handleRemoveAudio = () => {
+    setCustomAudioObjectName(null);
+    setUseExactScript(false);
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -715,11 +720,16 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     </span>
                     <p className="text-slate-500 text-xs mt-1">Upload an MP3/WAV file. We will use this audio instead of AI voiceover.</p>
                   </div>
-                  <div className="relative">
+                  <div className="flex items-center gap-2">
                     <input type="file" accept="audio/*" onChange={handleAudioUpload} disabled={isTranscribing} className="hidden" id="audio-upload" />
-                    <label htmlFor="audio-upload" className={`px-6 py-3.5 font-bold rounded-2xl text-sm transition cursor-pointer flex items-center gap-2 shadow-md shrink-0 whitespace-nowrap ${isTranscribing ? "bg-slate-300 text-slate-500 cursor-not-allowed" : customAudioObjectName ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-900/20" : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-emerald-950/20"}`}>
-                      {isTranscribing ? "⏳ Processing..." : customAudioObjectName ? "✅ Custom Audio Set" : "🎙️ Upload Audio File"}
+                    <label htmlFor="audio-upload" className={`px-5 py-3 font-bold rounded-2xl text-sm transition cursor-pointer flex items-center gap-2 shadow-md shrink-0 whitespace-nowrap ${isTranscribing ? "bg-slate-300 text-slate-500 cursor-not-allowed" : customAudioObjectName ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-900/20" : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-emerald-950/20"}`}>
+                      {isTranscribing ? "⏳ Processing..." : customAudioObjectName ? "✅ Change Audio" : "🎙️ Upload Audio File"}
                     </label>
+                    {customAudioObjectName && (
+                      <button type="button" onClick={handleRemoveAudio} className="px-3.5 py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-2xl text-xs transition shadow-md whitespace-nowrap">
+                        ❌ Remove (Use AI Voice)
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -782,7 +792,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-[#0D473B]">🎉 Multi-Clip Reel Ready!</h2>
               </div>
-              <video src={multiClipVideoUrl} controls autoPlay className="max-w-[280px] sm:max-w-xs w-full rounded-2xl shadow-2xl border-2 border-[#0D473B]" />
+              <video src={multiClipVideoUrl} controls autoPlay playsInline className="max-w-[280px] sm:max-w-xs w-full rounded-2xl shadow-2xl border-2 border-[#0D473B]" />
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
                 <button onClick={() => handleDownload(multiClipVideoUrl)} className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-[#0D473B] hover:bg-[#09352C] text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-sm">
                   ⬇️ Download Reel

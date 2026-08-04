@@ -96,7 +96,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
         }
 
     cap = cv2.VideoCapture(source_local_path)
@@ -105,7 +105,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:8000/demo-videos/{request.object_name}",
+            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
         }
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -207,6 +207,7 @@ def render_overlay(request: OverlayRequest):
                 M = len(polygon_points)
                 
                 if M >= 1:
+                    alpha = 0.35
                     if frame_idx < ANIM_FRAMES:
                         # Live tracing dynamic border drawing animation
                         t = frame_idx / ANIM_FRAMES

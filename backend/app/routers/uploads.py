@@ -87,7 +87,7 @@ def upload_video(file: UploadFile = File(...), session: Session = Depends(get_se
     t = threading.Thread(target=_minio_upload, daemon=True)
     t.start()
 
-    file_url = f"http://localhost:8000/demo-videos/{object_name}"
+    file_url = f"http://localhost:4005/demo-videos/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,
