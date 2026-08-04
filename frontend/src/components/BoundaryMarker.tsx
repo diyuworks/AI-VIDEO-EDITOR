@@ -49,32 +49,21 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     if (!ctx) return;
     ctx.drawImage(img, 0, 0);
     if (points.length > 0) {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      points.forEach((p) => ctx.lineTo(p.x, p.y));
-      if (points.length > 2) ctx.closePath();
-      ctx.fillStyle = "rgba(255, 235, 59, 0.22)";
-      ctx.fill();
+
+      // Draw solid lines SEQUENTIALLY: 1→2→3→4 (NO closePath — no line back to start)
       ctx.shadowColor = "#FFEB3B";
       ctx.shadowBlur = 14;
       ctx.strokeStyle = "#FFEB3B";
       ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
-      points.forEach((p) => ctx.lineTo(p.x, p.y));
-      if (points.length > 2) ctx.closePath();
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
       ctx.stroke();
       ctx.shadowBlur = 0;
-      if (points.length > 1) {
-        ctx.beginPath();
-        ctx.setLineDash([7, 5]);
-        ctx.moveTo(points[points.length - 1].x, points[points.length - 1].y);
-        ctx.lineTo(points[0].x, points[0].y);
-        ctx.strokeStyle = "rgba(255,235,59,0.5)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+
+      // Draw numbered point markers
       points.forEach((pt, idx) => {
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 13, 0, 2 * Math.PI);
