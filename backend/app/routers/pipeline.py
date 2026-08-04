@@ -319,62 +319,66 @@ def merge_clips(request: MergeClipsRequest):
             raise e
         raise HTTPException(status_code=500, detail=f"Merge failed: {str(e)}")
 
-
+import uuid as _uuid
+import ffmpeg
+from app.routers.uploads import minio_client
+from app.config import MINIO_BUCKET, MINIO_ENDPOINT
 from app.routers.export import TMP_DIR
 
 
 def resolve_local_or_minio_file(object_name: str, target_path: str, is_audio: bool = False) -> bool:
     import shutil
+
+    if not object_name:
+        return False
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     search_dirs = [
         "uploaded_files",
         "demo_clips",
         TMP_DIR,
-        r"C:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\uploaded_files",
-        r"C:\Users\Diya Malvia\Desktop\AI-VIDEO-EDITOR\AI-VIDEO-EDITOR\backend\demo_clips",
-        r"C:\Users\Diya Malvia\Downloads"
+        os.path.join(base_dir, "uploaded_files"),
+        os.path.join(base_dir, "demo_clips"),
+        os.path.join(base_dir, "backend", "uploaded_files"),
+        os.path.join(base_dir, "backend", "demo_clips"),
     ]
     
     # 1. Exact match in search directories
     for d in search_dirs:
-        p = os.path.join(d, object_name)
-        if os.path.exists(p):
+        p = os.path.join(d, os.path.basename(object_name))
+        if os.path.exists(p) and os.path.getsize(p) > 0:
             shutil.copy(p, target_path)
             print(f"[resolve] Found exact match for {object_name} in {d}")
             return True
             
     # 2. Direct absolute path check
-    if os.path.exists(object_name):
+    if os.path.exists(object_name) and os.path.getsize(object_name) > 0:
         shutil.copy(object_name, target_path)
         print(f"[resolve] Found direct path match for {object_name}")
         return True
 
-    # 3. Try MinIO
-    try:
-        minio_client.fget_object(MINIO_BUCKET, object_name, target_path)
-        print(f"[resolve] Downloaded {object_name} from MinIO")
-        return True
-    except Exception as me:
-        print(f"[resolve] MinIO fetch failed for {object_name}: {me}")
-
-    # 4. Fuzzy match in search directories
+    # 3. Substring fuzzy match (no random latest-file fallback)
     valid_exts = ('.mp3', '.wav', '.m4a', '.aac') if is_audio else ('.mp4', '.mov', '.avi', '.webm')
+    clean_obj = os.path.basename(object_name).lower()
     for d in search_dirs:
         if os.path.exists(d):
-            # Check matching filename substring
             for fn in os.listdir(d):
                 if fn.lower().endswith(valid_exts):
-                    if object_name.lower() in fn.lower() or fn.lower() in object_name.lower():
+                    if clean_obj in fn.lower() or fn.lower() in clean_obj:
                         shutil.copy(os.path.join(d, fn), target_path)
                         print(f"[resolve] Fuzzy matched {object_name} -> {fn} in {d}")
                         return True
-            # Fallback to latest file with valid extension
-            files = [os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith(valid_exts)]
-            if files:
-                files.sort(key=os.path.getmtime, reverse=True)
-                shutil.copy(files[0], target_path)
-                print(f"[resolve] Fallback to latest file {files[0]} in {d}")
-                return True
 
+    # 4. Try MinIO
+    try:
+        if minio_client:
+            minio_client.fget_object(MINIO_BUCKET, object_name, target_path)
+            print(f"[resolve] Downloaded {object_name} from MinIO")
+            return True
+    except Exception as me:
+        print(f"[resolve] MinIO fetch failed for {object_name}: {me}")
+
+    print(f"[resolve] WARNING: Could not resolve file '{object_name}'!")
     raise HTTPException(status_code=404, detail=f"File {object_name} not found locally or in MinIO")
 
 
@@ -390,6 +394,12 @@ async def generate_full_reel(
     """
     temp_dir = tempfile.mkdtemp()
     export_id = str(_uuid.uuid4())
+    
+    TEMPORARY_DISABLE_VOICEOVER = False
+    generated_script = ""
+    word_boundaries = []
+    audio_path = None
+    outro_audio_path = None
     
     # Download highlighted video to tmp_exports EARLY so we can get its exact duration
     video_path = os.path.join(TMP_DIR, f"{export_id}_source.mp4")
