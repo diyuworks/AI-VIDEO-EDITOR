@@ -39,17 +39,6 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     img.onerror = () => setImageError(true);
   }, [objectName]);
 
-  const sortPointsClockwise = (pts: Point[]): Point[] => {
-    if (pts.length < 3) return pts;
-    const cx = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
-    const cy = pts.reduce((sum, p) => sum + p.y, 0) / pts.length;
-    return [...pts].sort((a, b) => {
-      const angleA = Math.atan2(a.y - cy, a.x - cx);
-      const angleB = Math.atan2(b.y - cy, b.x - cx);
-      return angleA - angleB;
-    });
-  };
-
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const img = imageRef.current;
@@ -60,39 +49,18 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     if (!ctx) return;
     ctx.drawImage(img, 0, 0);
     if (points.length > 0) {
-      // Draw polygon path
+      // Draw solid lines SEQUENTIALLY: 1→2→3→4 (NO closePath — no line back to start)
+      ctx.shadowColor = "#FFEB3B";
+      ctx.shadowBlur = 14;
+      ctx.strokeStyle = "#FFEB3B";
+      ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
       for (let i = 1; i < points.length; i++) {
         ctx.lineTo(points[i].x, points[i].y);
       }
-      
-      if (points.length >= 3) {
-        ctx.closePath();
-        // Yellow semi-transparent fill preview
-        ctx.fillStyle = "rgba(255, 235, 59, 0.25)";
-        ctx.fill();
-      }
-
-      // Glowing solid border
-      ctx.shadowColor = "#FFEB3B";
-      ctx.shadowBlur = 14;
-      ctx.strokeStyle = "#FFEB3B";
-      ctx.lineWidth = 3.5;
       ctx.stroke();
       ctx.shadowBlur = 0;
-
-      // Dashed preview line when only 2 points marked
-      if (points.length === 2) {
-        ctx.beginPath();
-        ctx.setLineDash([7, 5]);
-        ctx.moveTo(points[1].x, points[1].y);
-        ctx.lineTo(points[0].x, points[0].y);
-        ctx.strokeStyle = "rgba(255, 235, 59, 0.5)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
 
       // Draw numbered point markers in sequential order
       points.forEach((pt, idx) => {
@@ -129,15 +97,10 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const newPt = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
-    
-    setPoints((prev) => {
-      const next = [...prev, newPt];
-      if (next.length >= 3) {
-        return sortPointsClockwise(next);
-      }
-      return next;
-    });
+    setPoints((prev) => [
+      ...prev,
+      { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY },
+    ]);
   };
 
   const handleConfirm = () => {
