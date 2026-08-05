@@ -46,6 +46,7 @@ interface ReelGeneratorPageProps {
 
 export interface ClipHighlightItem {
   points: Point[];
+  frameTime?: number;
   label?: string;
   price?: string;
   size?: string;
@@ -98,6 +99,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
   const [useExactScript, setUseExactScript] = useState<boolean>(false);
+  const [maxClipDuration, setMaxClipDuration] = useState<number | null>(null); // Default null = Full duration for all merged clips
 
   // Multi-Clip States (Always start empty for a clean workspace)
   const [multiClipStage, setMultiClipStage] = useState<"idle" | "merging_clips" | "generating_reel" | "done" | "error">("idle");
@@ -330,7 +332,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       const clipsToMerge = orderedSelectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
-        return highlight && highlight.highlightedObjectName
+        return highlight && highlight.isDone && highlight.highlightedObjectName
           ? highlight.highlightedObjectName
           : clip;
       });
@@ -388,6 +390,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: JSON.stringify({
           clip_object_names: clipsToMerge,
           clip_info: clipInfoForMerge,
+          max_clip_duration: maxClipDuration,
           job_id: jobId,
         }),
       });
@@ -406,6 +409,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           use_exact_script: useExactScript,
           clip_metadata: mergeData.clip_metadata || null,
           custom_audio_object_name: customAudioObjectName,
+          max_clip_duration: maxClipDuration,
+          include_outro: true,
           job_id: jobId,
         }),
       });
@@ -440,10 +445,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     pr: string,
     sz: string,
     rd: string,
-    clr: string
+    clr: string,
+    frameTime?: number
   ) => {
     const newItem: ClipHighlightItem = {
-      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
+      points, frameTime, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
 
     // Add to state
@@ -484,10 +490,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     pr: string,
     sz: string,
     rd: string,
-    clr: string
+    clr: string,
+    frameTime?: number
   ) => {
     const newItem: ClipHighlightItem = {
-      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
+      points, frameTime, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
     setClipHighlights((prev) => {
       const existing = prev[clipName]?.highlights || [];
@@ -512,7 +519,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       if (!highlights || highlights.length === 0) return;
 
       const trackingPayloads = highlights.map(h => ({
-        initial_points: h.points
+        initial_points: h.points,
+        start_timestamp: h.frameTime || 0.0
       }));
 
       // Step 1: Track the boundaries using /track-boundary
@@ -756,7 +764,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading || !selectedClips.every(c => clipHighlights[c]?.isDone)} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (
@@ -981,7 +989,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
                 <BoundaryMarker
                   objectName={activeMarkingClip}
-                  onSaveAndAddAnother={(points) => {
+                  onSaveAndAddAnother={(points, frameTime) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
                     const pr = plotPrice;
@@ -994,9 +1002,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     const tp = textPosition || "middle";
 
                     if (!clipName) return;
-                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
                   }}
-                  onSaveAndFinish={async (points) => {
+                  onSaveAndFinish={async (points, frameTime) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
                     const pr = plotPrice;
@@ -1010,7 +1018,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
                     if (!clipName) return;
                     setActiveMarkingClip(null);
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
                   }}
                 />
               </div>
