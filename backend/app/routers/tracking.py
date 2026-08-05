@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import tempfile
 import os
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
