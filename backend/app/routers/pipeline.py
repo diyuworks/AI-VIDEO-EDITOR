@@ -128,8 +128,9 @@ PipelineRequest = GenerateReelRequest
 
 class MergeClipsRequest(BaseModel):
     clip_object_names: list  # e.g. ["clip_1.mp4", "clip_2.mp4", ...]
-    clip_info: Optional[List[dict]] = None  # [{object_name, label, has_farmhouse, has_fountain}]
-    max_clip_duration: Optional[float] = None  # Target cut limit per clip in seconds (e.g. 6.0 for demo)
+    clip_info: Optional[List[dict]] = None  # [{object_name, label, target_duration, ...}]
+    clip_cuts: Optional[List[float]] = None  # Per-clip cut limits in seconds, e.g. [6.0, 3.37, 4.97, 2.0, 11.33]
+    max_clip_duration: Optional[float] = None  # Fallback target cut limit per clip in seconds
     job_id: Optional[str] = None
 
 
@@ -243,8 +244,12 @@ def merge_clips(request: MergeClipsRequest):
             probe = ffmpeg.probe(p)
             has_audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
             raw_duration = float(probe['format']['duration'])
-            # Trim clip if max_clip_duration requested (e.g. 6.0s for demo), otherwise full clip duration
-            if request.max_clip_duration and request.max_clip_duration > 0:
+            # Trim clip if per-clip cut or max_clip_duration requested
+            if request.clip_cuts and clip_idx < len(request.clip_cuts) and float(request.clip_cuts[clip_idx]) > 0:
+                target_cut = min(raw_duration, float(request.clip_cuts[clip_idx]))
+            elif request.clip_info and clip_idx < len(request.clip_info) and request.clip_info[clip_idx].get("target_duration"):
+                target_cut = min(raw_duration, float(request.clip_info[clip_idx]["target_duration"]))
+            elif request.max_clip_duration and request.max_clip_duration > 0:
                 target_cut = min(raw_duration, float(request.max_clip_duration))
             else:
                 target_cut = raw_duration

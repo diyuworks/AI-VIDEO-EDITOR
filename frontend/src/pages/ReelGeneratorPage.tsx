@@ -98,7 +98,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
   const [useExactScript, setUseExactScript] = useState<boolean>(false);
-  const [maxClipDuration, setMaxClipDuration] = useState<number | null>(6); // Default 6 seconds for demo reel clips
+  const [maxClipDuration, setMaxClipDuration] = useState<number | null>(null); // Default null = Full duration for all merged clips
 
   // Multi-Clip States (Always start empty for a clean workspace)
   const [multiClipStage, setMultiClipStage] = useState<"idle" | "merging_clips" | "generating_reel" | "done" | "error">("idle");
