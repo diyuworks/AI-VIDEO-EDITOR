@@ -612,7 +612,7 @@ async def generate_full_reel(
         # Video is already downloaded and probed!
         if not TEMPORARY_DISABLE_VOICEOVER and request.custom_audio_object_name:
             # Custom Audio Mode: Video length matches audio EXACTLY. Last 5s is end screen.
-            end_screen_duration = 5.0
+            end_screen_duration = 0.0  # Fixed 5s logo end screen (Disabled for demo)
             trim_duration = max(1.0, total_final_duration - end_screen_duration)
             outro_start_time = trim_duration
             
@@ -628,7 +628,7 @@ async def generate_full_reel(
         else:
             # Normal AI TTS Mode: Video + 5s End Screen
             trim_duration = video_duration
-            end_screen_duration = 5.0  # Fixed 5s logo end screen
+            end_screen_duration = 0.0  # Fixed 5s logo end screen (Disabled for demo)
             total_final_duration = video_duration + end_screen_duration
             outro_start_time = video_duration
             input_video = ffmpeg.input(video_path)

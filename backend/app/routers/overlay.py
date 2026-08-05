@@ -249,12 +249,16 @@ def render_overlay(request: OverlayRequest):
                         if M == 2:
                             # Draw a thick glowing line for road/distance
                             if fade_progress < 1.0:
-                                alpha = 0.8 * fade_progress
+                                alpha = 0.6 * fade_progress
                             else:
-                                alpha = 0.8 + 0.2 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
+                                alpha = 0.55 + 0.1 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.08)
                             
                             overlay = frame.copy()
-                            cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), color_bgr, thickness=request_border_thickness + 8, lineType=cv2.LINE_AA)
+                            # Outer glow shadow
+                            cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), (0, 0, 0), thickness=request_border_thickness + 18, lineType=cv2.LINE_AA)
+                            # Main yellow fill
+                            cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), color_bgr, thickness=request_border_thickness + 12, lineType=cv2.LINE_AA)
+                            # Inner white highlight
                             cv2.line(overlay, tuple(polygon_points[0]), tuple(polygon_points[1]), (255, 255, 255), thickness=max(2, request_border_thickness - 2), lineType=cv2.LINE_AA)
                             
                             frame = cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0)
@@ -272,10 +276,11 @@ def render_overlay(request: OverlayRequest):
                             else:
                                 alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
                             
-                            # 4. Highlighted area
+                            # 4. Highlighted area — GREEN transparent fill like reference
+                            green_fill_bgr = (0, 200, 100)  # Bright green in BGR
                             highlighted_area = frame.copy()
                             color_overlay = np.zeros_like(frame)
-                            cv2.fillPoly(color_overlay, [polygon_points], color_bgr)
+                            cv2.fillPoly(color_overlay, [polygon_points], green_fill_bgr)
                             highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
                             
                             # 5. Combine using mask (zero temporary memory allocation)
@@ -285,14 +290,14 @@ def render_overlay(request: OverlayRequest):
                             # 6. Premium 3D Border Glow
                             # Thick dark outer shadow
                             border_alpha_overlay = frame.copy()
-                            cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 10, lineType=cv2.LINE_AA)
-                            frame = cv2.addWeighted(frame, 0.6, border_alpha_overlay, 0.4, 0)
+                            cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 14, lineType=cv2.LINE_AA)
+                            frame = cv2.addWeighted(frame, 0.5, border_alpha_overlay, 0.5, 0)
                         
                             # Colored main border
-                            cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
+                            cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
                             
                             # Bright inner highlight for 3D ridge effect
-                            cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
+                            cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(2, request_border_thickness), lineType=cv2.LINE_AA)
 
                         # --- 3D PERSPECTIVE WARP OVERLAYS (Dynamic Split for Multiple Models) ---
                         active_models = []
@@ -339,6 +344,10 @@ def render_overlay(request: OverlayRequest):
                         if request_label and pil_font:
                             min_y_idx = np.argmin(polygon_points[:, 1])
                             top_pt = polygon_points[min_y_idx]
+                            max_y_idx = np.argmax(polygon_points[:, 1])
+                            bottom_pt = polygon_points[max_y_idx]
+                            center_x = int(np.mean(polygon_points[:, 0]))
+                            center_y = int(np.mean(polygon_points[:, 1]))
                             
                             raw_label = request_label.strip().upper()
                             if '\n' in raw_label:
@@ -361,8 +370,14 @@ def render_overlay(request: OverlayRequest):
                             
                             if request_text_position == "outro":
                                 base_y = int(height * 0.72)
+                            elif M == 2 or "ROAD" in raw_label:
+                                # Road label: position ABOVE the top edge
+                                base_y = int(top_pt[1] - total_h - 55)
+                                base_y = max(30, min(base_y, height - total_h - 30))
                             else:
-                                base_y = int(top_pt[1] - total_h - 35)
+                                # Plot label: position inside the top half of the plot
+                                # (halfway between the top point and the centroid) to avoid crossing external roads
+                                base_y = int((top_pt[1] + center_y) / 2) - int(total_h / 2)
                                 base_y = max(30, min(base_y, height - total_h - 30))
 
                             TEXT_ANIM_FRAMES = 15
@@ -371,7 +386,7 @@ def render_overlay(request: OverlayRequest):
                             if frames_since_anim >= 0:
                                 if frames_since_anim < TEXT_ANIM_FRAMES:
                                     t = frames_since_anim / TEXT_ANIM_FRAMES
-                                    y_offset = int((1.0 - t) * 40)
+                                    y_offset = 0  # removed slide animation for static glued effect
                                     opacity = int(t * 255)
                                 else:
                                     y_offset = 0
@@ -394,7 +409,10 @@ def render_overlay(request: OverlayRequest):
                                     for idx_l, line in enumerate(lines):
                                         lw = line_widths[idx_l]
                                         lh = line_heights[idx_l]
-                                        lx = int((width - lw) / 2) if request_text_position == "outro" else int(top_pt[0] - lw / 2)
+                                        if M == 2 or "ROAD" in raw_label:
+                                            lx = int((width - lw) / 2) if request_text_position == "outro" else int(top_pt[0] - lw / 2)
+                                        else:
+                                            lx = int((width - lw) / 2) if request_text_position == "outro" else int(center_x - lw / 2)
                                         lx = max(20, min(lx, width - lw - 20))
                                         
                                         # Drop shadow
@@ -419,7 +437,10 @@ def render_overlay(request: OverlayRequest):
                                             b_font = ImageFont.truetype("ariblk.ttf", badge_font_size) if os.path.exists(r'C:\Windows\Fontsriblk.ttf') else pil_font
                                             b_bbox = d.textbbox((0, 0), badge_str, font=b_font)
                                             bw = b_bbox[2] - b_bbox[0]
-                                            blx = int((width - bw) / 2) if request_text_position == "outro" else int(top_pt[0] - bw / 2)
+                                            if M == 2 or "ROAD" in raw_label:
+                                                blx = int((width - bw) / 2) if request_text_position == "outro" else int(top_pt[0] - bw / 2)
+                                            else:
+                                                blx = int((width - bw) / 2) if request_text_position == "outro" else int(center_x - bw / 2)
                                             blx = max(20, min(blx, width - bw - 20))
                                             
                                             # Gold (#FFD700) badge text with drop shadow

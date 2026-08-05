@@ -212,25 +212,27 @@ def track_boundary_multi(request: TrackingMultiRequest):
         if len(poly_pts_int) > 2:
             cv2.fillPoly(mask, [poly_pts_int], 255)
         else:
-            cv2.polylines(mask, [poly_pts_int], False, 255, 5)
+            cv2.polylines(mask, [poly_pts_int], False, 255, 15)
         
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-        mask = cv2.dilate(mask, kernel, iterations=1)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
+        mask = cv2.dilate(mask, kernel, iterations=2)
 
         vertex_pts = initial_poly_scaled.reshape(-1, 1, 2)
-        extra_features = cv2.goodFeaturesToTrack(prev_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=mask)
+        extra_features = cv2.goodFeaturesToTrack(prev_gray, maxCorners=200, qualityLevel=0.005, minDistance=5, mask=mask)
         if extra_features is not None:
-            prev_pts = np.vstack((vertex_pts, extra_features))
+            frame0_pts = np.vstack((vertex_pts, extra_features))
         else:
-            prev_pts = vertex_pts
+            frame0_pts = vertex_pts
             
         trackers.append({
-            "prev_pts": prev_pts,
+            "frame0_pts": frame0_pts.copy(),       # ANCHOR: original frame-0 positions (never changes)
+            "prev_pts": frame0_pts.copy(),           # running tracked positions (updated each frame)
+            "initial_poly_scaled": initial_poly_scaled.copy(),  # original polygon (never changes)
             "current_poly_scaled": initial_poly_scaled.copy(),
             "num_vertices": len(initial_poly_scaled)
         })
 
-    lk_params = dict(winSize=(21, 21), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03))
+    lk_params = dict(winSize=(31, 31), maxLevel=4, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
 
     for _ in range(1, total_frames):
         ret, curr_frame = cap.read()
@@ -249,34 +251,63 @@ def track_boundary_multi(request: TrackingMultiRequest):
         for idx, tr in enumerate(trackers):
             if tr["prev_pts"] is not None and len(tr["prev_pts"]) > 0:
                 curr_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, tr["prev_pts"], None, **lk_params)
-                good_curr = curr_pts[status == 1]
-                good_prev = tr["prev_pts"][status == 1]
-
-                if len(good_curr) >= 4:
-                    M, inliers = cv2.findHomography(good_prev, good_curr, cv2.RANSAC, 5.0)
-                    if M is not None:
-                        homog_pts = np.array([tr["current_poly_scaled"]], dtype=np.float32)
-                        tr["current_poly_scaled"] = cv2.perspectiveTransform(homog_pts, M)[0]
-
-                tr["prev_pts"] = good_curr.reshape(-1, 1, 2)
                 
-                if len(tr["prev_pts"]) < 10:
-                    poly_pts_int = np.array(tr["current_poly_scaled"], dtype=np.int32)
-                    fresh_mask = np.zeros_like(curr_gray)
-                    if len(poly_pts_int) > 2:
-                        cv2.fillPoly(fresh_mask, [poly_pts_int], 255)
-                    else:
-                        cv2.polylines(fresh_mask, [poly_pts_int], False, 255, 5)
+                if curr_pts is not None and status is not None:
+                    good_mask = status.flatten() == 1
+                    good_curr = curr_pts[good_mask]
+                    good_frame0 = tr["frame0_pts"][good_mask]  # Use ORIGINAL frame-0 positions
+
+                    if len(good_curr) >= 4:
+                        # Try Homography first (good for 3+ points not all in a line)
+                        H, inliers = cv2.findHomography(good_frame0, good_curr, cv2.RANSAC, 3.0)
+                        
+                        if H is not None and not np.isnan(H).any():
+                            # Always transform the ORIGINAL polygon, not the drifted one
+                            homog_pts = np.array([tr["initial_poly_scaled"]], dtype=np.float32)
+                            tr["current_poly_scaled"] = cv2.perspectiveTransform(homog_pts, H)[0]
+                        else:
+                            # Fallback for collinear points (like a straight line for a road)
+                            M_affine, inliers_aff = cv2.estimateAffinePartial2D(good_frame0, good_curr)
+                            if M_affine is not None and not np.isnan(M_affine).any():
+                                homog_pts = np.array([tr["initial_poly_scaled"]], dtype=np.float32)
+                                # Affine transform requires different function or converting to 3x3
+                                H_fallback = np.vstack([M_affine, [0, 0, 1]])
+                                tr["current_poly_scaled"] = cv2.perspectiveTransform(homog_pts, H_fallback)[0]
+                    elif len(good_curr) >= 2:
+                        # If only 2-3 points, use affine partial 2D (translation, rotation, scale)
+                        M_affine, inliers_aff = cv2.estimateAffinePartial2D(good_frame0, good_curr)
+                        if M_affine is not None and not np.isnan(M_affine).any():
+                            homog_pts = np.array([tr["initial_poly_scaled"]], dtype=np.float32)
+                            H_fallback = np.vstack([M_affine, [0, 0, 1]])
+                            tr["current_poly_scaled"] = cv2.perspectiveTransform(homog_pts, H_fallback)[0]
+
+                    # Update running tracked positions for next frame's optical flow
+                    tr["prev_pts"] = curr_pts.copy()  # keep ALL points (even "lost" ones get re-estimated)
+                    # But also update frame0 mapping: remove truly lost points
+                    if good_mask.sum() < len(good_mask):
+                        tr["prev_pts"] = good_curr.reshape(-1, 1, 2)
+                        tr["frame0_pts"] = good_frame0.reshape(-1, 1, 2)
                     
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-                    fresh_mask = cv2.dilate(fresh_mask, kernel, iterations=1)
-                    
-                    fresh_features = cv2.goodFeaturesToTrack(curr_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=fresh_mask)
-                    cur_vertex_pts = tr["current_poly_scaled"].reshape(-1, 1, 2)
-                    if fresh_features is not None:
-                        tr["prev_pts"] = np.vstack((cur_vertex_pts, fresh_features))
-                    else:
-                        tr["prev_pts"] = cur_vertex_pts
+                    # Re-detect features if tracking points drop below threshold
+                    if len(tr["prev_pts"]) < 15:
+                        poly_pts_int = np.array(tr["current_poly_scaled"], dtype=np.int32)
+                        fresh_mask = np.zeros_like(curr_gray)
+                        if len(poly_pts_int) > 2:
+                            cv2.fillPoly(fresh_mask, [poly_pts_int], 255)
+                        else:
+                            cv2.polylines(fresh_mask, [poly_pts_int], False, 255, 15)
+                        
+                        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
+                        fresh_mask = cv2.dilate(fresh_mask, kernel, iterations=2)
+                        
+                        fresh_features = cv2.goodFeaturesToTrack(curr_gray, maxCorners=200, qualityLevel=0.005, minDistance=5, mask=fresh_mask)
+                        if fresh_features is not None and len(fresh_features) > 0:
+                            # Map these new current-frame features back to frame-0 via inverse homography
+                            if H is not None:
+                                H_inv = np.linalg.inv(H)
+                                fresh_in_frame0 = cv2.perspectiveTransform(fresh_features, H_inv)
+                                tr["prev_pts"] = np.vstack((tr["prev_pts"], fresh_features))
+                                tr["frame0_pts"] = np.vstack((tr["frame0_pts"], fresh_in_frame0))
             
             polygons_per_frame[idx].append((tr["current_poly_scaled"] / scale_factor).tolist())
 

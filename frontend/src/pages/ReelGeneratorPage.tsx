@@ -320,6 +320,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   };
 
   const handleGenerateMultiClipReel = async () => {
+    let isPolling = false;
     try {
       setMultiClipError(null);
 
@@ -361,7 +362,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         };
       });
 
-      const progressInterval = setInterval(async () => {
+      isPolling = true;
+      const pollProgress = async () => {
+        if (!isPolling) return;
         try {
           const res = await fetch(`${API_BASE_URL}/progress/${jobId}`);
           if (res.ok) {
@@ -373,7 +376,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             }
           }
         } catch (e) { }
-      }, 400);
+        if (isPolling) {
+          setTimeout(pollProgress, 1000); // 1-second delay between requests
+        }
+      };
+      pollProgress();
 
       const mergeRes = await fetch(`${API_BASE_URL}/merge-clips`, {
         method: "POST",
@@ -406,7 +413,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       if (!reelRes.ok) throw new Error("AI Reel generation failed");
       const reelData = await reelRes.json();
 
-      clearInterval(progressInterval);
+      isPolling = false;
       setProgressPercent(100);
       const finalUrl = reelData?.video_url || reelData?.url || reelData?.download_url || (reelData?.merged_object_name ? `${API_BASE_URL}/demo-videos/${reelData.merged_object_name}` : null);
       if (!finalUrl) {
@@ -416,6 +423,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       setMultiClipStage("done");
 
     } catch (err: any) {
+      isPolling = false;
       setMultiClipError(err.message || "Something went wrong during reel generation");
       setMultiClipStage("error");
     }
