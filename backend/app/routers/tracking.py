@@ -154,6 +154,7 @@ def track_boundary(request: TrackingRequest):
 
 class TrackingHighlight(BaseModel):
     initial_points: List[Point]
+    start_timestamp: Optional[float] = 0.0
 
 class TrackingMultiRequest(BaseModel):
     object_name: str
@@ -182,105 +183,108 @@ def track_boundary_multi(request: TrackingMultiRequest):
         raise HTTPException(status_code=400, detail=f"Could not open video: {request.object_name}")
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    ret, prev_frame = cap.read()
-    if not ret or prev_frame is None:
-        cap.release()
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+
+    # Read all frames to memory for robust bidirectional tracking
+    frames = []
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            break
+        frames.append(frame)
+    cap.release()
+
+    if len(frames) == 0:
         raise HTTPException(status_code=400, detail="Could not read video frames for tracking.")
 
-    orig_h, orig_w = prev_frame.shape[:2]
+    total_frames = len(frames)
+    orig_h, orig_w = frames[0].shape[:2]
     MAX_W, MAX_H = 480, 854
     scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
 
-    if scale_factor < 1.0:
-        prev_frame_proc = cv2.resize(prev_frame, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
-    else:
-        prev_frame_proc = prev_frame
-
-    prev_gray = cv2.cvtColor(prev_frame_proc, cv2.COLOR_BGR2GRAY)
-    
-    trackers = []
-    polygons_per_frame = [[] for _ in request.highlights]
-    
-    for idx, highlight in enumerate(request.highlights):
-        initial_poly = np.array([[p.x, p.y] for p in highlight.initial_points], dtype=np.float32)
-        initial_poly_scaled = initial_poly * scale_factor
-        
-        polygons_per_frame[idx].append(initial_poly.tolist())
-        
-        poly_pts_int = np.array(initial_poly_scaled, dtype=np.int32)
-        mask = np.zeros_like(prev_gray)
-        if len(poly_pts_int) > 2:
-            cv2.fillPoly(mask, [poly_pts_int], 255)
+    # Pre-process all gray frames
+    gray_frames = []
+    for f in frames:
+        if scale_factor < 1.0:
+            f_proc = cv2.resize(f, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
         else:
-            cv2.polylines(mask, [poly_pts_int], False, 255, 5)
-        
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-        mask = cv2.dilate(mask, kernel, iterations=1)
-
-        vertex_pts = initial_poly_scaled.reshape(-1, 1, 2)
-        extra_features = cv2.goodFeaturesToTrack(prev_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=mask)
-        if extra_features is not None:
-            prev_pts = np.vstack((vertex_pts, extra_features))
-        else:
-            prev_pts = vertex_pts
-            
-        trackers.append({
-            "prev_pts": prev_pts,
-            "current_poly_scaled": initial_poly_scaled.copy(),
-            "num_vertices": len(initial_poly_scaled)
-        })
+            f_proc = f
+        gray_frames.append(cv2.cvtColor(f_proc, cv2.COLOR_BGR2GRAY))
 
     lk_params = dict(winSize=(21, 21), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03))
 
-    for _ in range(1, total_frames):
-        ret, curr_frame = cap.read()
-        if not ret or curr_frame is None:
-            for idx, tr in enumerate(trackers):
-                polygons_per_frame[idx].append((tr["current_poly_scaled"] / scale_factor).tolist())
-            continue
+    polygons_per_frame = [ [None] * total_frames for _ in request.highlights ]
 
-        if scale_factor < 1.0:
-            curr_frame_proc = cv2.resize(curr_frame, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
-        else:
-            curr_frame_proc = curr_frame
+    for idx, highlight in enumerate(request.highlights):
+        t_start = highlight.start_timestamp or 0.0
+        start_frame_idx = int(t_start * fps)
+        start_frame_idx = max(0, min(start_frame_idx, total_frames - 1))
 
-        curr_gray = cv2.cvtColor(curr_frame_proc, cv2.COLOR_BGR2GRAY)
+        initial_poly = np.array([[p.x, p.y] for p in highlight.initial_points], dtype=np.float32)
+        initial_poly_scaled = initial_poly * scale_factor
 
-        for idx, tr in enumerate(trackers):
-            if tr["prev_pts"] is not None and len(tr["prev_pts"]) > 0:
-                curr_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, tr["prev_pts"], None, **lk_params)
+        polygons_per_frame[idx][start_frame_idx] = initial_poly.tolist()
+
+        # Helper function for tracking between two gray frames
+        def track_step(prev_gray, curr_gray, cur_poly_scaled, prev_pts):
+            if prev_pts is None or len(prev_pts) < 4:
+                # Refresh points inside/around mask
+                poly_pts_int = np.array(cur_poly_scaled, dtype=np.int32)
+                mask = np.zeros_like(prev_gray)
+                if len(poly_pts_int) > 2:
+                    cv2.fillPoly(mask, [poly_pts_int], 255)
+                else:
+                    cv2.polylines(mask, [poly_pts_int], False, 255, 5)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+                mask = cv2.dilate(mask, kernel, iterations=1)
+                
+                vertex_pts = cur_poly_scaled.reshape(-1, 1, 2)
+                extra_features = cv2.goodFeaturesToTrack(prev_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=mask)
+                if extra_features is not None:
+                    prev_pts = np.vstack((vertex_pts, extra_features))
+                else:
+                    prev_pts = vertex_pts
+
+            curr_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, None, **lk_params)
+            new_poly = cur_poly_scaled.copy()
+            next_pts = None
+
+            if curr_pts is not None and status is not None:
                 good_curr = curr_pts[status == 1]
-                good_prev = tr["prev_pts"][status == 1]
+                good_prev = prev_pts[status == 1]
 
                 if len(good_curr) >= 4:
                     M, inliers = cv2.findHomography(good_prev, good_curr, cv2.RANSAC, 5.0)
                     if M is not None:
-                        homog_pts = np.array([tr["current_poly_scaled"]], dtype=np.float32)
-                        tr["current_poly_scaled"] = cv2.perspectiveTransform(homog_pts, M)[0]
+                        homog_pts = np.array([cur_poly_scaled], dtype=np.float32)
+                        new_poly = cv2.perspectiveTransform(homog_pts, M)[0]
 
-                tr["prev_pts"] = good_curr.reshape(-1, 1, 2)
-                
-                if len(tr["prev_pts"]) < 10:
-                    poly_pts_int = np.array(tr["current_poly_scaled"], dtype=np.int32)
-                    fresh_mask = np.zeros_like(curr_gray)
-                    if len(poly_pts_int) > 2:
-                        cv2.fillPoly(fresh_mask, [poly_pts_int], 255)
-                    else:
-                        cv2.polylines(fresh_mask, [poly_pts_int], False, 255, 5)
-                    
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-                    fresh_mask = cv2.dilate(fresh_mask, kernel, iterations=1)
-                    
-                    fresh_features = cv2.goodFeaturesToTrack(curr_gray, maxCorners=100, qualityLevel=0.01, minDistance=5, mask=fresh_mask)
-                    cur_vertex_pts = tr["current_poly_scaled"].reshape(-1, 1, 2)
-                    if fresh_features is not None:
-                        tr["prev_pts"] = np.vstack((cur_vertex_pts, fresh_features))
-                    else:
-                        tr["prev_pts"] = cur_vertex_pts
-            
-            polygons_per_frame[idx].append((tr["current_poly_scaled"] / scale_factor).tolist())
+                next_pts = good_curr.reshape(-1, 1, 2)
 
-        prev_gray = curr_gray.copy()
+            return new_poly, next_pts
 
-    cap.release()
+        # 1. Forward Pass (start_frame_idx -> total_frames - 1)
+        cur_poly = initial_poly_scaled.copy()
+        cur_pts = None
+        for f_idx in range(start_frame_idx + 1, total_frames):
+            prev_g = gray_frames[f_idx - 1]
+            curr_g = gray_frames[f_idx]
+            cur_poly, cur_pts = track_step(prev_g, curr_g, cur_poly, cur_pts)
+            polygons_per_frame[idx][f_idx] = (cur_poly / scale_factor).tolist()
+
+        # 2. Backward Pass (start_frame_idx -> 0)
+        cur_poly = initial_poly_scaled.copy()
+        cur_pts = None
+        for f_idx in range(start_frame_idx - 1, -1, -1):
+            prev_g = gray_frames[f_idx + 1]
+            curr_g = gray_frames[f_idx]
+            cur_poly, cur_pts = track_step(prev_g, curr_g, cur_poly, cur_pts)
+            polygons_per_frame[idx][f_idx] = (cur_poly / scale_factor).tolist()
+
+    # Clean up temp dir
+    try:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception:
+        pass
+
     return {"polygons_per_frame": polygons_per_frame}

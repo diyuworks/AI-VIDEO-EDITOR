@@ -46,6 +46,7 @@ interface ReelGeneratorPageProps {
 
 export interface ClipHighlightItem {
   points: Point[];
+  frameTime?: number;
   label?: string;
   price?: string;
   size?: string;
@@ -436,10 +437,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     pr: string,
     sz: string,
     rd: string,
-    clr: string
+    clr: string,
+    frameTime?: number
   ) => {
     const newItem: ClipHighlightItem = {
-      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
+      points, frameTime, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
 
     // Add to state
@@ -480,10 +482,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     pr: string,
     sz: string,
     rd: string,
-    clr: string
+    clr: string,
+    frameTime?: number
   ) => {
     const newItem: ClipHighlightItem = {
-      points, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
+      points, frameTime, label, enableFarmhouse: fh, enableFountain: ft, enablePetrolPump: pp, textPosition: tp, price: pr, size: sz, roadInfo: rd, highlightColor: clr
     };
     setClipHighlights((prev) => {
       const existing = prev[clipName]?.highlights || [];
@@ -508,7 +511,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       if (!highlights || highlights.length === 0) return;
 
       const trackingPayloads = highlights.map(h => ({
-        initial_points: h.points
+        initial_points: h.points,
+        start_timestamp: h.frameTime || 0.0
       }));
 
       // Step 1: Track the boundaries using /track-boundary
@@ -977,7 +981,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
                 <BoundaryMarker
                   objectName={activeMarkingClip}
-                  onSaveAndAddAnother={(points) => {
+                  onSaveAndAddAnother={(points, frameTime) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
                     const pr = plotPrice;
@@ -990,9 +994,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                     const tp = textPosition || "middle";
 
                     if (!clipName) return;
-                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
                   }}
-                  onSaveAndFinish={async (points) => {
+                  onSaveAndFinish={async (points, frameTime) => {
                     const clipName = activeMarkingClip;
                     const label = activeMarkingLabel;
                     const pr = plotPrice;
@@ -1006,7 +1010,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
                     if (!clipName) return;
                     setActiveMarkingClip(null);
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr);
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
                   }}
                 />
               </div>

@@ -7,8 +7,8 @@ interface Point {
 
 interface BoundaryMarkerProps {
   objectName: string;
-  onSaveAndFinish?: (points: Point[]) => void;
-  onSaveAndAddAnother?: (points: Point[]) => void;
+  onSaveAndFinish?: (points: Point[], frameTime?: number) => void;
+  onSaveAndAddAnother?: (points: Point[], frameTime?: number) => void;
 }
 
 import { API_BASE_URL } from "../config";
@@ -200,7 +200,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
           <input
             type="range"
             min="0"
-            max="15"
+            max="10"
             step="0.5"
             value={frameTime}
             onChange={(e) => setFrameTime(parseFloat(e.target.value))}
@@ -211,7 +211,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pt-1 border-t border-slate-200/60">
           <span>Quick Presets:</span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {[0.0, 1.5, 3.0, 5.0, 8.0].map((preset) => (
+            {[0.0, 1.0, 2.0, 3.0, 4.0, 5.0].map((preset) => (
               <button
                 key={preset}
                 type="button"
@@ -308,7 +308,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
                 alert("Please mark at least 1 point!");
                 return;
               }
-              onSaveAndAddAnother(points);
+              onSaveAndAddAnother(points, frameTime);
               setPoints([]);
             }}
             disabled={points.length < 1}
@@ -326,14 +326,14 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
                 alert("Please mark at least 1 point!");
                 return;
               }
-              onSaveAndFinish(points);
+              onSaveAndFinish(points, frameTime);
               setPoints([]);
             }}
             disabled={points.length < 1}
-            className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-[2] px-4 py-3 bg-[#0D473B] hover:bg-[#09332a] text-white font-black rounded-2xl shadow-xl shadow-emerald-900/30 text-sm transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <span>🚀 Save & Process Now</span>
-            <span className="text-xs font-medium text-emerald-100">({points.length} Points Marked)</span>
+            <span>✓ Confirm & Start AI Tracking</span>
+            <span className="text-xs font-medium text-emerald-200">({points.length} Points Marked)</span>
           </button>
         )}
       </div>
