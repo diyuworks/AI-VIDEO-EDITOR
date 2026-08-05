@@ -23,6 +23,7 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
   const [points, setPoints] = useState<Point[]>([]);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [frameTime, setFrameTime] = useState<number>(0.0);
   const [zoomLevel, setZoomLevel] = useState(1);
 
   useEffect(() => {
@@ -31,13 +32,13 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     setImageError(false);
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = `${API_BASE_URL}/extract-frame/${objectName}?timestamp=0`;
+    img.src = `${API_BASE_URL}/extract-frame/${objectName}?timestamp=${frameTime}`;
     img.onload = () => {
       imageRef.current = img;
       setImageLoaded(true);
     };
     img.onerror = () => setImageError(true);
-  }, [objectName]);
+  }, [objectName, frameTime]);
 
   const sortPointsClockwise = (pts: Point[]): Point[] => {
     if (pts.length < 3) return pts;
@@ -167,6 +168,65 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
         <p className="text-xs text-slate-500 font-medium">
           Click on the video frame to mark points for the highlight (minimum 3 points required)
         </p>
+      </div>
+
+      {/* Video Frame Scrubber Control Bar */}
+      <div className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            🎬 Select Video Frame Position: <span className="text-[#0D473B] font-black">{frameTime.toFixed(1)}s</span>
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setFrameTime((t) => Math.max(0, +(t - 0.5).toFixed(1)))}
+              className="px-2.5 py-1 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg shadow-sm"
+              title="Step Back 0.5s"
+            >
+              ⏮️ -0.5s
+            </button>
+            <button
+              type="button"
+              onClick={() => setFrameTime((t) => +(t + 0.5).toFixed(1))}
+              className="px-2.5 py-1 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg shadow-sm"
+              title="Step Forward 0.5s"
+            >
+              ⏭️ +0.5s
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min="0"
+            max="15"
+            step="0.5"
+            value={frameTime}
+            onChange={(e) => setFrameTime(parseFloat(e.target.value))}
+            className="w-full accent-[#0D473B] cursor-pointer"
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pt-1 border-t border-slate-200/60">
+          <span>Quick Presets:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[0.0, 1.5, 3.0, 5.0, 8.0].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setFrameTime(preset)}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition border ${
+                  frameTime === preset
+                    ? "bg-[#0D473B] text-white border-[#0D473B]"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+                }`}
+              >
+                {preset === 3.0 ? "🛣️ 3.0s (Full Road)" : `${preset}s`}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="relative w-full">
