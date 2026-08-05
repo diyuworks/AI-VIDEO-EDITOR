@@ -41,9 +41,12 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not open video for reading")
 
-    if timestamp > 0.0:
+    if timestamp >= 0.0:
         fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_number = int(timestamp * fps) if fps > 0 else 0
+        if frame_number >= total_frames - 5 and total_frames > 5:
+            frame_number = total_frames - 5
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
     success, frame = cap.read()

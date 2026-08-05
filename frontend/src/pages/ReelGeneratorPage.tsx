@@ -764,7 +764,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
               </div>
 
               <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
-                <button onClick={handleGenerateMultiClipReel} disabled={selectedClips.length === 0 || isUploading} className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <button 
+                  onClick={handleGenerateMultiClipReel} 
+                  disabled={selectedClips.length === 0 || isUploading || selectedClips.some(clip => !clipHighlights[clip]?.isDone)} 
+                  className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
                   🎬 Merge {selectedClips.length} Clips & Download Reel
                 </button>
                 {onOpenTimeline && (

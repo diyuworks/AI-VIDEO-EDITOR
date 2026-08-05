@@ -104,7 +104,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         # Transcribe with Gujarati language preference
         segments, info = get_whisper_model().transcribe(
             temp_audio_path, 
-            beam_size=5, 
+            beam_size=1, 
             language="gu", 
             condition_on_previous_text=False
         )
