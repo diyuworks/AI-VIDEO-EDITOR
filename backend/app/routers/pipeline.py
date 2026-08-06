@@ -474,6 +474,9 @@ async def generate_full_reel(
             
         else:
             # ==== AI TTS SCRIPT GENERATION ====
+            if request.job_id:
+                update_progress(request.job_id, 55, "scripting", "Generating AI script and real estate storyline...")
+                
             # ---- SUB-STEP A: AI Script Generate Karo ----
             try:
                 from app.routers.captions import generate_captions
@@ -502,6 +505,9 @@ async def generate_full_reel(
             except Exception as e:
                 with open("debug.log", "a") as f: f.write(f"Script Error: {str(e)}\n")
                 raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+
+            if request.job_id:
+                update_progress(request.job_id, 65, "voiceover", "Synthesizing professional AI voiceover...")
 
             # ---- SUB-STEP B: Segment-wise TTS & Word Timestamps Generate Karo ----
             try:
@@ -607,6 +613,8 @@ async def generate_full_reel(
                 raise HTTPException(status_code=500, detail=f"Segment TTS generation failed: {str(e)}")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
+    if request.job_id:
+        update_progress(request.job_id, 85, "rendering", "Rendering final video and applying effects...")
     
     try:
         # Video is already downloaded and probed!
