@@ -45,11 +45,16 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_number = int(timestamp * fps) if fps > 0 else 0
-        if frame_number >= total_frames - 5 and total_frames > 5:
-            frame_number = total_frames - 5
+        if total_frames > 5:
+            frame_number = max(0, min(frame_number, total_frames - 5))
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
     success, frame = cap.read()
+    if not success:
+        # Fallback to first frame if seeking beyond end failed
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        success, frame = cap.read()
+
     cap.release()
     t_read = time.time()
 
@@ -60,7 +65,7 @@ def extract_frame(object_name: str, timestamp: float = 0.0):
         except Exception:
             pass
 
-    if not success:
+    if not success or frame is None:
         raise HTTPException(status_code=400, detail="Could not read frame from video")
 
     success, encoded_image = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
