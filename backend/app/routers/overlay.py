@@ -142,12 +142,15 @@ def render_overlay(request: OverlayRequest):
         except Exception as e:
             print(f"[overlay] MinIO download warning for {request.object_name}: {e}")
 
+    from app.config import get_backend_base_url
+    base_url = get_backend_base_url()
+
     if not os.path.exists(source_local_path) or os.path.getsize(source_local_path) == 0:
         print(f"[overlay warning] Video file missing for {request.object_name}, returning direct object_name.")
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
+            "url": f"{base_url}/demo-videos/{request.object_name}",
         }
 
     cap = cv2.VideoCapture(source_local_path)
@@ -156,7 +159,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
+            "url": f"{base_url}/demo-videos/{request.object_name}",
         }
 
     fps = cap.get(cv2.CAP_PROP_FPS)

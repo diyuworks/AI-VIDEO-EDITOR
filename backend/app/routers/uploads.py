@@ -48,8 +48,10 @@ ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", "
 MAX_FILE_SIZE_MB = 500
 
 
+from fastapi import Request
+
 @router.post("/upload")
-async def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def upload_video(req: Request = None, file: UploadFile = File(...), session: Session = Depends(get_session)):
     filename = file.filename or "uploaded_clip.mp4"
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".mp4"
     if ext not in ALLOWED_EXTENSIONS:
@@ -97,7 +99,9 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     t = threading.Thread(target=_minio_upload, daemon=True)
     t.start()
 
-    file_url = f"http://localhost:4005/demo-videos/{object_name}"
+    from app.config import get_backend_base_url
+    base_url = get_backend_base_url(req)
+    file_url = f"{base_url}/demo-videos/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,

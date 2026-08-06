@@ -19,3 +19,18 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 NOTIFICATION_EMAIL_TO = os.getenv("NOTIFICATION_EMAIL_TO", "")
 ENABLE_EMAIL_NOTIFICATIONS = os.getenv("ENABLE_EMAIL_NOTIFICATIONS", "True").lower() == "true"
 
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://reel-backend.jamin24.com").rstrip("/")
+
+def get_backend_base_url(request=None) -> str:
+    env_url = os.getenv("BACKEND_BASE_URL", "").rstrip("/")
+    if env_url:
+        return env_url
+    if request:
+        try:
+            base = str(request.base_url).rstrip("/")
+            if "localhost" not in base and "127.0.0.1" not in base:
+                return base
+        except Exception:
+            pass
+    return "https://reel-backend.jamin24.com"
+
