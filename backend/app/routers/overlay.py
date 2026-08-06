@@ -257,41 +257,44 @@ def render_overlay(request: OverlayRequest):
                 polygon_points = raw_pts.astype(np.int32)
                 M = len(polygon_points)
 
-                if M >= 3:
-                    # Safeguard: Sort points in clockwise perimeter order around centroid to prevent self-intersecting spikes
-                    cx_m = np.mean(polygon_points[:, 0])
-                    cy_m = np.mean(polygon_points[:, 1])
-                    angles_m = np.arctan2(polygon_points[:, 1] - cy_m, polygon_points[:, 0] - cx_m)
-                    sort_order = np.argsort(angles_m)
-                    polygon_points = polygon_points[sort_order]
-                
+                is_line_mode = False
+                if M == 2:
+                    is_line_mode = True
+                elif request_label:
+                    rl = request_label.upper()
+                    if any(k in rl for k in ["KM", "ROAD", "HIGHWAY", "FT", "METER", "MILE", "THI"]):
+                        is_line_mode = True
+
                 if M >= 1:
                     alpha = 0.35
                     if frame_idx < ANIM_FRAMES:
                         # Live tracing dynamic border drawing animation
                         t = frame_idx / ANIM_FRAMES
-                        curr_progress = t * M
+                        # If line_mode, M-1 segments. If closed plot, M segments.
+                        num_segments = max(1, M - 1) if is_line_mode else M
+                        curr_progress = t * num_segments
                         K = int(curr_progress)
                         fr = curr_progress - K
                         
                         # Draw fully completed border segments
                         for i in range(K):
+                            if is_line_mode and i >= M - 1: continue
                             p_start = tuple(polygon_points[i])
                             p_end = tuple(polygon_points[(i + 1) % M])
-                            cv2.line(frame, p_start, p_end, (0, 0, 0), thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
-                            cv2.line(frame, p_start, p_end, color_bgr, thickness=request_border_thickness, lineType=cv2.LINE_AA)
+                            cv2.line(frame, p_start, p_end, (0, 0, 0), thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
+                            cv2.line(frame, p_start, p_end, color_bgr, thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
                             
                         # Draw current partial tracing segment
-                        if K < M:
-                            p_start = polygon_points[K]
+                        if K < num_segments:
+                            p_start = polygon_points[K % M]
                             p_next = polygon_points[(K + 1) % M]
                             p_end_x = int(p_start[0] + fr * (p_next[0] - p_start[0]))
                             p_end_y = int(p_start[1] + fr * (p_next[1] - p_start[1]))
                             p_end = (p_end_x, p_end_y)
                             p_start_tuple = tuple(p_start)
                             
-                            cv2.line(frame, p_start_tuple, p_end, (0, 0, 0), thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
-                            cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=request_border_thickness, lineType=cv2.LINE_AA)
+                            cv2.line(frame, p_start_tuple, p_end, (0, 0, 0), thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
+                            cv2.line(frame, p_start_tuple, p_end, color_bgr, thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
                     else:
                         # Border is complete, draw closed polygon outline with background dimming
                         fade_progress = min(1.0, (frame_idx - ANIM_FRAMES) / float(FADE_FRAMES))
@@ -316,39 +319,42 @@ def render_overlay(request: OverlayRequest):
                         else:
                             # 1. No background dimming to keep video 100% original
                             
-                            # 2. Polygon Mask
-                            mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-                            cv2.fillPoly(mask, [polygon_points], 255)
-                            mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-                            
-                            # 3. Pulsing alpha for plot fill
-                            if fade_progress < 1.0:
-                                alpha = 0.35 * fade_progress
-                            else:
-                                alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
-                            
-                            # 4. Highlighted area — GREEN transparent fill like reference
-                            green_fill_bgr = (0, 200, 100)  # Bright green in BGR
-                            highlighted_area = frame.copy()
-                            color_overlay = np.zeros_like(frame)
-                            cv2.fillPoly(color_overlay, [polygon_points], green_fill_bgr)
-                            highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
-                            
-                            # 5. Combine using mask (zero temporary memory allocation)
-                            # Apply only to highlighted_area to keep original frame intact
-                            frame[mask == 255] = highlighted_area[mask == 255]
+                            if not is_line_mode:
+                                # 2. Polygon Mask
+                                mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+                                cv2.fillPoly(mask, [polygon_points], 255)
+                                mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                                
+                                # 3. Pulsing alpha for plot fill
+                                if fade_progress < 1.0:
+                                    alpha = 0.35 * fade_progress
+                                else:
+                                    alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
+                                
+                                # 4. Highlighted area — GREEN transparent fill like reference
+                                green_fill_bgr = (0, 200, 100)  # Bright green in BGR
+                                highlighted_area = frame.copy()
+                                color_overlay = np.zeros_like(frame)
+                                cv2.fillPoly(color_overlay, [polygon_points], green_fill_bgr)
+                                highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
+                                
+                                # 5. Combine using mask (zero temporary memory allocation)
+                                # Apply only to highlighted_area to keep original frame intact
+                                frame[mask == 255] = highlighted_area[mask == 255]
 
-                            # 6. Premium 3D Border Glow
-                            # Thick dark outer shadow
+                            # 6. Realistic 3D Border Glow (Adjusted thickness for a perfect thin fit)
+                            # Gentle dark outer shadow
                             border_alpha_overlay = frame.copy()
-                            cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=True, color=(0, 0, 0), thickness=request_border_thickness + 14, lineType=cv2.LINE_AA)
+                            cv2.polylines(border_alpha_overlay, [polygon_points], isClosed=not is_line_mode, color=(0, 0, 0), thickness=request_border_thickness + 2, lineType=cv2.LINE_AA)
                             frame = cv2.addWeighted(frame, 0.5, border_alpha_overlay, 0.5, 0)
                         
                             # Colored main border
-                            cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
+                            cv2.polylines(frame, [polygon_points], isClosed=not is_line_mode, color=color_bgr, thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
                             
-                            # Bright inner highlight for 3D ridge effect
-                            cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(2, request_border_thickness), lineType=cv2.LINE_AA)
+                            # Bright inner highlight for subtle 3D ridge effect
+                            inner_thick = max(1, request_border_thickness - 4)
+                            if inner_thick > 0:
+                                cv2.polylines(frame, [polygon_points], isClosed=not is_line_mode, color=(255, 255, 255), thickness=inner_thick, lineType=cv2.LINE_AA)
 
                         # --- 3D PERSPECTIVE WARP OVERLAYS (Sequential Time-Split for Multiple Models) ---
                         total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
@@ -412,9 +418,7 @@ def render_overlay(request: OverlayRequest):
                                 except Exception as ex_model:
                                     print(f"[overlay] warp error for {active_label_override}: {ex_model}")
 
-                        # 6. Draw glowing borders
-                        cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
-                        cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request_border_thickness + 1, lineType=cv2.LINE_AA)
+                        # (Removed duplicate static border drawing that was overwriting animation)
                         
                         # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
                         eff_label = active_label_override if ('active_label_override' in locals() and len(active_models) > 1) else request_label
