@@ -189,19 +189,19 @@ async def export_reel(request: ReelExportRequest):
         reel_width = int(min(width, height * 9 / 16))
         reel_height = int(min(height, width * 16 / 9))
         
-        # Setup end screen image stream
-        image_stream = ffmpeg.input("assets/end_screen_animated.mp4")
-        image_scaled = (
-            image_stream
-            .filter('fps', fps=25)
-            .filter('scale', reel_width, reel_height, force_original_aspect_ratio='decrease')
-            .filter('pad', reel_width, reel_height, '(ow-iw)/2', '(oh-ih)/2')
-            .filter('setsar', '1')
-            .filter('format', 'yuv420p')
-        )
+        # Setup end screen image stream (Disabled for demo)
+        # image_stream = ffmpeg.input("assets/end_screen_animated.mp4")
+        # image_scaled = (
+        #     image_stream
+        #     .filter('fps', fps=25)
+        #     .filter('scale', reel_width, reel_height, force_original_aspect_ratio='decrease')
+        #     .filter('pad', reel_width, reel_height, '(ow-iw)/2', '(oh-ih)/2')
+        #     .filter('setsar', '1')
+        #     .filter('format', 'yuv420p')
+        # )
         
-        # Concat video and image
-        concat_video = ffmpeg.concat(video_scaled, image_scaled, v=1, a=0)
+        # Concat video and image (Disabled for demo)
+        concat_video = video_scaled # ffmpeg.concat(video_scaled, image_scaled, v=1, a=0)
  
         # Overlay logo watermark if jamin24_logo.png exists in assets/ folder
         logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "jamin24_logo.png")
@@ -221,21 +221,21 @@ async def export_reel(request: ReelExportRequest):
             input_audio = ffmpeg.input(audio_path)
             
             if has_audio:
-                total_dur = video_duration + 5.0
+                total_dur = video_duration # + 5.0 (Disabled for demo)
                 bg_audio = ffmpeg.input(video_path, stream_loop=-1).audio.filter('volume', '0.15').filter('atrim', duration=total_dur)
                 mixed_audio = ffmpeg.filter([input_audio.audio, bg_audio], 'amix', inputs=2, duration='longest')
                 final_audio = mixed_audio
             else:
                 final_audio = input_audio.audio
                 
-            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac')
+            ffmpeg_out = ffmpeg.output(filtered_video, final_audio, output_path, vcodec='libx264', acodec='aac', preset='ultrafast', threads=2)
         else:
             filtered_video = concat_video
             if has_audio:
                 audio_stream = input_video.audio
-                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac')
+                ffmpeg_out = ffmpeg.output(filtered_video, audio_stream, output_path, vcodec='libx264', acodec='aac', preset='ultrafast', threads=2)
             else:
-                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264')
+                ffmpeg_out = ffmpeg.output(filtered_video, output_path, vcodec='libx264', preset='ultrafast', threads=2)
         
         (
             ffmpeg_out

@@ -185,31 +185,36 @@ def track_boundary_multi(request: TrackingMultiRequest):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
 
-    # Read all frames to memory for robust bidirectional tracking
-    frames = []
+    # Read and pre-process all frames to scaled grayscale memory for robust bidirectional tracking
+    gray_frames = []
+    orig_w, orig_h = 0, 0
+    scale_factor = 1.0
+    MAX_W, MAX_H = 480, 854
+
+    first_frame = True
     while True:
         ret, frame = cap.read()
         if not ret or frame is None:
             break
-        frames.append(frame)
+        
+        if first_frame:
+            orig_h, orig_w = frame.shape[:2]
+            scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
+            first_frame = False
+
+        if scale_factor < 1.0:
+            f_proc = cv2.resize(frame, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
+        else:
+            f_proc = frame
+            
+        gray_frames.append(cv2.cvtColor(f_proc, cv2.COLOR_BGR2GRAY))
+        
     cap.release()
 
-    if len(frames) == 0:
+    if len(gray_frames) == 0:
         raise HTTPException(status_code=400, detail="Could not read video frames for tracking.")
 
-    total_frames = len(frames)
-    orig_h, orig_w = frames[0].shape[:2]
-    MAX_W, MAX_H = 480, 854
-    scale_factor = min(MAX_W / float(orig_w), MAX_H / float(orig_h), 1.0)
-
-    # Pre-process all gray frames
-    gray_frames = []
-    for f in frames:
-        if scale_factor < 1.0:
-            f_proc = cv2.resize(f, (int(orig_w * scale_factor), int(orig_h * scale_factor)), interpolation=cv2.INTER_AREA)
-        else:
-            f_proc = f
-        gray_frames.append(cv2.cvtColor(f_proc, cv2.COLOR_BGR2GRAY))
+    total_frames = len(gray_frames)
 
     lk_params = dict(winSize=(21, 21), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03))
 
@@ -248,16 +253,27 @@ def track_boundary_multi(request: TrackingMultiRequest):
             curr_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, None, **lk_params)
             new_poly = cur_poly_scaled.copy()
             next_pts = None
-
             if curr_pts is not None and status is not None:
                 good_curr = curr_pts[status == 1]
                 good_prev = prev_pts[status == 1]
 
                 if len(good_curr) >= 4:
                     M, inliers = cv2.findHomography(good_prev, good_curr, cv2.RANSAC, 5.0)
-                    if M is not None:
+                    if M is not None and not np.isnan(M).any():
                         homog_pts = np.array([cur_poly_scaled], dtype=np.float32)
                         new_poly = cv2.perspectiveTransform(homog_pts, M)[0]
+                    else:
+                        M_affine, inliers_aff = cv2.estimateAffinePartial2D(good_prev, good_curr)
+                        if M_affine is not None and not np.isnan(M_affine).any():
+                            homog_pts = np.array([cur_poly_scaled], dtype=np.float32)
+                            H_fallback = np.vstack([M_affine, [0, 0, 1]])
+                            new_poly = cv2.perspectiveTransform(homog_pts, H_fallback)[0]
+                elif len(good_curr) >= 2:
+                    M_affine, inliers_aff = cv2.estimateAffinePartial2D(good_prev, good_curr)
+                    if M_affine is not None and not np.isnan(M_affine).any():
+                        homog_pts = np.array([cur_poly_scaled], dtype=np.float32)
+                        H_fallback = np.vstack([M_affine, [0, 0, 1]])
+                        new_poly = cv2.perspectiveTransform(homog_pts, H_fallback)[0]
 
                 next_pts = good_curr.reshape(-1, 1, 2)
 
