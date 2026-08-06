@@ -16,10 +16,10 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://localhost:4005",
-        "https://reel-backend.jamin24.com",
+        "http://127.0.0.1:4005",
+        "*"
     ],
-    allow_origin_regex=r"https?://.*",
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
