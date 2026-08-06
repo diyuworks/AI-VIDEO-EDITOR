@@ -18,30 +18,11 @@ from app.database import get_session, VideoRecord
 
 router = APIRouter()
 
-minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
-    secure=MINIO_SECURE
-) if Minio else None
+minio_client = None
 
 def init_minio():
-    """Initialize MinIO bucket with a timeout so app startup never hangs."""
-    import threading
-
-    def _try_init():
-        try:
-            if minio_client and not minio_client.bucket_exists(MINIO_BUCKET):
-                minio_client.make_bucket(MINIO_BUCKET)
-            print("MinIO bucket initialized successfully.")
-        except Exception as e:
-            print(f"Warning: Could not connect to MinIO during startup. {e}")
-
-    t = threading.Thread(target=_try_init, daemon=True)
-    t.start()
-    t.join(timeout=5)  # Wait max 5 seconds, then proceed regardless
-    if t.is_alive():
-        print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
+    """MinIO disabled — using fast local disk storage (uploaded_files/ & demo_clips/)."""
+    print("Using fast local disk storage (uploaded_files/ & demo_clips/). MinIO disabled.")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac", ".flv", ".wmv", ".3gp", ".m4v", ".mpg", ".mpeg", ".ogg", ".ogv"}
