@@ -63,9 +63,38 @@ def render_overlay(request: OverlayRequest):
         pil_font = ImageFont.load_default()
 
 
-    farmhouse_img = cv2.imread(os.path.join("assets", "farmhouse_render.png"), cv2.IMREAD_UNCHANGED)
-    fountain_img = cv2.imread(os.path.join("assets", "fountain.png"), cv2.IMREAD_UNCHANGED)
-    petrol_pump_img = cv2.imread(os.path.join("assets", "petrol_pump.png"), cv2.IMREAD_UNCHANGED)
+    base_assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", "assets")
+    if not os.path.exists(base_assets_dir):
+        base_assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+    if not os.path.exists(base_assets_dir):
+        base_assets_dir = "assets"
+
+    def load_asset_img(filename):
+        p = os.path.join(base_assets_dir, filename)
+        if not os.path.exists(p):
+            p = os.path.join("assets", filename)
+        if not os.path.exists(p):
+            p = os.path.join("backend", "assets", filename)
+        img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
+        if img is not None and img.shape[2] == 3:
+            # Convert white background to transparent alpha channel
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            _, alpha = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+            b, g, r = cv2.split(img)
+            img = cv2.merge([b, g, r, alpha])
+        return img
+
+    farmhouse_img = load_asset_img("farmhouse_render.png")
+    if farmhouse_img is None:
+        farmhouse_img = load_asset_img("farmhouse.png")
+    fountain_img = load_asset_img("fountain.png")
+    petrol_pump_img = load_asset_img("petrol_pump.png")
+
+    location_card_img = cv2.imread(os.path.join(base_assets_dir, "location_card_custom.jpg"))
+    if location_card_img is None:
+        location_card_img = cv2.imread(os.path.join("assets", "location_card_custom.jpg"))
+    if location_card_img is None:
+        location_card_img = cv2.imread(os.path.join("backend", "assets", "location_card_custom.jpg"))
 
 
 
@@ -294,28 +323,47 @@ def render_overlay(request: OverlayRequest):
                             # Bright inner highlight for 3D ridge effect
                             cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(1, request_border_thickness - 1), lineType=cv2.LINE_AA)
 
-                        # --- 3D PERSPECTIVE WARP OVERLAYS (Dynamic Split for Multiple Models) ---
+                        # --- 3D PERSPECTIVE WARP OVERLAYS (Sequential Time-Split for Multiple Models) ---
                         active_models = []
                         if getattr(region, 'enable_farmhouse_overlay', False) and farmhouse_img is not None:
-                            active_models.append(('Farmhouse', farmhouse_img))
+                            active_models.append(('FARMHOUSE', farmhouse_img))
                         if getattr(region, 'enable_fountain_overlay', False) and fountain_img is not None:
-                            active_models.append(('Fountain', fountain_img))
+                            active_models.append(('FOUNTAIN', fountain_img))
                         if getattr(region, 'enable_petrol_pump_overlay', False) and petrol_pump_img is not None:
-                            active_models.append(('Petrol Pump', petrol_pump_img))
+                            active_models.append(('PETROL PUMP', petrol_pump_img))
                             
                         if len(active_models) > 0 and M >= 4:
-                            p0, p1, p2, p3 = polygon_points[0], polygon_points[1], polygon_points[2], polygon_points[3]
-                            for i, (model_name, img) in enumerate(active_models):
+                            num_models = len(active_models)
+                            active_label_override = None
+                            img = None
+
+                            if num_models == 1:
+                                active_label_override, img = active_models[0]
+                            else:
+                                current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
+                                total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
+                                
+                                start_delay = 2.0 if total_clip_sec >= 10.0 else 0.0
+                                adjusted_time = current_time_sec - start_delay
+                                
+                                if adjusted_time >= 0:
+                                    sec_per_model = 2.0 if total_clip_sec >= 10.0 else (min(total_clip_sec, 6.0) / float(num_models))
+                                    model_idx = int(adjusted_time / sec_per_model) if sec_per_model > 0 else 0
+                                    if model_idx < num_models:
+                                        active_label_override, img = active_models[model_idx]
+
+                            if img is not None:
                                 try:
-                                    t1 = i / len(active_models)
-                                    t2 = (i + 1) / len(active_models)
+                                    pts_arr = np.array(polygon_points[:4], dtype=np.float32)
+                                    s_sum = pts_arr.sum(axis=1)
+                                    s_diff = np.diff(pts_arr, axis=1)
                                     
-                                    pt0 = p0 + (p1 - p0) * t1
-                                    pt1 = p0 + (p1 - p0) * t2
-                                    pt2 = p3 + (p2 - p3) * t2
-                                    pt3 = p3 + (p2 - p3) * t1
+                                    tl = pts_arr[np.argmin(s_sum)]
+                                    br = pts_arr[np.argmax(s_sum)]
+                                    tr = pts_arr[np.argmin(s_diff)]
+                                    bl = pts_arr[np.argmax(s_diff)]
                                     
-                                    dst_pts = np.float32([pt0, pt1, pt2, pt3])
+                                    dst_pts = np.float32([tl, tr, br, bl])
                                     img_h, img_w = img.shape[:2]
                                     src_pts = np.float32([[0, 0], [img_w, 0], [img_w, img_h], [0, img_h]])
                                     
@@ -329,18 +377,19 @@ def render_overlay(request: OverlayRequest):
                                     else:
                                         frame = cv2.addWeighted(warped_img, 0.8, frame, 0.2, 0)
                                 except Exception as ex_model:
-                                    print(f"[overlay] {model_name} warp error: {ex_model}")
+                                    print(f"[overlay] warp error for {active_label_override}: {ex_model}")
 
                         # 6. Draw glowing borders
                         cv2.polylines(frame, [polygon_points], isClosed=True, color=color_bgr, thickness=request_border_thickness + 4, lineType=cv2.LINE_AA)
                         cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=request_border_thickness + 1, lineType=cv2.LINE_AA)
                         
                         # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
-                        if request_label and pil_font:
+                        eff_label = active_label_override if ('active_label_override' in locals() and len(active_models) > 1) else request_label
+                        if eff_label and pil_font:
                             min_y_idx = np.argmin(polygon_points[:, 1])
                             top_pt = polygon_points[min_y_idx]
                             
-                            raw_label = request_label.strip().upper()
+                            raw_label = eff_label.strip().upper()
                             if '\n' in raw_label:
                                 lines = raw_label.split('\n')
                             else:
@@ -456,6 +505,17 @@ def render_overlay(request: OverlayRequest):
 
                                     mask_alpha = txt_alpha[:, :, np.newaxis]
                                     frame = (txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
+
+            # Custom Location Card Overlay (20s to 24s timestamp in full reel / 5.66s to 9.66s in Clip 5 - 4 full seconds)
+            current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
+            total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
+            if total_clip_sec >= 10.0 and location_card_img is not None and 5.66 <= current_time_sec <= 9.66:
+                card_resized = cv2.resize(location_card_img, (width, height))
+                if card_resized.shape[2] == 4:
+                    alpha_m = (card_resized[:, :, 3] / 255.0)[:, :, np.newaxis]
+                    frame = (card_resized[:, :, :3] * alpha_m + frame * (1.0 - alpha_m)).astype(np.uint8)
+                else:
+                    frame = card_resized
 
             out.write(frame)
             frame_idx += 1

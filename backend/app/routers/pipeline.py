@@ -119,6 +119,7 @@ class GenerateReelRequest(BaseModel):
     structured_options: Optional[dict] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
     custom_audio_object_name: Optional[str] = None
+    enable_ai_voiceover: Optional[bool] = False
     max_clip_duration: Optional[float] = None  # Trim clip/video to max duration in seconds (e.g. 6.0 for demo)
     include_outro: Optional[bool] = None  # Whether to append 5s end screen logo (default False for 6s demo cut)
     job_id: Optional[str] = None
@@ -428,7 +429,13 @@ async def generate_full_reel(
         with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Source Fetch Error: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Failed to fetch or probe source video: {str(e)}")
 
-    if not TEMPORARY_DISABLE_VOICEOVER:
+    should_process_voiceover = False
+    if request.custom_audio_object_name and str(request.custom_audio_object_name).strip():
+        should_process_voiceover = True
+    elif getattr(request, 'enable_ai_voiceover', False) == True:
+        should_process_voiceover = True
+
+    if should_process_voiceover:
         if request.custom_audio_object_name:
             # ==== CUSTOM AUDIO PROVIDED ====
             if request.job_id:
@@ -703,7 +710,7 @@ async def generate_full_reel(
             scaled_logo = logo_alpha.filter('scale', logo_w, -1)
             video_for_subs = ffmpeg.overlay(video_for_subs, scaled_logo, x='(main_w-overlay_w)/2', y='main_h-overlay_h-40')
         
-        if not TEMPORARY_DISABLE_VOICEOVER:
+        if should_process_voiceover:
             filtered_video = video_for_subs
             
             if has_audio and not request.custom_audio_object_name:

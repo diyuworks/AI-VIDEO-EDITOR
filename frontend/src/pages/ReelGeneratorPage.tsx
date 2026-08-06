@@ -329,6 +329,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         .map(c => c.object_name)
         .filter(clip => selectedClips.includes(clip));
 
+      // Wait for any background tracking to finish first
+      setMultiClipStage("merging_clips");
+      setProgressPercent(2);
+      setProgressMessage("Checking clip tracking status...");
+
+      let isStillTracking = true;
+      let checkAttempts = 0;
+      while (isStillTracking && checkAttempts < 60) {
+        let trackingFound = false;
+        for (const clip of orderedSelectedClips) {
+          if (clipHighlights[clip]?.isTracking) {
+            trackingFound = true;
+            setProgressMessage(`Waiting for boundary tracking to finish on ${clip}...`);
+            break;
+          }
+        }
+        if (!trackingFound) {
+          isStillTracking = false;
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          checkAttempts++;
+        }
+      }
+
       const clipsToMerge = orderedSelectedClips.map((clip) => {
         const highlight = clipHighlights[clip];
         return highlight && highlight.isDone && highlight.highlightedObjectName
@@ -699,6 +723,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                 <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
                                   {clipHighlights[clipName]?.highlights?.some(h => h.enableFarmhouse) && <span className="bg-emerald-200 text-emerald-950 px-1.5 py-0.5 rounded font-bold">🏡 Farmhouse</span>}
                                   {clipHighlights[clipName]?.highlights?.some(h => h.enableFountain) && <span className="bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded font-bold">🚰 Fountain</span>}
+                                  {clipHighlights[clipName]?.highlights?.some(h => h.enablePetrolPump) && <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">⛽ Petrol Pump</span>}
                                 </div>
                               </div>
                             )}
@@ -720,6 +745,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   setHighlightColor(firstHighlight?.highlightColor || "#FFEB3B");
                                   setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
                                   setEnableFountain(firstHighlight?.enableFountain || false);
+                                  setEnablePetrolPump(firstHighlight?.enablePetrolPump || false);
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
                                   {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlights" : "✏️ Highlight Plot"}
                                 </button>
