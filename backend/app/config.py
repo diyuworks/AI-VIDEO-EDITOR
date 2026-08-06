@@ -27,10 +27,8 @@ def get_backend_base_url(request=None) -> str:
         return env_url
     if request:
         try:
-            base = str(request.base_url).rstrip("/")
-            if "localhost" not in base and "127.0.0.1" not in base:
-                return base
+            return str(request.base_url).rstrip("/")
         except Exception:
             pass
-    return "https://reel-backend.jamin24.com"
+    return "http://localhost:4005"
 

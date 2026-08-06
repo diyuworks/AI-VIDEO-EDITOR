@@ -3,4 +3,4 @@ const _isLocal = typeof window !== "undefined" && (window.location.hostname === 
 
 export const API_BASE_URL: string = _env_url || (_isLocal ? "http://localhost:4005" : "https://reel-backend.jamin24.com");
 
-// export const API_BASE_URL: string = "https://reel-backend.jamin24.com";
+// export const API_BASE_URL: string = "https://reel-backend.jamin24.com";   LIVE MATE CHE...
