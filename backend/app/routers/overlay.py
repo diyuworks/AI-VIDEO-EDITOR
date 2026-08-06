@@ -76,12 +76,34 @@ def render_overlay(request: OverlayRequest):
         if not os.path.exists(p):
             p = os.path.join("backend", "assets", filename)
         img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
-        if img is not None and img.shape[2] == 3:
-            # Convert white background to transparent alpha channel
+        if img is None:
+            return None
+
+        if len(img.shape) == 3 and img.shape[2] == 3:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            _, alpha = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+            _, alpha = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY_INV)
             b, g, r = cv2.split(img)
             img = cv2.merge([b, g, r, alpha])
+        elif len(img.shape) == 3 and img.shape[2] == 4:
+            alpha = img[:, :, 3]
+            if alpha.min() == 255:
+                gray = cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY)
+                _, new_alpha = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY_INV)
+                img[:, :, 3] = new_alpha
+
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            alpha = img[:, :, 3]
+            coords = cv2.findNonZero(alpha)
+            if coords is not None:
+                x, y, w, h = cv2.boundingRect(coords)
+                pad_w = int(w * 0.05)
+                pad_h = int(h * 0.05)
+                x1 = max(0, x - pad_w)
+                y1 = max(0, y - pad_h)
+                x2 = min(img.shape[1], x + w + pad_w)
+                y2 = min(img.shape[0], y + h + pad_h)
+                img = img[y1:y2, x1:x2]
+
         return img
 
     farmhouse_img = load_asset_img("farmhouse_render.png")
@@ -329,12 +351,22 @@ def render_overlay(request: OverlayRequest):
                             cv2.polylines(frame, [polygon_points], isClosed=True, color=(255, 255, 255), thickness=max(2, request_border_thickness), lineType=cv2.LINE_AA)
 
                         # --- 3D PERSPECTIVE WARP OVERLAYS (Sequential Time-Split for Multiple Models) ---
+                        total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
+                        enable_fh = getattr(region, 'enable_farmhouse_overlay', False)
+                        enable_pp = getattr(region, 'enable_petrol_pump_overlay', False)
+                        enable_ft = getattr(region, 'enable_fountain_overlay', False)
+
+                        # Auto-enable 3D Farmhouse & Petrol Pump models on long plot clips (>= 10.0s)
+                        if total_clip_sec >= 10.0 and not enable_fh and not enable_pp and not enable_ft:
+                            enable_fh = True
+                            enable_pp = True
+
                         active_models = []
-                        if getattr(region, 'enable_farmhouse_overlay', False) and farmhouse_img is not None:
+                        if enable_fh and farmhouse_img is not None:
                             active_models.append(('FARMHOUSE', farmhouse_img))
-                        if getattr(region, 'enable_fountain_overlay', False) and fountain_img is not None:
+                        if enable_ft and fountain_img is not None:
                             active_models.append(('FOUNTAIN', fountain_img))
-                        if getattr(region, 'enable_petrol_pump_overlay', False) and petrol_pump_img is not None:
+                        if enable_pp and petrol_pump_img is not None:
                             active_models.append(('PETROL PUMP', petrol_pump_img))
                             
                         if len(active_models) > 0 and M >= 4:
@@ -346,27 +378,23 @@ def render_overlay(request: OverlayRequest):
                                 active_label_override, img = active_models[0]
                             else:
                                 current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
-                                total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
-                                
-                                start_delay = 2.0 if total_clip_sec >= 10.0 else 0.0
-                                adjusted_time = current_time_sec - start_delay
-                                
-                                if adjusted_time >= 0:
-                                    sec_per_model = 2.0 if total_clip_sec >= 10.0 else (min(total_clip_sec, 6.0) / float(num_models))
-                                    model_idx = int(adjusted_time / sec_per_model) if sec_per_model > 0 else 0
-                                    if model_idx < num_models:
-                                        active_label_override, img = active_models[model_idx]
+                                # Display Farmhouse for first 3.0s, Petrol Pump for next 3.0s (0.0s to 6.0s in clip)
+                                model_idx = int(current_time_sec / 3.0)
+                                if model_idx < num_models:
+                                    active_label_override, img = active_models[model_idx]
+                                elif current_time_sec < 6.0:
+                                    active_label_override, img = active_models[-1]
 
                             if img is not None:
                                 try:
                                     pts_arr = np.array(polygon_points[:4], dtype=np.float32)
-                                    s_sum = pts_arr.sum(axis=1)
-                                    s_diff = np.diff(pts_arr, axis=1)
-                                    
-                                    tl = pts_arr[np.argmin(s_sum)]
-                                    br = pts_arr[np.argmax(s_sum)]
-                                    tr = pts_arr[np.argmin(s_diff)]
-                                    bl = pts_arr[np.argmax(s_diff)]
+                                    sorted_y = pts_arr[np.argsort(pts_arr[:, 1])]
+                                    top_two = sorted_y[:2]
+                                    bottom_two = sorted_y[2:]
+                                    tl = top_two[np.argmin(top_two[:, 0])]
+                                    tr = top_two[np.argmax(top_two[:, 0])]
+                                    bl = bottom_two[np.argmin(bottom_two[:, 0])]
+                                    br = bottom_two[np.argmax(bottom_two[:, 0])]
                                     
                                     dst_pts = np.float32([tl, tr, br, bl])
                                     img_h, img_w = img.shape[:2]
@@ -380,7 +408,7 @@ def render_overlay(request: OverlayRequest):
                                         alpha_mask = (warped_img[:, :, 3] / 255.0)[:, :, np.newaxis]
                                         frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
                                     else:
-                                        frame = cv2.addWeighted(warped_img, 0.8, frame, 0.2, 0)
+                                        frame = cv2.addWeighted(warped_img, 0.85, frame, 0.15, 0)
                                 except Exception as ex_model:
                                     print(f"[overlay] warp error for {active_label_override}: {ex_model}")
 
@@ -419,14 +447,9 @@ def render_overlay(request: OverlayRequest):
                             
                             if request_text_position == "outro":
                                 base_y = int(height * 0.72)
-                            elif M == 2 or "ROAD" in raw_label:
-                                # Road label: position ABOVE the top edge
-                                base_y = int(top_pt[1] - total_h - 55)
-                                base_y = max(30, min(base_y, height - total_h - 30))
                             else:
-                                # Plot label: position inside the top half of the plot
-                                # (halfway between the top point and the centroid) to avoid crossing external roads
-                                base_y = int((top_pt[1] + center_y) / 2) - int(total_h / 2)
+                                # ALWAYS position label floating ABOVE top edge of plot boundary
+                                base_y = int(top_pt[1] - total_h - 45)
                                 base_y = max(30, min(base_y, height - total_h - 30))
 
                             TEXT_ANIM_FRAMES = 15
@@ -530,8 +553,19 @@ def render_overlay(request: OverlayRequest):
             # Custom Location Card Overlay (20s to 24s timestamp in full reel / 5.66s to 9.66s in Clip 5 - 4 full seconds)
             current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
             total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
-            if total_clip_sec >= 10.0 and location_card_img is not None and 5.66 <= current_time_sec <= 9.66:
-                card_resized = cv2.resize(location_card_img, (width, height))
+            if total_clip_sec >= 7.0 and location_card_img is not None and 5.66 <= current_time_sec <= 9.66:
+                h_img, w_img = location_card_img.shape[:2]
+                target_ratio = width / float(height)
+                img_ratio = w_img / float(h_img)
+                if img_ratio > target_ratio:
+                    new_w = int(h_img * target_ratio)
+                    start_x = (w_img - new_w) // 2
+                    cropped = location_card_img[:, start_x:start_x + new_w]
+                else:
+                    new_h = int(w_img / target_ratio)
+                    start_y = (h_img - new_h) // 2
+                    cropped = location_card_img[start_y:start_y + new_h, :]
+                card_resized = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_LANCZOS4)
                 if card_resized.shape[2] == 4:
                     alpha_m = (card_resized[:, :, 3] / 255.0)[:, :, np.newaxis]
                     frame = (card_resized[:, :, :3] * alpha_m + frame * (1.0 - alpha_m)).astype(np.uint8)

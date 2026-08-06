@@ -376,12 +376,14 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         const combinedRoad = hArr.map(h => h.roadInfo).filter(Boolean).join(" and ") || "";
         const hasFh = hArr.some(h => h.enableFarmhouse);
         const hasFt = hArr.some(h => h.enableFountain);
+        const hasPp = hArr.some(h => h.enablePetrolPump);
 
         return {
           object_name: clip,
           label: combinedLabel,
           has_farmhouse: hasFh,
           has_fountain: hasFt,
+          has_petrol_pump: hasPp,
           price: combinedPrice,
           size: combinedSize,
           road_info: combinedRoad,

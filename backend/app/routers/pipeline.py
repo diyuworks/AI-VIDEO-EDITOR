@@ -119,12 +119,9 @@ class GenerateReelRequest(BaseModel):
     structured_options: Optional[dict] = None
     clip_metadata: Optional[List[dict]] = None  # [{label, duration, has_farmhouse, has_fountain}]
     custom_audio_object_name: Optional[str] = None
-<<<<<<< HEAD
     enable_ai_voiceover: Optional[bool] = False
     max_clip_duration: Optional[float] = None  # Trim clip/video to max duration in seconds (e.g. 6.0 for demo)
     include_outro: Optional[bool] = None  # Whether to append 5s end screen logo (default False for 6s demo cut)
-=======
->>>>>>> origin/jay
     job_id: Optional[str] = None
 
 PipelineRequest = GenerateReelRequest
