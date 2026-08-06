@@ -322,7 +322,9 @@ def merge_clips(request: MergeClipsRequest):
             )
         except Exception as e:
             print(f"[MERGE] MinIO upload failed, using local URL. Error: {e}")
-            presigned_url = f"http://localhost:4005/demo-videos/{merged_id}"
+            from app.config import get_backend_base_url
+            base_url = get_backend_base_url(req if 'req' in locals() else None)
+            presigned_url = f"{base_url}/demo-videos/{merged_id}"
 
         # Build clip_metadata for voiceover sync
         clip_metadata = []
@@ -769,7 +771,9 @@ async def generate_full_reel(
         )
     except Exception as ex_m:
         print(f"[pipeline warning] MinIO upload threw {ex_m}, using local demo-videos URL...")
-        presigned_url = f"http://localhost:4005/demo-videos/{final_object_name}"
+        from app.config import get_backend_base_url
+        base_url = get_backend_base_url(req if 'req' in locals() else None)
+        presigned_url = f"{base_url}/demo-videos/{final_object_name}"
 
     if request.job_id:
         update_progress(request.job_id, 100, "complete", "Reel generation complete! Ready to download.")

@@ -142,12 +142,15 @@ def render_overlay(request: OverlayRequest):
         except Exception as e:
             print(f"[overlay] MinIO download warning for {request.object_name}: {e}")
 
+    from app.config import get_backend_base_url
+    base_url = get_backend_base_url()
+
     if not os.path.exists(source_local_path) or os.path.getsize(source_local_path) == 0:
         print(f"[overlay warning] Video file missing for {request.object_name}, returning direct object_name.")
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
+            "url": f"{base_url}/demo-videos/{request.object_name}",
         }
 
     cap = cv2.VideoCapture(source_local_path)
@@ -156,7 +159,7 @@ def render_overlay(request: OverlayRequest):
         return {
             "success": True,
             "output_object_name": request.object_name,
-            "url": f"http://localhost:4005/demo-videos/{request.object_name}",
+            "url": f"{base_url}/demo-videos/{request.object_name}",
         }
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -394,27 +397,34 @@ def render_overlay(request: OverlayRequest):
                             if img is not None:
                                 try:
                                     pts_arr = np.array(polygon_points[:4], dtype=np.float32)
-                                    sorted_y = pts_arr[np.argsort(pts_arr[:, 1])]
-                                    top_two = sorted_y[:2]
-                                    bottom_two = sorted_y[2:]
-                                    tl = top_two[np.argmin(top_two[:, 0])]
-                                    tr = top_two[np.argmax(top_two[:, 0])]
-                                    bl = bottom_two[np.argmin(bottom_two[:, 0])]
-                                    br = bottom_two[np.argmax(bottom_two[:, 0])]
+                                    cx = np.mean(pts_arr[:, 0])
+                                    cy = np.mean(pts_arr[:, 1])
+                                    angles = np.arctan2(pts_arr[:, 1] - cy, pts_arr[:, 0] - cx)
+                                    sorted_indices = np.argsort(angles)
+                                    pts_sorted = pts_arr[sorted_indices]
+                                    sums = pts_sorted[:, 0] + pts_sorted[:, 1]
+                                    tl_idx = np.argmin(sums)
+                                    dst_pts = np.roll(pts_sorted, -tl_idx, axis=0)
                                     
-                                    dst_pts = np.float32([tl, tr, br, bl])
                                     img_h, img_w = img.shape[:2]
                                     src_pts = np.float32([[0, 0], [img_w, 0], [img_w, img_h], [0, img_h]])
                                     
                                     M_persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
                                     warped_img = cv2.warpPerspective(img, M_persp, (width, height))
                                     
-                                    # Alpha blend warped model onto frame
+                                    # Create polygon mask to keep warped 3D model 100% inside plot boundary
+                                    warp_poly_mask = np.zeros((height, width), dtype=np.uint8)
+                                    cv2.fillPoly(warp_poly_mask, [polygon_points], 255)
+                                    poly_alpha = (warp_poly_mask / 255.0)
+                                    
+                                    # Alpha blend warped model onto frame strictly inside plot
                                     if warped_img.shape[2] == 4:
-                                        alpha_mask = (warped_img[:, :, 3] / 255.0)[:, :, np.newaxis]
+                                        alpha_mask = (warped_img[:, :, 3] / 255.0) * poly_alpha
+                                        alpha_mask = alpha_mask[:, :, np.newaxis]
                                         frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
                                     else:
-                                        frame = cv2.addWeighted(warped_img, 0.85, frame, 0.15, 0)
+                                        alpha_mask = poly_alpha[:, :, np.newaxis] * 0.85
+                                        frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
                                 except Exception as ex_model:
                                     print(f"[overlay] warp error for {active_label_override}: {ex_model}")
 
@@ -554,7 +564,8 @@ def render_overlay(request: OverlayRequest):
                                     mask_alpha = txt_alpha[:, :, np.newaxis]
                                     frame = (txt_bgr * mask_alpha + frame * (1.0 - mask_alpha)).astype(np.uint8)
 
-            # Custom Location Card Overlay (20s to 24s timestamp in full reel / 5.66s to 9.66s in Clip 5 - 4 full seconds)
+            # Custom Location Card Overlay with POP-POP Text Animation
+            # (20s to 24s in full reel / 5.66s to 9.66s in Clip 5 - 4 full seconds)
             current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
             total_clip_sec = total_tracked_frames / float(fps if fps > 0 else 25.0)
             if total_clip_sec >= 7.0 and location_card_img is not None and 5.66 <= current_time_sec <= 9.66:
@@ -569,12 +580,35 @@ def render_overlay(request: OverlayRequest):
                     new_h = int(w_img / target_ratio)
                     start_y = (h_img - new_h) // 2
                     cropped = location_card_img[start_y:start_y + new_h, :]
-                card_resized = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_LANCZOS4)
-                if card_resized.shape[2] == 4:
-                    alpha_m = (card_resized[:, :, 3] / 255.0)[:, :, np.newaxis]
-                    frame = (card_resized[:, :, :3] * alpha_m + frame * (1.0 - alpha_m)).astype(np.uint8)
+                card_full = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_LANCZOS4)
+
+                # Full Cinematic Scale-Pop Entrance (elastic bounce zoom + smooth fade-in)
+                local_t = current_time_sec - 5.66  # 0.0s to 4.0s window
+                pop_duration = 0.45  # 0.45s snappy pop entrance
+
+                if local_t < pop_duration:
+                    import math
+                    progress = local_t / pop_duration
+                    # Elastic bounce-out curve
+                    ease_bounce = 1.0 + 0.20 * math.sin(progress * math.pi) * (1.0 - progress)
+                    scale = (1.20 * (1.0 - progress) + 1.0 * progress) * ease_bounce
+                    
+                    opacity = min(1.0, progress * 2.5)  # Quick smooth fade-in
+                    
+                    scaled_w = max(width, int(width * scale))
+                    scaled_h = max(height, int(height * scale))
+                    scaled_card = cv2.resize(card_full, (scaled_w, scaled_h), interpolation=cv2.INTER_LANCZOS4)
+                    
+                    cx, cy = scaled_w // 2, scaled_h // 2
+                    x1c = max(0, cx - width // 2)
+                    y1c = max(0, cy - height // 2)
+                    cropped_card = scaled_card[y1c:y1c + height, x1c:x1c + width]
+                    if cropped_card.shape[0] == height and cropped_card.shape[1] == width:
+                        frame = cv2.addWeighted(cropped_card, opacity, frame, 1.0 - opacity, 0)
+                    else:
+                        frame = cv2.addWeighted(card_full, opacity, frame, 1.0 - opacity, 0)
                 else:
-                    frame = card_resized
+                    frame = card_full
 
             out.write(frame)
             frame_idx += 1

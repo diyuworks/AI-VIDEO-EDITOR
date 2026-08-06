@@ -18,38 +18,21 @@ from app.database import get_session, VideoRecord
 
 router = APIRouter()
 
-minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
-    secure=MINIO_SECURE
-) if Minio else None
+minio_client = None
 
 def init_minio():
-    """Initialize MinIO bucket with a timeout so app startup never hangs."""
-    import threading
-
-    def _try_init():
-        try:
-            if minio_client and not minio_client.bucket_exists(MINIO_BUCKET):
-                minio_client.make_bucket(MINIO_BUCKET)
-            print("MinIO bucket initialized successfully.")
-        except Exception as e:
-            print(f"Warning: Could not connect to MinIO during startup. {e}")
-
-    t = threading.Thread(target=_try_init, daemon=True)
-    t.start()
-    t.join(timeout=5)  # Wait max 5 seconds, then proceed regardless
-    if t.is_alive():
-        print("Warning: MinIO connection timed out (5s). App will continue without MinIO — using local demo_clips/ storage.")
+    """MinIO disabled — using fast local disk storage (uploaded_files/ & demo_clips/)."""
+    print("Using fast local disk storage (uploaded_files/ & demo_clips/). MinIO disabled.")
 
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac", ".flv", ".wmv", ".3gp", ".m4v", ".mpg", ".mpeg", ".ogg", ".ogv"}
 MAX_FILE_SIZE_MB = 500
 
 
+from fastapi import Request
+
 @router.post("/upload")
-async def upload_video(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def upload_video(req: Request = None, file: UploadFile = File(...), session: Session = Depends(get_session)):
     filename = file.filename or "uploaded_clip.mp4"
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".mp4"
     if ext not in ALLOWED_EXTENSIONS:
@@ -97,7 +80,9 @@ async def upload_video(file: UploadFile = File(...), session: Session = Depends(
     t = threading.Thread(target=_minio_upload, daemon=True)
     t.start()
 
-    file_url = f"http://localhost:4005/demo-videos/{object_name}"
+    from app.config import get_backend_base_url
+    base_url = get_backend_base_url(req)
+    file_url = f"{base_url}/demo-videos/{object_name}"
 
     record = VideoRecord(
         object_name=object_name,
