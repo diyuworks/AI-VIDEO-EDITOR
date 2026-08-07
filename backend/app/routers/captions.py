@@ -12,8 +12,7 @@ def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel  # lazy import: avoids CUDA/cuDNN conflict with torch/SAM if this loads first
-        # Use 'small' model for proper Gujarati (ગુજરાતી) script output — 'base' outputs English/Arabic instead
-        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
     return _whisper_model
 
 @router.post("/captions/{object_name}")
@@ -31,7 +30,12 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
     try:
-        segments, info = get_whisper_model().transcribe(video_url, beam_size=5, condition_on_previous_text=False)
+        segments, info = get_whisper_model().transcribe(
+            video_url, 
+            beam_size=5, 
+            language="gu",
+            condition_on_previous_text=False
+        )
     except Exception as e:
         if "tuple index out of range" in str(e):
             # This happens when the video has no audio track
@@ -102,36 +106,39 @@ async def transcribe_audio(file: UploadFile = File(...)):
         with open(temp_audio_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Transcribe with explicit Gujarati initial_prompt to enforce clean Gujarati (ગુજરાતી) script
-        segments, info = get_whisper_model().transcribe(
-            temp_audio_path, 
-            beam_size=5, 
-            best_of=5,
-            language="gu", 
-            task="transcribe",
-            initial_prompt="આ જમીન પ્લોટ ખૂબ સરસ છે. ગામ, તાલુકો, જીલ્લો, ભાવ, વેચવાનો છે, હાઇવે રોડ touch.",
-            condition_on_previous_text=False
-        )
+        # Transcribe with Gujarati language preference
+        import asyncio
 
-        import re
-        def clean_gujarati_text(raw_text: str) -> str:
-            # Remove Arabic/Persian/Urdu script Unicode ranges hallucinated by Whisper
-            cleaned = re.sub(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]', '', raw_text)
-            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-            return cleaned
+        def run_transcription():
+            return get_whisper_model().transcribe(
+                temp_audio_path, 
+                beam_size=1, 
+                language="gu",
+                condition_on_previous_text=False
+            )
+
+        # Run CPU-bound transcription in a separate thread to avoid blocking the event loop
+        segments, info = await asyncio.to_thread(run_transcription)
 
         segments_list = []
         full_transcript = []
         
-        for segment in segments:
-            text = clean_gujarati_text(segment.text)
-            if text:
-                segments_list.append({
+        # Iterating over segments evaluates the generator, which is also CPU-bound
+        # We can do this in a thread too, or just list it
+        def process_segments(segs):
+            s_list = []
+            f_trans = []
+            for segment in segs:
+                text = segment.text.strip()
+                s_list.append({
                     "start": round(segment.start, 2),
                     "end": round(segment.end, 2),
                     "text": text
                 })
-                full_transcript.append(text)
+                f_trans.append(text)
+            return s_list, f_trans
+
+        segments_list, full_transcript = await asyncio.to_thread(process_segments, segments)
 
         return {
             "success": True,
