@@ -170,6 +170,18 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     setSelectedClips([]);
   }, []);
 
+  // Handle Chrome Native Browser Back Button (←) to return to main page when modal is open
+  useEffect(() => {
+    const handlePopState = () => {
+      if (activeMarkingClip) {
+        setActiveMarkingClip(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [activeMarkingClip]);
+
   const moveClipUp = (index: number) => {
     if (index <= 0) return;
     const updated = [...uploadedClips];
@@ -884,6 +896,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
                                   setEnableFountain(firstHighlight?.enableFountain || false);
                                   setEnablePetrolPump(firstHighlight?.enablePetrolPump || false);
+                                  
+                                  // Enable Chrome Native Browser Back Button (←) to return to main page
+                                  window.history.pushState({ modal: "marking", clip: clipName }, "", "#mark-boundary");
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
                                   {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlights" : "✏️ Highlight Plot"}
                                 </button>
