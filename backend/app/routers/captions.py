@@ -114,6 +114,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 temp_audio_path, 
                 beam_size=1, 
                 language="gu",
+                initial_prompt="અહીં સંપૂર્ણ શુદ્ધ ગુજરાતીમાં લખો. (Write purely in Gujarati script).",
                 condition_on_previous_text=False
             )
 
