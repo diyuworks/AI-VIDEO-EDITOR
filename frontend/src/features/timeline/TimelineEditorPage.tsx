@@ -15,6 +15,7 @@ interface Clip {
   imageDataUrl?: string // image/logo sticker data URL or URL
   objectName?: string
   videoUrl?: string
+  sourceStart?: number // Used for trimming the left edge
   boxLeftPct?: number
   boxTopPct?: number
   boxWidthPct?: number
@@ -162,6 +163,15 @@ interface DragSession {
   moved: boolean
 }
 
+interface TrimSession {
+  clipId: string
+  edge: 'left' | 'right'
+  startClientX: number
+  origStart: number
+  origEnd: number
+  origSourceStart: number
+}
+
 export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, initialAudioFile, initialAudioSegments, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
@@ -199,7 +209,9 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
 
   // ---- Drag-to-rearrange state ----
   const dragSessionRef = useRef<DragSession | null>(null)
+  const trimSessionRef = useRef<TrimSession | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isTrimming, setIsTrimming] = useState(false)
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null)
   const [dragOffsetPx, setDragOffsetPx] = useState(0)
 
@@ -501,7 +513,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
         }
       }
 
-      const clipOffset = Math.max(0, playhead - activeClip.start)
+      const clipOffset = Math.max(0, playhead - activeClip.start) + (activeClip.sourceStart || 0)
       if (Math.abs(videoRef.current.currentTime - clipOffset) > 0.35) {
         videoRef.current.currentTime = clipOffset
       }
@@ -858,51 +870,104 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   }
 
   useEffect(() => {
-    if (!isDragging) return
+    if (!isDragging && !isTrimming) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      const session = dragSessionRef.current
-      if (!session) return
-      const deltaPx = e.clientX - session.startClientX
-
-      if (!session.moved && Math.abs(deltaPx) > DRAG_MOVE_THRESHOLD_PX) {
-        session.moved = true
-      }
-
-      if (session.track === 'video') {
-        setDragOffsetPx(deltaPx)
-      } else {
-        const deltaSeconds = deltaPx / PIXELS_PER_SECOND
-        const clipDuration = session.origEnd - session.origStart
-        let newStart = session.origStart + deltaSeconds
-        newStart = Math.max(0, Math.min(newStart, Math.max(duration - clipDuration, 0)))
-        const newEnd = newStart + clipDuration
-        setClips((prev) =>
-          prev.map((c) => (c.id === session.clipId ? { ...c, start: newStart, end: newEnd } : c)),
-        )
-      }
-    }
-
-    const handleMouseUp = (e: MouseEvent) => {
-      const session = dragSessionRef.current
-      if (session && session.track === 'video' && session.moved) {
+      // 1) Drag-to-rearrange logic
+      if (dragSessionRef.current) {
+        const session = dragSessionRef.current
         const deltaPx = e.clientX - session.startClientX
-        reorderVideoClip(session.clipId, deltaPx)
+        
+        if (!session.moved && Math.abs(deltaPx) > DRAG_MOVE_THRESHOLD_PX) {
+          session.moved = true
+          setIsDragging(true)
+        }
+        
+        if (session.moved) {
+          setDragOffsetPx(deltaPx)
+        }
+        return
       }
-      if (!session?.moved && session) {
+
+      // 2) Trim logic
+      if (trimSessionRef.current) {
+        const session = trimSessionRef.current
+        const deltaPx = e.clientX - session.startClientX
+        const deltaSec = deltaPx / PIXELS_PER_SECOND
+
         setClips((prev) => {
-          const clip = prev.find((c) => c.id === session.clipId)
-          if (clip) handleClipClick(clip)
-          return prev
+          const newClips = prev.map((c) => {
+            if (c.id === session.clipId) {
+              const clip = { ...c }
+              if (session.edge === 'right') {
+                clip.end = Math.max(clip.start + 1, session.origEnd + deltaSec)
+              } else if (session.edge === 'left') {
+                const actualDelta = Math.max(-session.origSourceStart, deltaSec) // prevent sourceStart < 0
+                const newLength = Math.max(1, (session.origEnd - session.origStart) - actualDelta)
+                clip.end = clip.start + newLength 
+                clip.sourceStart = session.origSourceStart + actualDelta
+              }
+              return clip
+            }
+            return c
+          })
+
+          const updated = enforceGaplessClips(newClips)
+          const maxEnd = Math.max(...updated.filter((c) => c.track === 'video').map((c) => c.end), 10)
+          setDuration(maxEnd)
+          return updated
         })
+        return
       }
-      dragSessionRef.current = null
-      setIsDragging(false)
-      setDraggingClipId(null)
-      setDragOffsetPx(0)
     }
 
-    document.body.style.cursor = 'grabbing'
+    const handleMouseUp = () => {
+      // Handle drag end
+      if (dragSessionRef.current) {
+        const session = dragSessionRef.current
+        
+        if (session.moved) {
+          const deltaSec = dragOffsetPx / PIXELS_PER_SECOND
+          
+          setClips((prev) => {
+            const trackClips = prev.filter((c) => c.track === session.track)
+            const otherClips = prev.filter((c) => c.track !== session.track)
+            
+            const targetClip = trackClips.find((c) => c.id === session.clipId)
+            if (!targetClip) return prev
+            
+            const newCenter = session.origStart + deltaSec + (session.origEnd - session.origStart) / 2
+            
+            const reordered = trackClips.sort((a, b) => {
+              if (a.id === session.clipId) return -1 
+              if (b.id === session.clipId) return 1  
+              return 0
+            }).sort((a, b) => {
+              const centerA = a.id === session.clipId ? newCenter : a.start + (a.end - a.start) / 2
+              const centerB = b.id === session.clipId ? newCenter : b.start + (b.end - b.start) / 2
+              return centerA - centerB
+            })
+
+            const updated = enforceGaplessClips([...reordered, ...otherClips])
+            const maxEnd = Math.max(...updated.filter((c) => c.track === 'video').map((c) => c.end), 10)
+            setDuration(maxEnd)
+            return updated
+          })
+        }
+
+        dragSessionRef.current = null
+        setIsDragging(false)
+        setDraggingClipId(null)
+        setDragOffsetPx(0)
+      }
+
+      // Handle trim end
+      if (trimSessionRef.current) {
+        trimSessionRef.current = null
+        setIsTrimming(false)
+      }
+    }
+
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
     return () => {
@@ -911,7 +976,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       window.removeEventListener('mouseup', handleMouseUp)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDragging, duration])
+  }, [isDragging, isTrimming, duration])
 
   const selectedClip = clips.find((c) => c.id === selectedClipId)
   const canSplit =
@@ -1239,6 +1304,34 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
                               <span className={`truncate pointer-events-none z-10 font-bold ${isBoundary ? 'text-yellow-300' : 'text-white/90'}`}>
                                 {isBoundary ? `▭ ${clip.label}` : clip.label}
                               </span>
+
+                              {/* Left Trim Handle */}
+                              {clip.track === 'video' && (
+                                <div 
+                                  className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/30 z-30 flex items-center justify-center transition-colors"
+                                  onMouseDown={(e) => {
+                                      e.stopPropagation()
+                                      trimSessionRef.current = { clipId: clip.id, edge: 'left', startClientX: e.clientX, origStart: clip.start, origEnd: clip.end, origSourceStart: clip.sourceStart || 0 }
+                                      setIsTrimming(true)
+                                  }}
+                                >
+                                  <div className="w-0.5 h-6 bg-white rounded-full shadow" />
+                                </div>
+                              )}
+                              
+                              {/* Right Trim Handle */}
+                              {clip.track === 'video' && (
+                                <div 
+                                  className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/30 z-30 flex items-center justify-center transition-colors"
+                                  onMouseDown={(e) => {
+                                      e.stopPropagation()
+                                      trimSessionRef.current = { clipId: clip.id, edge: 'right', startClientX: e.clientX, origStart: clip.start, origEnd: clip.end, origSourceStart: clip.sourceStart || 0 }
+                                      setIsTrimming(true)
+                                  }}
+                                >
+                                  <div className="w-0.5 h-6 bg-white rounded-full shadow" />
+                                </div>
+                              )}
                             </button>
                           )
                         })}

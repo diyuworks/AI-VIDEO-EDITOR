@@ -12,7 +12,7 @@ def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel  # lazy import: avoids CUDA/cuDNN conflict with torch/SAM if this loads first
-        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
     return _whisper_model
 
 @router.post("/captions/{object_name}")
@@ -114,6 +114,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 temp_audio_path, 
                 beam_size=1, 
                 language="gu",
+                initial_prompt="અહીં સંપૂર્ણ શુદ્ધ ગુજરાતીમાં લખો. (Write purely in Gujarati script).",
                 condition_on_previous_text=False
             )
 
