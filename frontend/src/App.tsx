@@ -30,6 +30,7 @@ function App() {
   const [promptData, setPromptData] = useState<PromptData | null>(null)
   const [clipItems, setClipItems] = useState<any[]>([])
   const [timelineAudioFile, setTimelineAudioFile] = useState<File | undefined>(undefined)
+  const [timelineAudioSegments, setTimelineAudioSegments] = useState<any[]>([])
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -97,6 +98,7 @@ function App() {
               rawObjectName={rawObjectName || undefined}
               clipItems={clipItems}
               initialAudioFile={timelineAudioFile}
+              initialAudioSegments={timelineAudioSegments.length > 0 ? timelineAudioSegments : undefined}
               onBackToQuick={() => setScreen('reel')}
             />
           </div>
@@ -108,11 +110,12 @@ function App() {
               rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
               referenceObjectName={referenceResults?.[0]?.object_name || undefined}
               prompt={promptData?.prompt}
-              onOpenTimeline={(vUrl, objName, items, audioFile) => {
+              onOpenTimeline={(vUrl, objName, items, audioFile, segments) => {
                 if (vUrl) setVideoUrl(vUrl)
                 if (objName) setRawObjectName(objName)
                 if (items && items.length > 0) setClipItems(items)
                 if (audioFile) setTimelineAudioFile(audioFile)
+                if (segments) setTimelineAudioSegments(segments)
                 setScreen('timeline')
               }}
             />

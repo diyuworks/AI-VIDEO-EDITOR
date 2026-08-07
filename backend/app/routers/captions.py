@@ -30,7 +30,12 @@ def generate_captions(object_name: str, session: Session = Depends(get_session))
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
     try:
-        segments, info = get_whisper_model().transcribe(video_url, beam_size=5, condition_on_previous_text=False)
+        segments, info = get_whisper_model().transcribe(
+            video_url, 
+            beam_size=5, 
+            language="gu",
+            condition_on_previous_text=False
+        )
     except Exception as e:
         if "tuple index out of range" in str(e):
             # This happens when the video has no audio track
@@ -102,24 +107,38 @@ async def transcribe_audio(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         # Transcribe with Gujarati language preference
-        segments, info = get_whisper_model().transcribe(
-            temp_audio_path, 
-            beam_size=1, 
-            language="gu", 
-            condition_on_previous_text=False
-        )
+        import asyncio
+
+        def run_transcription():
+            return get_whisper_model().transcribe(
+                temp_audio_path, 
+                beam_size=1, 
+                language="gu",
+                condition_on_previous_text=False
+            )
+
+        # Run CPU-bound transcription in a separate thread to avoid blocking the event loop
+        segments, info = await asyncio.to_thread(run_transcription)
 
         segments_list = []
         full_transcript = []
         
-        for segment in segments:
-            text = segment.text.strip()
-            segments_list.append({
-                "start": round(segment.start, 2),
-                "end": round(segment.end, 2),
-                "text": text
-            })
-            full_transcript.append(text)
+        # Iterating over segments evaluates the generator, which is also CPU-bound
+        # We can do this in a thread too, or just list it
+        def process_segments(segs):
+            s_list = []
+            f_trans = []
+            for segment in segs:
+                text = segment.text.strip()
+                s_list.append({
+                    "start": round(segment.start, 2),
+                    "end": round(segment.end, 2),
+                    "text": text
+                })
+                f_trans.append(text)
+            return s_list, f_trans
+
+        segments_list, full_transcript = await asyncio.to_thread(process_segments, segments)
 
         return {
             "success": True,

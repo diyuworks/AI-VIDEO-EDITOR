@@ -42,7 +42,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
-  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[], audioFile?: File) => void;
+  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[], audioFile?: File, audioSegments?: any[]) => void;
 }
 
 export interface ClipHighlightItem {
@@ -116,6 +116,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   // Real-time progress tracking state
   const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [audioProgressPercent, setAudioProgressPercent] = useState<number>(0);
+  const [audioProgressMessage, setAudioProgressMessage] = useState<string>("");
+  const [audioSegments, setAudioSegments] = useState<any[]>([]);
   const [progressMessage, setProgressMessage] = useState<string>("Initializing job...");
   const [progressStage, setProgressStage] = useState<string>("idle");
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
@@ -213,8 +216,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setIsTranscribing(true);
+    setAudioProgressPercent(10);
+    setAudioProgressMessage("Uploading audio file...");
     setCustomAudioObjectName(null);
     setCustomAudioFile(file);
 
@@ -230,6 +234,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       const uploadData = await uploadRes.json();
       setCustomAudioObjectName(uploadData.object_name);
 
+      setAudioProgressPercent(30);
+      setAudioProgressMessage("Extracting and processing Gujarati speech...");
+
+      const progressInterval = setInterval(() => {
+        setAudioProgressPercent((prev) => (prev < 90 ? prev + 8 : prev));
+      }, 500);
+
       const transcribeFormData = new FormData();
       transcribeFormData.append("file", file);
       const transcribeRes = await fetch(`${API_BASE_URL}/transcribe-audio`, {
@@ -237,18 +248,30 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         body: transcribeFormData,
       });
 
+      clearInterval(progressInterval);
+
       if (transcribeRes.ok) {
         const transcribeData = await transcribeRes.json();
         if (transcribeData.success && transcribeData.full_transcript) {
           setPrompt(transcribeData.full_transcript);
           setUseExactScript(true);
+          if (transcribeData.segments) {
+            setAudioSegments(transcribeData.segments);
+          }
+          setAudioProgressPercent(100);
+          setAudioProgressMessage("Audio processed successfully! ✅");
         }
       }
     } catch (err) {
       console.error(err);
+      setAudioProgressMessage("Error processing audio.");
       alert("Error uploading custom audio. Please try again.");
     } finally {
       setIsTranscribing(false);
+      setTimeout(() => {
+        setAudioProgressPercent(0);
+        setAudioProgressMessage("");
+      }, 4000);
       if (event.target) {
         event.target.value = "";
       }
@@ -445,7 +468,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
       isPolling = true;
       let lastBackendProgress = 0;
-      
+
       const pollProgress = async () => {
         if (!isPolling) return;
         try {
@@ -454,24 +477,24 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             const data = await res.json();
             if (data.progress !== undefined) {
               lastBackendProgress = data.progress;
-              
+
               setProgressPercent((prev) => {
                 // If backend actually moved ahead of our simulated progress, use it
                 if (data.progress > prev) return data.progress;
-                
+
                 // Smart Progress Smoother (Zeno's Paradox): 
                 // Always move forward slowly towards 99% while backend is busy
                 if (prev < 99) {
-                   if (Math.random() > 0.3) {
-                     const remaining = 99 - prev;
-                     // Step is larger when far from 99, and slows down to 1% as it gets closer
-                     const step = Math.max(1, Math.floor(remaining * 0.05));
-                     return prev + step;
-                   }
+                  if (Math.random() > 0.3) {
+                    const remaining = 99 - prev;
+                    // Step is larger when far from 99, and slows down to 1% as it gets closer
+                    const step = Math.max(1, Math.floor(remaining * 0.05));
+                    return prev + step;
+                  }
                 }
                 return prev;
               });
-              
+
               if (data.message) setProgressMessage(data.message);
               if (data.stage) setProgressStage(data.stage);
             }
@@ -700,184 +723,184 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       <div className="min-h-screen bg-slate-50 flex flex-col p-2 sm:p-4 lg:p-6 overflow-y-auto pb-20">
         <div className="w-full max-w-[1600px] mx-auto bg-white p-4 sm:p-6 md:p-8 rounded-[32px] border border-emerald-100 shadow-xl relative text-slate-800 animate-in fade-in zoom-in duration-300">
 
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                setActiveMarkingClip(null);
-                window.history.back(); // Clean up the pushState
-              }}
-              className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
-              title="Close modal"
-            >
-              ✕
-            </button>
+          {/* Close Button */}
+          <button
+            onClick={() => {
+              setActiveMarkingClip(null);
+              window.history.back(); // Clean up the pushState
+            }}
+            className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
+            title="Close modal"
+          >
+            ✕
+          </button>
 
-            {/* Header Section */}
-            <div className="mb-6">
-              <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
-                <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
-                Mark Plot Details & Boundary
-              </h3>
-              <p className="text-slate-500 font-medium flex items-center gap-2">
-                Currently editing:
-                <span className="text-emerald-700 font-mono text-sm font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
-                  {activeMarkingClip}
-                </span>
-              </p>
-            </div>
+          {/* Header Section */}
+          <div className="mb-6">
+            <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
+              <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
+              Mark Plot Details & Boundary
+            </h3>
+            <p className="text-slate-500 font-medium flex items-center gap-2">
+              Currently editing:
+              <span className="text-emerald-700 font-mono text-sm font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
+                {activeMarkingClip}
+              </span>
+            </p>
+          </div>
 
-            <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
-              {/* LEFT COLUMN: Form Details */}
-              <div className="w-full lg:w-[35%] xl:w-[30%] flex flex-col gap-6 lg:gap-8">
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
+            {/* LEFT COLUMN: Form Details */}
+            <div className="w-full lg:w-[35%] xl:w-[30%] flex flex-col gap-6 lg:gap-8">
 
-                <div className="flex flex-col gap-7 flex-1">
+              <div className="flex flex-col gap-7 flex-1">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-lg">🏷️</span> Plot Label / Name
+                  </label>
+                  <textarea
+                    value={activeMarkingLabel}
+                    onChange={(e) => setActiveMarkingLabel(e.target.value)}
+                    placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
+                    rows={2}
+                    className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-base font-bold w-full transition shadow-sm resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">🏷️</span> Plot Label / Name
-                    </label>
-                    <textarea
-                      value={activeMarkingLabel}
-                      onChange={(e) => setActiveMarkingLabel(e.target.value)}
-                      placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
-                      rows={2}
-                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-base font-bold w-full transition shadow-sm resize-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-lg">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={plotPrice}
-                        onChange={(e) => setPlotPrice(e.target.value)}
-                        placeholder="e.g. ₹25 Lakhs"
-                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-base font-bold w-full transition shadow-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-lg">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={plotSize}
-                        onChange={(e) => setPlotSize(e.target.value)}
-                        placeholder="e.g. 1.5 Vigha"
-                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-base font-bold w-full transition shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">🛣️</span> Road / Highway Distance
+                      <span className="text-lg">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
                     </label>
                     <input
                       type="text"
-                      value={roadInfo}
-                      onChange={(e) => setRoadInfo(e.target.value)}
-                      placeholder="e.g. 60FT Highway | 100m"
-                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-base font-bold w-full transition shadow-sm"
+                      value={plotPrice}
+                      onChange={(e) => setPlotPrice(e.target.value)}
+                      placeholder="e.g. ₹25 Lakhs"
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-base font-bold w-full transition shadow-sm"
                     />
                   </div>
-
-                  {/* Visual Effects */}
-                  <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-4 mt-2">
-                    <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">✨</span> 3D Visual Effects
-                    </p>
-                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enableFarmhouse}
-                          onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">🏡 Farmhouse</span>
-                      </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enableFountain}
-                          onChange={(e) => setEnableFountain(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">🚰 Fountain</span>
-                      </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enablePetrolPump}
-                          onChange={(e) => setEnablePetrolPump(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">⛽ Petrol Pump</span>
-                      </label>
-                    </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={plotSize}
+                      onChange={(e) => setPlotSize(e.target.value)}
+                      placeholder="e.g. 1.5 Vigha"
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-base font-bold w-full transition shadow-sm"
+                    />
                   </div>
                 </div>
 
-                {/* Instructions Box to fill space perfectly */}
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center mt-auto">
-                  <h4 className="text-base font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-4">
-                    💡 Expert Tips for Best Results
-                  </h4>
-                  <ul className="text-sm text-amber-900/80 space-y-3 font-medium">
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> AI will automatically track these boundary points throughout the entire drone video!
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
-                    </li>
-                  </ul>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-lg">🛣️</span> Road / Highway Distance
+                  </label>
+                  <input
+                    type="text"
+                    value={roadInfo}
+                    onChange={(e) => setRoadInfo(e.target.value)}
+                    placeholder="e.g. 60FT Highway | 100m"
+                    className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-base font-bold w-full transition shadow-sm"
+                  />
+                </div>
+
+                {/* Visual Effects */}
+                <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-4 mt-2">
+                  <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-lg">✨</span> 3D Visual Effects
+                  </p>
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
+                    <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                      <input
+                        type="checkbox"
+                        checked={enableFarmhouse}
+                        onChange={(e) => setEnableFarmhouse(e.target.checked)}
+                        className="w-5 h-5 accent-[#0D473B]"
+                      />
+                      <span className="font-bold text-base">🏡 Farmhouse</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                      <input
+                        type="checkbox"
+                        checked={enableFountain}
+                        onChange={(e) => setEnableFountain(e.target.checked)}
+                        className="w-5 h-5 accent-[#0D473B]"
+                      />
+                      <span className="font-bold text-base">🚰 Fountain</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                      <input
+                        type="checkbox"
+                        checked={enablePetrolPump}
+                        onChange={(e) => setEnablePetrolPump(e.target.checked)}
+                        className="w-5 h-5 accent-[#0D473B]"
+                      />
+                      <span className="font-bold text-base">⛽ Petrol Pump</span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
-              <div className="w-full lg:w-[65%] xl:w-[70%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[600px]">
-                <BoundaryMarker
-                  objectName={activeMarkingClip}
-                  onSaveAndAddAnother={(points, frameTime) => {
-                    const clipName = activeMarkingClip;
-                    const label = activeMarkingLabel;
-                    const pr = plotPrice;
-                    const sz = plotSize;
-                    const rd = roadInfo;
-                    const clr = highlightColor;
-                    const fh = enableFarmhouse;
-                    const ft = enableFountain;
-                    const pp = enablePetrolPump;
-                    const tp = textPosition || "middle";
-
-                    if (!clipName) return;
-                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
-                  }}
-                  onSaveAndFinish={async (points, frameTime) => {
-                    const clipName = activeMarkingClip;
-                    const label = activeMarkingLabel;
-                    const pr = plotPrice;
-                    const sz = plotSize;
-                    const rd = roadInfo;
-                    const clr = highlightColor;
-                    const fh = enableFarmhouse;
-                    const ft = enableFountain;
-                    const pp = enablePetrolPump;
-                    const tp = textPosition || "middle";
-
-                    if (!clipName) return;
-                    setActiveMarkingClip(null);
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
-                  }}
-                />
+              {/* Instructions Box to fill space perfectly */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center mt-auto">
+                <h4 className="text-base font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-4">
+                  💡 Expert Tips for Best Results
+                </h4>
+                <ul className="text-sm text-amber-900/80 space-y-3 font-medium">
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-amber-500 text-lg">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-amber-500 text-lg">✅</span> AI will automatically track these boundary points throughout the entire drone video!
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-amber-500 text-lg">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
+                  </li>
+                </ul>
               </div>
             </div>
+
+            {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
+            <div className="w-full lg:w-[65%] xl:w-[70%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[600px]">
+              <BoundaryMarker
+                objectName={activeMarkingClip}
+                onSaveAndAddAnother={(points, frameTime) => {
+                  const clipName = activeMarkingClip;
+                  const label = activeMarkingLabel;
+                  const pr = plotPrice;
+                  const sz = plotSize;
+                  const rd = roadInfo;
+                  const clr = highlightColor;
+                  const fh = enableFarmhouse;
+                  const ft = enableFountain;
+                  const pp = enablePetrolPump;
+                  const tp = textPosition || "middle";
+
+                  if (!clipName) return;
+                  handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
+                }}
+                onSaveAndFinish={async (points, frameTime) => {
+                  const clipName = activeMarkingClip;
+                  const label = activeMarkingLabel;
+                  const pr = plotPrice;
+                  const sz = plotSize;
+                  const rd = roadInfo;
+                  const clr = highlightColor;
+                  const fh = enableFarmhouse;
+                  const ft = enableFountain;
+                  const pp = enablePetrolPump;
+                  const tp = textPosition || "middle";
+
+                  if (!clipName) return;
+                  setActiveMarkingClip(null);
+                  await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -919,8 +942,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div className="relative group">
               <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">District</label>
               <div className="relative">
-                <select 
-                  value={selectedDistrict} 
+                <select
+                  value={selectedDistrict}
                   onChange={(e) => {
                     setSelectedDistrict(e.target.value);
                     setSelectedTaluka("");
@@ -941,8 +964,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div className="relative group">
               <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Taluka</label>
               <div className="relative">
-                <select 
-                  value={selectedTaluka} 
+                <select
+                  value={selectedTaluka}
                   onChange={(e) => {
                     setSelectedTaluka(e.target.value);
                     setSelectedVillage("");
@@ -963,8 +986,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             <div className="relative group">
               <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Village</label>
               <div className="relative">
-                <select 
-                  value={selectedVillage} 
+                <select
+                  value={selectedVillage}
                   onChange={(e) => setSelectedVillage(e.target.value)}
                   disabled={!selectedTaluka}
                   className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none disabled:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1091,7 +1114,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
                                   setEnableFountain(firstHighlight?.enableFountain || false);
                                   setEnablePetrolPump(firstHighlight?.enablePetrolPump || false);
-                                  
+
                                   // Push state to allow native browser back button (←) to close the view
                                   window.history.pushState({ view: "boundary-marker" }, "", "#mark-boundary");
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
@@ -1107,32 +1130,52 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
-                  <div className="text-sm">
-                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                      🎙️ Upload Custom Voiceover <span className="text-slate-400 font-normal">(Optional)</span>
-                    </span>
-                    <p className="text-slate-500 text-xs mt-1">Upload an MP3/WAV file. We will use this audio instead of AI voiceover.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="file" accept="audio/*" onChange={handleAudioUpload} disabled={isTranscribing} className="hidden" id="audio-upload" />
-                    <label htmlFor="audio-upload" className={`px-5 py-3 font-bold rounded-2xl text-sm transition cursor-pointer flex items-center gap-2 shadow-md shrink-0 whitespace-nowrap ${isTranscribing ? "bg-slate-300 text-slate-500 cursor-not-allowed" : customAudioObjectName ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-900/20" : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-emerald-950/20"}`}>
-                      {isTranscribing ? "⏳ Processing..." : customAudioObjectName ? "✅ Change Audio" : "🎙️ Upload Audio File"}
-                    </label>
-                    {customAudioObjectName && (
-                      <button type="button" onClick={handleRemoveAudio} className="px-3.5 py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-2xl text-xs transition shadow-md whitespace-nowrap">
-                        ❌ Remove (Use AI Voice)
-                      </button>
-                    )}
-                  </div>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
+                <div className="text-sm flex-1">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    🎙️ Upload Custom Voiceover <span className="text-slate-400 font-normal">(Optional)</span>
+                  </span>
+                  <p className="text-slate-500 text-xs mt-1">Upload an MP3/WAV file. We will use this audio instead of AI voiceover.</p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2 sm:w-auto w-full">
+                  {(isTranscribing || (audioProgressPercent > 0 && audioProgressPercent < 100)) ? (
+                    <div className="w-full sm:w-56 bg-white p-2.5 rounded-xl border border-emerald-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <div className="font-bold text-emerald-700 text-[10px] flex items-center gap-1.5">
+                          ⏳ {audioProgressMessage || "Processing Audio..."}
+                        </div>
+                        <div className="text-[9px] font-bold text-emerald-700">
+                          {audioProgressPercent}%
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-emerald-400 to-emerald-600 h-full rounded-full transition-all duration-300 ease-out"
+                          style={{ width: `${Math.max(5, audioProgressPercent)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <input type="file" accept="audio/*" onChange={handleAudioUpload} className="hidden" id="audio-upload" />
+                      <label htmlFor="audio-upload" className={`px-5 py-2.5 font-bold rounded-2xl text-sm transition cursor-pointer flex items-center justify-center gap-2 shadow-md whitespace-nowrap w-full sm:w-auto ${customAudioObjectName ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20" : "bg-[#0D473B] hover:bg-[#09352C] text-white shadow-emerald-950/20"}`}>
+                        {customAudioObjectName ? "✅ Selected Audio" : "🎙️ Upload Audio File"}
+                      </label>
+                      {customAudioObjectName && (
+                        <button type="button" onClick={handleRemoveAudio} className="px-3.5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-2xl text-xs transition shadow-md whitespace-nowrap w-full sm:w-auto">
+                          ❌ Remove
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-3 pt-2 flex flex-col sm:flex-row gap-3">
-                <button 
-                  onClick={handleGenerateMultiClipReel} 
-                  disabled={selectedClips.length === 0 || isUploading || selectedClips.some(clip => !clipHighlights[clip]?.isDone)} 
+                <button
+                  onClick={handleGenerateMultiClipReel}
+                  disabled={selectedClips.length === 0 || isUploading || selectedClips.some(clip => !clipHighlights[clip]?.isDone)}
                   className="flex-1 py-4 bg-[#0D473B] hover:bg-[#09352C] text-white font-black rounded-2xl text-lg sm:text-xl transition shadow-xl shadow-emerald-950/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   🎬 Merge {selectedClips.length} Clips & Download Reel
@@ -1158,7 +1201,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         };
                       });
 
-                      onOpenTimeline(targetUrl, targetObjName, items, customAudioFile || undefined);
+                      onOpenTimeline(targetUrl, targetObjName, items, customAudioFile || undefined, audioSegments);
                     }}
                     className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >

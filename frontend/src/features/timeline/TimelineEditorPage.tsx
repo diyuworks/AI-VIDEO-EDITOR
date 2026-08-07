@@ -147,6 +147,7 @@ interface TimelineEditorPageProps {
   clipItems?: VideoClipItem[]
   referenceResults?: any[]
   initialAudioFile?: File
+  initialAudioSegments?: any[]
   onBackToQuick?: () => void
 }
 
@@ -161,7 +162,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, initialAudioFile, onBackToQuick }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, initialAudioFile, initialAudioSegments, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -330,7 +331,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     audioFileInputRef.current?.click()
   }
 
-  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement> | any, precomputedSegments?: any[]) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -349,6 +350,23 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     // Add audio clip immediately
     setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
     setTrackVisibility((prev) => ({ ...prev, audio: true }))
+
+    if (precomputedSegments && precomputedSegments.length > 0) {
+      const gujaratiCaptions: Clip[] = precomputedSegments.map((seg: { start: number; end: number; text: string }, idx: number) => ({
+        id: `caption-${Date.now()}-${idx}`,
+        track: 'overlay' as any,
+        overlayKind: 'caption' as any,
+        start: seg.start,
+        end: seg.end,
+        label: `💬 ગુજરાતી ${idx + 1}`,
+        text: seg.text,
+      }))
+      setTimeout(() => {
+        setClips((prev) => [...prev, ...gujaratiCaptions])
+        setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+      }, 500)
+      return
+    }
 
     // Send audio to backend Whisper AI for real Gujarati speech-to-text transcription
     const transcribeFormData = new FormData()
@@ -571,9 +589,9 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       const fakeEvent = {
         target: { files: [initialAudioFile] }
       } as unknown as React.ChangeEvent<HTMLInputElement>;
-      handleAudioFileSelected(fakeEvent);
+      handleAudioFileSelected(fakeEvent, initialAudioSegments);
     }
-  }, [initialAudioFile]);
+  }, [initialAudioFile, initialAudioSegments]);
 
   // ---- Backend Export ----
   const handleExportReel = async () => {
