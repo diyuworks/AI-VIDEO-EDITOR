@@ -167,7 +167,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   useEffect(() => {
     // Automatically load clips sequentially to avoid hitting MinIO limits
     if (uploadedClips.length > 0) {
-      setSelectedClips([uploadedClips[0]]);
+      setSelectedClips([uploadedClips[0].object_name]);
     } else {
       setSelectedClips([]);
     }
