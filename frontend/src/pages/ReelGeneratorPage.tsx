@@ -170,6 +170,18 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     setSelectedClips([]);
   }, []);
 
+  // Lock body scroll when modal is open to eliminate double scrollbars
+  useEffect(() => {
+    if (activeMarkingClip) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [activeMarkingClip]);
+
   // Handle Chrome Native Browser Back Button (←) to return to main page when modal is open
   useEffect(() => {
     const handlePopState = () => {
