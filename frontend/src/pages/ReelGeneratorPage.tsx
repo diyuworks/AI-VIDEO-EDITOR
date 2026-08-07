@@ -1195,6 +1195,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 </button>
                 {onOpenTimeline && (
                   <button
+                    type="button"
+                    disabled={selectedClips.length === 0 || isUploading || selectedClips.some(clip => !clipHighlights[clip]?.isDone)}
                     onClick={() => {
                       const firstSelected = selectedClips[0];
                       const activeHighlight = firstSelected ? clipHighlights[firstSelected] : null;
@@ -1227,7 +1229,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
                       onOpenTimeline(targetUrl, targetObjName, items, customAudioFile || undefined, audioSegments);
                     }}
-                    className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                    className={`px-6 py-4 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 whitespace-nowrap ${
+                      (selectedClips.length === 0 || isUploading || selectedClips.some(clip => !clipHighlights[clip]?.isDone))
+                        ? "opacity-40 cursor-not-allowed"
+                        : "cursor-pointer"
+                    }`}
                   >
                     <span>🎛️</span> Open in Timeline Studio
                   </button>
