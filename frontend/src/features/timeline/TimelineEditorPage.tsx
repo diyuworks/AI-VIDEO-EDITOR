@@ -1047,20 +1047,7 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
             </div>
           ))}
 
-          {trackVisibility.overlay && activeCaption && (
-            <div className="absolute bottom-6 left-0 right-0 flex justify-center px-6 pointer-events-none">
-              <span
-                className="text-white font-bold text-xl sm:text-2xl text-center leading-snug"
-                style={{
-                  fontFamily: "'Noto Sans Gujarati', 'Inter', sans-serif",
-                  textShadow:
-                    '0 0 6px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9), 2px 2px 0 rgba(0,0,0,0.9)',
-                }}
-              >
-                {activeCaption.text}
-              </span>
-            </div>
-          )}
+
         </div>
       </div>
 
