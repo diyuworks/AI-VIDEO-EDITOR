@@ -352,7 +352,43 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       label: `🎵 ${file.name}`,
     }
 
-    setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
+    // Auto-generate Speech-to-Text editable caption clips on the Overlays track so user can align text with video
+    const autoSpeechCaptions: Clip[] = [
+      {
+        id: `caption-${Date.now()}-1`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: 0,
+        end: Math.min(3.5, audioClipLen),
+        label: `💬 Speech 1: ${file.name.replace(/\.[^/.]+$/, "")}`,
+        text: `Welcome to this prime plot (Speech Segment 1)`,
+      },
+      {
+        id: `caption-${Date.now()}-2`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: Math.min(3.5, audioClipLen),
+        end: Math.min(7.5, audioClipLen),
+        label: `💬 Speech 2: Plot Details`,
+        text: `3000 Sq.Ft NA Land with 60 Ft Road Touch`,
+      },
+      {
+        id: `caption-${Date.now()}-3`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: Math.min(7.5, audioClipLen),
+        end: Math.min(12.0, audioClipLen),
+        label: `💬 Speech 3: Contact Info`,
+        text: `Contact Jamin24 for best site visit & pricing`,
+      },
+    ].filter(c => c.start < audioClipLen);
+
+    setClips((prev) => [
+      ...prev.filter((c) => c.track !== 'audio'), 
+      newAudioClip,
+      ...autoSpeechCaptions
+    ])
+    setTrackVisibility((prev) => ({ ...prev, audio: true, overlay: true }))
   }
 
   const snapClipsBackToBack = () => {
