@@ -240,7 +240,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       const uploadFormData = new FormData();
       uploadFormData.append("file", file);
       
-      let uploadObjName = `custom_audio_${Date.now()}.${file.name.rsplit ? file.name.rsplit('.', 1)[1] : 'mp3'}`;
+      const ext = file.name.includes('.') ? file.name.split('.').pop() || 'mp3' : 'mp3';
+      let uploadObjName = `custom_audio_${Date.now()}.${ext}`;
       try {
         const uploadRes = await fetchWithRetry(`${API_BASE_URL}/upload`, {
           method: "POST",
