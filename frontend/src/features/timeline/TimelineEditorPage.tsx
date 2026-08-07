@@ -146,6 +146,7 @@ interface TimelineEditorPageProps {
   rawObjectName?: string
   clipItems?: VideoClipItem[]
   referenceResults?: any[]
+  initialAudioFile?: File
   onBackToQuick?: () => void
 }
 
@@ -160,7 +161,7 @@ interface DragSession {
   moved: boolean
 }
 
-export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, onBackToQuick }: TimelineEditorPageProps) {
+export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems, initialAudioFile, onBackToQuick }: TimelineEditorPageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
@@ -563,6 +564,16 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
   const skipPlanGeneration = () => {
     setPlanModalOpen(false)
   }
+
+  useEffect(() => {
+    if (initialAudioFile) {
+      // Simulate file selection event for the initial audio file
+      const fakeEvent = {
+        target: { files: [initialAudioFile] }
+      } as unknown as React.ChangeEvent<HTMLInputElement>;
+      handleAudioFileSelected(fakeEvent);
+    }
+  }, [initialAudioFile]);
 
   // ---- Backend Export ----
   const handleExportReel = async () => {

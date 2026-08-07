@@ -42,7 +42,7 @@ interface ReelGeneratorPageProps {
   rawVideoObjectName?: string;
   referenceObjectName?: string | null;
   prompt?: string;
-  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[]) => void;
+  onOpenTimeline?: (videoUrl?: string, objectName?: string, items?: any[], audioFile?: File) => void;
 }
 
 export interface ClipHighlightItem {
@@ -100,6 +100,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
+  const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
 
   // Location Selection State
   const [selectedDistrict, setSelectedDistrict] = useState<string>("");
@@ -215,6 +216,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
     setIsTranscribing(true);
     setCustomAudioObjectName(null);
+    setCustomAudioFile(file);
 
     try {
       const uploadFormData = new FormData();
@@ -1156,7 +1158,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         };
                       });
 
-                      onOpenTimeline(targetUrl, targetObjName, items);
+                      onOpenTimeline(targetUrl, targetObjName, items, customAudioFile || undefined);
                     }}
                     className="px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base sm:text-lg transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >
