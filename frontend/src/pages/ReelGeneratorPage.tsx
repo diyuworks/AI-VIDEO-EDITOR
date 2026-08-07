@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 import { API_BASE_URL } from "../config";
+import { locationData } from "../locationData";
 
 const TypewriterText = ({ text }: { text: string }) => {
   const [typedText, setTypedText] = useState("");
@@ -98,6 +99,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
+
+  // Location Selection State
+  const [selectedDistrict, setSelectedDistrict] = useState<string>("");
+  const [selectedTaluka, setSelectedTaluka] = useState<string>("");
+  const [selectedVillage, setSelectedVillage] = useState<string>("");
   const [useExactScript, setUseExactScript] = useState<boolean>(false);
   const [maxClipDuration, setMaxClipDuration] = useState<number | null>(null); // Default null = Full duration for all merged clips
 
@@ -621,29 +627,100 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
-      <div className="border-4 sm:border-[6px] border-[#0D473B] rounded-[28px] sm:rounded-[40px] p-4 sm:p-8 md:p-10 bg-[#f8fcfb] shadow-2xl relative space-y-6 sm:space-y-8 w-full overflow-hidden">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6 sm:p-8 md:p-10 border border-emerald-50 mb-8 group">
+      <div className="border-[3px] sm:border-[4px] border-[#0D473B] rounded-[24px] sm:rounded-[32px] p-4 sm:p-6 md:p-8 bg-[#f8fcfb] shadow-2xl relative space-y-5 sm:space-y-6 w-full overflow-hidden">
+        <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-5 sm:p-6 md:p-8 border border-emerald-50 mb-6 group">
           <div className="absolute top-[-50%] left-[-10%] w-96 h-96 bg-gradient-to-br from-emerald-100/50 to-transparent rounded-full blur-3xl group-hover:translate-x-8 transition-transform duration-1000 ease-in-out"></div>
           <div className="absolute bottom-[-50%] right-[-10%] w-96 h-96 bg-gradient-to-tl from-amber-100/40 to-transparent rounded-full blur-3xl group-hover:-translate-x-8 transition-transform duration-1000 ease-in-out"></div>
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-center md:justify-start gap-8 md:gap-12">
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-center gap-6 md:gap-10">
             <div className="relative group/logo animate-float">
               <div className="absolute -inset-4 bg-gradient-to-r from-emerald-200/40 to-amber-200/40 rounded-full blur-xl opacity-0 group-hover/logo:opacity-100 transition duration-700"></div>
-              <img src="/logo.jpg" alt="Jamin24 Logo" className="relative w-32 sm:w-40 md:w-48 object-contain shrink-0 mix-blend-multiply transform transition-all duration-500 group-hover/logo:scale-105" />
+              <img src="/logo.jpg" alt="Jamin24 Logo" className="relative w-24 sm:w-28 md:w-32 object-contain shrink-0 mix-blend-multiply transform transition-all duration-500 group-hover/logo:scale-105" />
             </div>
-            <div className="text-center md:text-left space-y-3">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-100/80 rounded-full text-emerald-800 text-[10px] sm:text-xs font-black tracking-widest uppercase mb-1 shadow-sm">
-                <span className="relative flex h-2.5 w-2.5">
+            <div className="text-center md:text-left space-y-2 flex flex-col items-center md:items-start">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-100/80 rounded-full text-emerald-800 text-[10px] sm:text-xs font-black tracking-widest uppercase mb-1 shadow-sm">
+                <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 Next-Gen Video AI
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0D473B] tracking-tight leading-tight animate-pop-in">
+              <h1 className="text-3xl sm:text-4xl md:text-[42px] font-black text-[#0D473B] tracking-tight leading-tight animate-pop-in">
                 Jamin <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 animate-gradient-x drop-shadow-sm">24</span> AI Hub
               </h1>
-              <p className="text-slate-500 text-sm sm:text-base font-bold tracking-wide max-w-md min-h-[48px]">
+              <p className="text-slate-500 text-sm md:text-base font-semibold tracking-wide max-w-lg min-h-[24px]">
                 <TypewriterText text="Automated Plot Highlighting & Professional Reel Generation" />
               </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-emerald-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-8">
+          <h2 className="text-lg sm:text-xl font-black text-[#0D473B] mb-4 flex items-center gap-2">
+            📍 Location Details
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">District</label>
+              <div className="relative">
+                <select 
+                  value={selectedDistrict} 
+                  onChange={(e) => {
+                    setSelectedDistrict(e.target.value);
+                    setSelectedTaluka("");
+                    setSelectedVillage("");
+                  }}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none"
+                >
+                  <option value="" disabled>Select District</option>
+                  {locationData.map(loc => (
+                    <option key={loc.district} value={loc.district}>{loc.district}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+            </div>
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Taluka</label>
+              <div className="relative">
+                <select 
+                  value={selectedTaluka} 
+                  onChange={(e) => {
+                    setSelectedTaluka(e.target.value);
+                    setSelectedVillage("");
+                  }}
+                  disabled={!selectedDistrict}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none disabled:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="" disabled>Select Taluka</option>
+                  {locationData.find(l => l.district === selectedDistrict)?.talukas.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+            </div>
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Village</label>
+              <div className="relative">
+                <select 
+                  value={selectedVillage} 
+                  onChange={(e) => setSelectedVillage(e.target.value)}
+                  disabled={!selectedTaluka}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none disabled:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="" disabled>Select Village</option>
+                  {locationData.find(l => l.district === selectedDistrict)?.villages.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
             </div>
           </div>
         </div>
