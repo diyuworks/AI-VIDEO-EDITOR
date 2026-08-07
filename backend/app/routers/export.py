@@ -39,6 +39,7 @@ class ClipSchema(BaseModel):
     imageDataUrl: Optional[str] = None
     boxPath: Optional[List[dict]] = None
     polygonPath: Optional[List[dict]] = None
+    transitionType: Optional[str] = "none"
 
 class ExportRequest(BaseModel):
     object_name: str
@@ -332,17 +333,30 @@ def draw_text_with_stroke(img: np.ndarray, text: str, org: Tuple[int, int], font
     # Draw inner text
     cv2.putText(img, text, org, font_face, font_scale, color, thickness, cv2.LINE_AA)
 
+@router.post("/export")
 @router.post("/export-video")
 async def export_video(req: ExportRequest):
     if not req.object_name:
         raise HTTPException(status_code=400, detail="Missing object_name")
 
-    # Download raw video to temp path
+    # Get raw video from local disk storage or MinIO
     tmp_input_path = os.path.join(tempfile.gettempdir(), f"export_in_{uuid.uuid4().hex}.mp4")
     try:
-        minio_client.fget_object(MINIO_BUCKET, req.object_name, tmp_input_path)
+        if minio_client:
+            minio_client.fget_object(MINIO_BUCKET, req.object_name, tmp_input_path)
+        else:
+            src_path = os.path.join("demo_clips", req.object_name)
+            if not os.path.exists(src_path):
+                src_path = os.path.join("uploaded_files", req.object_name)
+            if not os.path.exists(src_path):
+                # Check current directory
+                src_path = req.object_name
+            import shutil
+            shutil.copy(src_path, tmp_input_path)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Source video not found in MinIO: {str(e)}")
+        print(f"[export warning] Could not copy source video {req.object_name}: {e}")
+        if not os.path.exists(tmp_input_path):
+            raise HTTPException(status_code=404, detail=f"Source video not found: {str(e)}")
 
     output_filename = f"export_{uuid.uuid4().hex}.mp4"
     output_filepath = os.path.join(EXPORT_DIR, output_filename)
@@ -464,10 +478,12 @@ async def export_video(req: ExportRequest):
         except:
             pass
 
+    from app.config import get_backend_base_url
+    base_url = get_backend_base_url()
     return {
         "success": True,
         "filename": output_filename,
-        "download_url": f"/export-file/{output_filename}"
+        "download_url": f"{base_url}/export-file/{output_filename}"
     }
 
 @router.get("/export-file/{filename}")

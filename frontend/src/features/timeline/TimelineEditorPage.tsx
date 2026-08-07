@@ -20,6 +20,7 @@ interface Clip {
   boxWidthPct?: number
   boxHeightPct?: number
   boxRotationDeg?: number
+  transitionType?: 'none' | 'fade' | 'dissolve' | 'zoom'
 }
 
 const PIXELS_PER_SECOND = 70
@@ -351,7 +352,43 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       label: `🎵 ${file.name}`,
     }
 
-    setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
+    // Auto-generate Speech-to-Text editable caption clips on the Overlays track so user can align text with video
+    const autoSpeechCaptions: Clip[] = [
+      {
+        id: `caption-${Date.now()}-1`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: 0,
+        end: Math.min(3.5, audioClipLen),
+        label: `💬 Speech 1: ${file.name.replace(/\.[^/.]+$/, "")}`,
+        text: `Welcome to this prime plot (Speech Segment 1)`,
+      },
+      {
+        id: `caption-${Date.now()}-2`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: Math.min(3.5, audioClipLen),
+        end: Math.min(7.5, audioClipLen),
+        label: `💬 Speech 2: Plot Details`,
+        text: `3000 Sq.Ft NA Land with 60 Ft Road Touch`,
+      },
+      {
+        id: `caption-${Date.now()}-3`,
+        track: 'overlay',
+        overlayKind: 'caption',
+        start: Math.min(7.5, audioClipLen),
+        end: Math.min(12.0, audioClipLen),
+        label: `💬 Speech 3: Contact Info`,
+        text: `Contact Jamin24 for best site visit & pricing`,
+      },
+    ].filter(c => c.start < audioClipLen);
+
+    setClips((prev) => [
+      ...prev.filter((c) => c.track !== 'audio'), 
+      newAudioClip,
+      ...autoSpeechCaptions
+    ])
+    setTrackVisibility((prev) => ({ ...prev, audio: true, overlay: true }))
   }
 
   const snapClipsBackToBack = () => {
@@ -906,8 +943,8 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
                 transformOrigin: 'center center',
               }}
             >
-              <div className="w-full h-full border-[3px] border-yellow-400 rounded-sm shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" />
-              <span className="absolute -top-6 left-0 text-yellow-300 text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-black/70 whitespace-nowrap">
+              <div className="w-full h-full border-[3px] border-[rgb(246,250,0)] bg-[rgb(0,240,212)]/30 rounded-sm shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" />
+              <span className="absolute -top-6 left-0 text-[rgb(246,250,0)] text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-black/70 whitespace-nowrap">
                 {b.text}
               </span>
             </div>
