@@ -12,7 +12,8 @@ def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel  # lazy import: avoids CUDA/cuDNN conflict with torch/SAM if this loads first
-        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+        # Use 'small' model for proper Gujarati (ગુજરાતી) script output — 'base' outputs English/Arabic instead
+        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
     return _whisper_model
 
 @router.post("/captions/{object_name}")
@@ -101,25 +102,36 @@ async def transcribe_audio(file: UploadFile = File(...)):
         with open(temp_audio_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Transcribe with Gujarati language preference
+        # Transcribe with explicit Gujarati initial_prompt to enforce clean Gujarati (ગુજરાતી) script
         segments, info = get_whisper_model().transcribe(
             temp_audio_path, 
-            beam_size=1, 
+            beam_size=5, 
+            best_of=5,
             language="gu", 
+            task="transcribe",
+            initial_prompt="આ જમીન પ્લોટ ખૂબ સરસ છે. ગામ, તાલુકો, જીલ્લો, ભાવ, વેચવાનો છે, હાઇવે રોડ touch.",
             condition_on_previous_text=False
         )
+
+        import re
+        def clean_gujarati_text(raw_text: str) -> str:
+            # Remove Arabic/Persian/Urdu script Unicode ranges hallucinated by Whisper
+            cleaned = re.sub(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]', '', raw_text)
+            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+            return cleaned
 
         segments_list = []
         full_transcript = []
         
         for segment in segments:
-            text = segment.text.strip()
-            segments_list.append({
-                "start": round(segment.start, 2),
-                "end": round(segment.end, 2),
-                "text": text
-            })
-            full_transcript.append(text)
+            text = clean_gujarati_text(segment.text)
+            if text:
+                segments_list.append({
+                    "start": round(segment.start, 2),
+                    "end": round(segment.end, 2),
+                    "text": text
+                })
+                full_transcript.append(text)
 
         return {
             "success": True,
