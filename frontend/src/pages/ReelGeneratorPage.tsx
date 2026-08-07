@@ -674,6 +674,34 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   return (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
       <div className="border-[3px] sm:border-[4px] border-[#0D473B] rounded-[24px] sm:rounded-[32px] p-4 sm:p-6 md:p-8 bg-[#f8fcfb] shadow-2xl relative space-y-5 sm:space-y-6 w-full overflow-hidden">
+        
+        {/* Navigation Bar / Back Button */}
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                window.location.hash = "#/";
+              }
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer active:scale-95 group"
+            title="Go back to previous page"
+          >
+            <span className="text-base group-hover:-translate-x-1 transition-transform">⬅️</span>
+            <span>Back</span>
+          </button>
+          
+          <div className="flex items-center gap-2">
+            <a
+              href="#/timeline"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0D473B] hover:bg-[#09352c] text-white rounded-full text-xs font-bold shadow-md transition cursor-pointer hover:scale-105"
+            >
+              🎬 Timeline Editor
+            </a>
+          </div>
+        </div>
+
         <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-5 sm:p-6 md:p-8 border border-emerald-50 mb-6 group">
           <div className="absolute top-[-50%] left-[-10%] w-96 h-96 bg-gradient-to-br from-emerald-100/50 to-transparent rounded-full blur-3xl group-hover:translate-x-8 transition-transform duration-1000 ease-in-out"></div>
           <div className="absolute bottom-[-50%] right-[-10%] w-96 h-96 bg-gradient-to-tl from-amber-100/40 to-transparent rounded-full blur-3xl group-hover:-translate-x-8 transition-transform duration-1000 ease-in-out"></div>
