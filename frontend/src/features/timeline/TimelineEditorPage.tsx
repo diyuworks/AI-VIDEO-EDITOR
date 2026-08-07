@@ -336,12 +336,6 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
     const localUrl = URL.createObjectURL(file)
     setAudioUrl(localUrl)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData }).catch((err) =>
-      console.warn('Audio upload warning:', err),
-    )
-
     const audioClipLen = duration > 0 ? duration : 30
     const newAudioClip: Clip = {
       id: `audio-${Date.now()}`,
@@ -351,7 +345,36 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
       label: `🎵 ${file.name}`,
     }
 
+    // Add audio clip immediately
     setClips((prev) => [...prev.filter((c) => c.track !== 'audio'), newAudioClip])
+    setTrackVisibility((prev) => ({ ...prev, audio: true }))
+
+    // Send audio to backend Whisper AI for real Gujarati speech-to-text transcription
+    const transcribeFormData = new FormData()
+    transcribeFormData.append('file', file)
+
+    fetch(`${API_BASE_URL}/transcribe-audio`, { method: 'POST', body: transcribeFormData })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.segments && data.segments.length > 0) {
+          // Generate real Gujarati text caption clips from Whisper AI segments
+          const gujaratiCaptions: Clip[] = data.segments.map((seg: { start: number; end: number; text: string }, idx: number) => ({
+            id: `caption-${Date.now()}-${idx}`,
+            track: 'overlay' as any,
+            overlayKind: 'caption' as any,
+            start: seg.start,
+            end: seg.end,
+            label: `💬 ${data.detected_language === 'gu' ? 'ગુજરાતી' : 'Speech'} ${idx + 1}`,
+            text: seg.text,
+          }))
+
+          setClips((prev) => [...prev, ...gujaratiCaptions])
+          setTrackVisibility((prev) => ({ ...prev, overlay: true }))
+        }
+      })
+      .catch((err) => {
+        console.warn('Audio transcription warning (Whisper may not be available):', err)
+      })
   }
 
   const snapClipsBackToBack = () => {
@@ -933,8 +956,9 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
           {trackVisibility.overlay && activeCaption && (
             <div className="absolute bottom-6 left-0 right-0 flex justify-center px-6 pointer-events-none">
               <span
-                className="text-white font-display font-semibold text-xl sm:text-2xl text-center leading-snug"
+                className="text-white font-bold text-xl sm:text-2xl text-center leading-snug"
                 style={{
+                  fontFamily: "'Noto Sans Gujarati', 'Inter', sans-serif",
                   textShadow:
                     '0 0 6px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9), 2px 2px 0 rgba(0,0,0,0.9)',
                 }}
@@ -1298,9 +1322,33 @@ export default function TimelineEditorPage({ videoUrl, rawObjectName, clipItems,
               rows={2}
               maxLength={120}
               autoFocus
-              placeholder="e.g. Best day of my life"
-              className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2.5 text-sm placeholder:text-white/25 resize-none focus:outline-none focus:border-amber/60 mb-4"
+              placeholder="e.g. ગામ માલવ, તાલુકો વિજાપુર, જીલ્લો મહેસાણા"
+              className="w-full bg-canvas-raised border border-canvas-border rounded-lg px-3 py-2.5 text-sm placeholder:text-white/25 resize-none focus:outline-none focus:border-amber/60 mb-2"
+              style={{ fontFamily: "'Noto Sans Gujarati', 'Inter', sans-serif" }}
             />
+
+            {/* Quick Gujarati Text Presets */}
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <span className="text-[10px] text-white/40 font-mono w-full block mb-0.5">QUICK GUJARATI PRESETS:</span>
+              {[
+                "ગામ માલવ",
+                "તાલુકો વિજાપુર",
+                "જીલ્લો મહેસાણા",
+                "પ્રાઇમ પ્લોટ વેચવાનો છે",
+                "60 ફૂટ રોડ અડીને પ્લોટ",
+                "સંપર્ક કરો: Jamin24"
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setCaptionText(preset)}
+                  className="px-2.5 py-1 bg-emerald-950/60 hover:bg-emerald-800/80 border border-emerald-500/40 text-emerald-200 text-xs rounded-full font-medium transition cursor-pointer"
+                  style={{ fontFamily: "'Noto Sans Gujarati', sans-serif" }}
+                >
+                  + {preset}
+                </button>
+              ))}
+            </div>
 
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div>
