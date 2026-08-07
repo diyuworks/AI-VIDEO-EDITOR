@@ -164,6 +164,27 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    // Automatically load clips sequentially to avoid hitting MinIO limits
+    if (uploadedClips.length > 0) {
+      setSelectedClips([uploadedClips[0]]);
+    } else {
+      setSelectedClips([]);
+    }
+  }, []);
+
+  // Handle Chrome Native Browser Back Button (←) to return to main page when marking plot
+  useEffect(() => {
+    const handlePopState = () => {
+      if (activeMarkingClip) {
+        setActiveMarkingClip(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [activeMarkingClip]);
+
   // Fetch past reels on mount
   useEffect(() => {
     setUploadedClips([]);
@@ -679,7 +700,10 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
             {/* Close Button */}
             <button
-              onClick={() => setActiveMarkingClip(null)}
+              onClick={() => {
+                setActiveMarkingClip(null);
+                window.history.back(); // Clean up the pushState
+              }}
               className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
               title="Close modal"
             >
@@ -1069,6 +1093,9 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                                   setEnableFarmhouse(firstHighlight?.enableFarmhouse || false);
                                   setEnableFountain(firstHighlight?.enableFountain || false);
                                   setEnablePetrolPump(firstHighlight?.enablePetrolPump || false);
+                                  
+                                  // Push state to allow native browser back button (←) to close the view
+                                  window.history.pushState({ view: "boundary-marker" }, "", "#mark-boundary");
                                 }} className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center border border-slate-200">
                                   {clipHighlights[clipName]?.isDone ? "✏️ Edit Highlights" : "✏️ Highlight Plot"}
                                 </button>
