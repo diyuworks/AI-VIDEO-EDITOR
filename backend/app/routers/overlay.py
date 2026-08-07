@@ -236,7 +236,9 @@ def render_overlay(request: OverlayRequest):
                 frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
 
             for region in all_regions:
-                color_bgr = hex_to_bgr(region.highlight_color)
+                # Forced RGB values from website theme (BGR format for OpenCV)
+                # Border: rgb(246, 250, 0) -> BGR(0, 250, 246)
+                color_bgr = (0, 250, 246)
                 request_label = region.label
                 request_price = region.price
                 request_size = region.size
@@ -334,11 +336,12 @@ def render_overlay(request: OverlayRequest):
                                 else:
                                     alpha = 0.30 + 0.10 * math.sin((frame_idx - ANIM_FRAMES - FADE_FRAMES) * 0.1)
                                 
-                                # 4. Highlighted area — GREEN transparent fill like reference
-                                green_fill_bgr = (0, 200, 100)  # Bright green in BGR
+                                # 4. Highlighted area — Custom fill like reference website theme
+                                # Field fill: rgb(0, 240, 212) -> BGR(212, 240, 0)
+                                custom_fill_bgr = (212, 240, 0) 
                                 highlighted_area = frame.copy()
                                 color_overlay = np.zeros_like(frame)
-                                cv2.fillPoly(color_overlay, [polygon_points], green_fill_bgr)
+                                cv2.fillPoly(color_overlay, [polygon_points], custom_fill_bgr)
                                 highlighted_area = cv2.addWeighted(highlighted_area, 1.0, color_overlay, alpha, 0)
                                 
                                 # 5. Combine using mask (zero temporary memory allocation)

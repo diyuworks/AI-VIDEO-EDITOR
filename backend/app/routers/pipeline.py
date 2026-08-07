@@ -306,6 +306,9 @@ def merge_clips(request: MergeClipsRequest):
         import shutil
         shutil.copy(output_path, local_merged_path)
 
+        if request.job_id:
+            update_progress(request.job_id, 45, "merged", "Clips merged successfully! Uploading to server...")
+
         # Upload merged output to MinIO
         try:
             with open(output_path, "rb") as f:
@@ -401,6 +404,9 @@ async def generate_full_reel(
     srt_path = os.path.join(TMP_DIR, f"{export_id}_subs.srt")
     output_path = os.path.join(TMP_DIR, f"{export_id}_final.mp4")
     
+    if request.job_id:
+        update_progress(request.job_id, 50, "preparing", "Preparing video and analyzing tracking data...")
+        
     try:
         resolve_local_or_minio_file(request.highlighted_video_object_name, video_path, is_audio=False)
 
@@ -622,6 +628,13 @@ async def generate_full_reel(
             except Exception as e:
                 with open("debug.log", "a", encoding="utf-8") as f: f.write(f"Segment TTS Error: {str(e)}\n")
                 raise HTTPException(status_code=500, detail=f"Segment TTS generation failed: {str(e)}")
+    else:
+        # If no voiceover, still advance progress so user sees movement
+        if request.job_id:
+            update_progress(request.job_id, 60, "processing", "Applying visual tracking and 3D overlays...")
+            import time
+            time.sleep(0.5) # Slight delay to let UI catch up
+            update_progress(request.job_id, 75, "processing", "Generating final composite layers...")
 
     # ---- SUB-STEP C+D: Use EXACT same export.py logic for captions + voice ----
     if request.job_id:

@@ -51,9 +51,9 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
     ctx.drawImage(img, 0, 0);
     if (points.length > 0) {
       // Draw solid lines SEQUENTIALLY: 1→2→3→4 (NO closePath — no line back to start)
-      ctx.shadowColor = "#FFEB3B";
+      ctx.shadowColor = "rgb(246, 250, 0)";
       ctx.shadowBlur = 14;
-      ctx.strokeStyle = "#FFEB3B";
+      ctx.strokeStyle = "rgb(246, 250, 0)";
       ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
@@ -244,13 +244,13 @@ const BoundaryMarker: React.FC<BoundaryMarkerProps> = ({
           </div>
         )}
         {/* Scrollable Canvas Container */}
-        <div className={`rounded-2xl overflow-auto border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full h-[50vh] min-h-[300px] flex ${zoomLevel > 1 ? 'items-start justify-center' : 'items-center justify-center'}`}>
+        <div className={`rounded-2xl overflow-auto border-2 border-emerald-100 shadow-inner bg-slate-100/50 w-full h-[75vh] min-h-[600px] flex ${zoomLevel > 1 ? 'items-start justify-center' : 'items-center justify-center'}`}>
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
             className="cursor-crosshair block rounded-xl shadow-2xl transition-transform"
             style={{ 
-              height: zoomLevel === 1 ? "50vh" : `${zoomLevel * 50}vh`,
+              height: zoomLevel === 1 ? "100%" : `${zoomLevel * 100}%`,
               width: "auto",
               maxWidth: "none",
               maxHeight: "none",
