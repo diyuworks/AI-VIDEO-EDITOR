@@ -1189,8 +1189,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                       const activeClipObj = uploadedClips.find((c) => c.object_name === firstSelected) || uploadedClips[0];
                       
                       const targetUrl = activeProcessedObjName 
-                        ? `${API_BASE_URL}/raw_video/${activeProcessedObjName}` 
-                        : (activeClipObj ? activeClipObj.url : (rawVideoObjectName ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}` : `${API_BASE_URL}/raw_video/clip_1.mp4`));
+                        ? `${API_BASE_URL}/demo-videos/${activeProcessedObjName}` 
+                        : (activeClipObj ? activeClipObj.url : (rawVideoObjectName ? `${API_BASE_URL}/demo-videos/${rawVideoObjectName}` : `${API_BASE_URL}/demo-videos/clip_1.mp4`));
                       
                       const targetObjName = activeProcessedObjName || (activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4'));
 
@@ -1200,7 +1200,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                         
                         const found = uploadedClips.find((c) => c.object_name === objName);
                         
-                        const finalUrl = processedObjName ? `${API_BASE_URL}/raw_video/${processedObjName}` : (found ? found.url : `${API_BASE_URL}/raw_video/${objName}`);
+                        const finalUrl = processedObjName ? `${API_BASE_URL}/demo-videos/${processedObjName}` : (found ? found.url : `${API_BASE_URL}/demo-videos/${objName}`);
                         const finalObjName = processedObjName || objName;
                         
                         return {
