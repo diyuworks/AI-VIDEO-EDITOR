@@ -298,15 +298,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
     try {
       const fileList = Array.from(files);
-      const results: { clip: UploadedClip; object_name: string }[] = [];
 
-      for (let i = 0; i < fileList.length; i++) {
-        const file = fileList[i];
-        setUploadProgress(`Uploading clip ${i + 1} of ${fileList.length} (${file.name})...`);
-
+      const uploadPromises = fileList.map(async (file, index) => {
         const formData = new FormData();
         formData.append("file", file);
-
+        
         const res = await fetch(`${API_BASE_URL}/upload`, {
           method: "POST",
           body: formData,
@@ -325,7 +321,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         }
 
         const data = await res.json();
-        results.push({
+        return {
           clip: {
             id: data.id,
             filename: data.filename,
@@ -333,8 +329,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
             url: data.url,
           },
           object_name: data.object_name,
-        });
-      }
+        };
+      });
+
+      setUploadProgress(`Uploading ${fileList.length} clips concurrently...`);
+      const results = await Promise.all(uploadPromises);
 
       const newClips = results.map(r => r.clip);
       const newlySelected = results.map(r => r.object_name);
@@ -1183,21 +1182,32 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                 {onOpenTimeline && (
                   <button
                     onClick={() => {
-                      const activeClipObj = uploadedClips.find((c) => selectedClips.includes(c.object_name)) || uploadedClips[0];
-                      const targetUrl = activeClipObj
-                        ? activeClipObj.url
-                        : rawVideoObjectName
-                          ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}`
-                          : `${API_BASE_URL}/raw_video/clip_1.mp4`;
-                      const targetObjName = activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4');
+                      const firstSelected = selectedClips[0];
+                      const activeHighlight = firstSelected ? clipHighlights[firstSelected] : null;
+                      const activeProcessedObjName = (activeHighlight && activeHighlight.isDone && activeHighlight.highlightedObjectName) ? activeHighlight.highlightedObjectName : null;
+
+                      const activeClipObj = uploadedClips.find((c) => c.object_name === firstSelected) || uploadedClips[0];
+                      
+                      const targetUrl = activeProcessedObjName 
+                        ? `${API_BASE_URL}/raw_video/${activeProcessedObjName}` 
+                        : (activeClipObj ? activeClipObj.url : (rawVideoObjectName ? `${API_BASE_URL}/raw_video/${rawVideoObjectName}` : `${API_BASE_URL}/raw_video/clip_1.mp4`));
+                      
+                      const targetObjName = activeProcessedObjName || (activeClipObj ? activeClipObj.object_name : (rawVideoObjectName || 'clip_1.mp4'));
 
                       const items = selectedClips.map((objName, idx) => {
+                        const highlightState = clipHighlights[objName];
+                        const processedObjName = (highlightState && highlightState.isDone && highlightState.highlightedObjectName) ? highlightState.highlightedObjectName : null;
+                        
                         const found = uploadedClips.find((c) => c.object_name === objName);
+                        
+                        const finalUrl = processedObjName ? `${API_BASE_URL}/raw_video/${processedObjName}` : (found ? found.url : `${API_BASE_URL}/raw_video/${objName}`);
+                        const finalObjName = processedObjName || objName;
+                        
                         return {
                           id: `clip-${idx + 1}`,
-                          objectName: objName,
-                          url: found ? found.url : `${API_BASE_URL}/raw_video/${objName}`,
-                          label: `Clip ${idx + 1} (${objName})`,
+                          objectName: finalObjName,
+                          url: finalUrl,
+                          label: `Clip ${idx + 1} (${finalObjName})`,
                         };
                       });
 
