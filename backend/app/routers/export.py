@@ -39,6 +39,7 @@ class ClipSchema(BaseModel):
     imageDataUrl: Optional[str] = None
     boxPath: Optional[List[dict]] = None
     polygonPath: Optional[List[dict]] = None
+    transitionType: Optional[str] = "none"
 
 class ExportRequest(BaseModel):
     object_name: str

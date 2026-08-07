@@ -20,6 +20,7 @@ interface Clip {
   boxWidthPct?: number
   boxHeightPct?: number
   boxRotationDeg?: number
+  transitionType?: 'none' | 'fade' | 'dissolve' | 'zoom'
 }
 
 const PIXELS_PER_SECOND = 70
