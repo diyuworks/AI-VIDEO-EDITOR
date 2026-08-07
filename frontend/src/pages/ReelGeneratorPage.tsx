@@ -671,6 +671,191 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
     document.body.removeChild(a);
   };
 
+
+  if (activeMarkingClip) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col p-2 sm:p-4 lg:p-6 overflow-y-auto pb-20">
+        <div className="w-full max-w-[1600px] mx-auto bg-white p-4 sm:p-6 md:p-8 rounded-[32px] border border-emerald-100 shadow-xl relative text-slate-800 animate-in fade-in zoom-in duration-300">
+
+            {/* Close Button */}
+            <button
+              onClick={() => setActiveMarkingClip(null)}
+              className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
+              title="Close modal"
+            >
+              ✕
+            </button>
+
+            {/* Header Section */}
+            <div className="mb-6">
+              <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
+                <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
+                Mark Plot Details & Boundary
+              </h3>
+              <p className="text-slate-500 font-medium flex items-center gap-2">
+                Currently editing:
+                <span className="text-emerald-700 font-mono text-sm font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
+                  {activeMarkingClip}
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
+              {/* LEFT COLUMN: Form Details */}
+              <div className="w-full lg:w-[35%] xl:w-[30%] flex flex-col gap-6 lg:gap-8">
+
+                <div className="flex flex-col gap-7 flex-1">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">🏷️</span> Plot Label / Name
+                    </label>
+                    <textarea
+                      value={activeMarkingLabel}
+                      onChange={(e) => setActiveMarkingLabel(e.target.value)}
+                      placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
+                      rows={2}
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-base font-bold w-full transition shadow-sm resize-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-lg">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={plotPrice}
+                        onChange={(e) => setPlotPrice(e.target.value)}
+                        placeholder="e.g. ₹25 Lakhs"
+                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-base font-bold w-full transition shadow-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-lg">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={plotSize}
+                        onChange={(e) => setPlotSize(e.target.value)}
+                        placeholder="e.g. 1.5 Vigha"
+                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-base font-bold w-full transition shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">🛣️</span> Road / Highway Distance
+                    </label>
+                    <input
+                      type="text"
+                      value={roadInfo}
+                      onChange={(e) => setRoadInfo(e.target.value)}
+                      placeholder="e.g. 60FT Highway | 100m"
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-base font-bold w-full transition shadow-sm"
+                    />
+                  </div>
+
+                  {/* Visual Effects */}
+                  <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-4 mt-2">
+                    <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">✨</span> 3D Visual Effects
+                    </p>
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enableFarmhouse}
+                          onChange={(e) => setEnableFarmhouse(e.target.checked)}
+                          className="w-5 h-5 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-base">🏡 Farmhouse</span>
+                      </label>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enableFountain}
+                          onChange={(e) => setEnableFountain(e.target.checked)}
+                          className="w-5 h-5 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-base">🚰 Fountain</span>
+                      </label>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={enablePetrolPump}
+                          onChange={(e) => setEnablePetrolPump(e.target.checked)}
+                          className="w-5 h-5 accent-[#0D473B]"
+                        />
+                        <span className="font-bold text-base">⛽ Petrol Pump</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instructions Box to fill space perfectly */}
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center mt-auto">
+                  <h4 className="text-base font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    💡 Expert Tips for Best Results
+                  </h4>
+                  <ul className="text-sm text-amber-900/80 space-y-3 font-medium">
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> AI will automatically track these boundary points throughout the entire drone video!
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
+              <div className="w-full lg:w-[65%] xl:w-[70%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[600px]">
+                <BoundaryMarker
+                  objectName={activeMarkingClip}
+                  onSaveAndAddAnother={(points, frameTime) => {
+                    const clipName = activeMarkingClip;
+                    const label = activeMarkingLabel;
+                    const pr = plotPrice;
+                    const sz = plotSize;
+                    const rd = roadInfo;
+                    const clr = highlightColor;
+                    const fh = enableFarmhouse;
+                    const ft = enableFountain;
+                    const pp = enablePetrolPump;
+                    const tp = textPosition || "middle";
+
+                    if (!clipName) return;
+                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
+                  }}
+                  onSaveAndFinish={async (points, frameTime) => {
+                    const clipName = activeMarkingClip;
+                    const label = activeMarkingLabel;
+                    const pr = plotPrice;
+                    const sz = plotSize;
+                    const rd = roadInfo;
+                    const clr = highlightColor;
+                    const fh = enableFarmhouse;
+                    const ft = enableFountain;
+                    const pp = enablePetrolPump;
+                    const tp = textPosition || "middle";
+
+                    if (!clipName) return;
+                    setActiveMarkingClip(null);
+                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
+                  }}
+                />
+              </div>
+            </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
       <div className="border-[3px] sm:border-[4px] border-[#0D473B] rounded-[24px] sm:rounded-[32px] p-4 sm:p-6 md:p-8 bg-[#f8fcfb] shadow-2xl relative space-y-5 sm:space-y-6 w-full overflow-hidden">
@@ -1003,189 +1188,6 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           )}
         </section>
       </div>
-
-      {/* ===== PREMIUM BOUNDARY MARKER MODAL POPUP ===== */}
-      {activeMarkingClip && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
-          <div className="w-full max-w-6xl bg-white p-6 md:p-8 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto animate-in fade-in zoom-in duration-200">
-            {/* Close Button */}
-            <button
-              onClick={() => setActiveMarkingClip(null)}
-              className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
-              title="Close modal"
-            >
-              ✕
-            </button>
-
-            {/* Header Section */}
-            <div className="mb-6">
-              <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
-                <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
-                Mark Plot Details & Boundary
-              </h3>
-              <p className="text-slate-500 font-medium flex items-center gap-2">
-                Currently editing:
-                <span className="text-emerald-700 font-mono text-sm font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
-                  {activeMarkingClip}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
-              {/* LEFT COLUMN: Form Details */}
-              <div className="w-full lg:w-[35%] xl:w-[30%] flex flex-col gap-6 lg:gap-8">
-
-                <div className="flex flex-col gap-7 flex-1">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">🏷️</span> Plot Label / Name
-                    </label>
-                    <textarea
-                      value={activeMarkingLabel}
-                      onChange={(e) => setActiveMarkingLabel(e.target.value)}
-                      placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
-                      rows={2}
-                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-base font-bold w-full transition shadow-sm resize-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-lg">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={plotPrice}
-                        onChange={(e) => setPlotPrice(e.target.value)}
-                        placeholder="e.g. ₹25 Lakhs"
-                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-base font-bold w-full transition shadow-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-lg">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={plotSize}
-                        onChange={(e) => setPlotSize(e.target.value)}
-                        placeholder="e.g. 1.5 Vigha"
-                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-base font-bold w-full transition shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">🛣️</span> Road / Highway Distance
-                    </label>
-                    <input
-                      type="text"
-                      value={roadInfo}
-                      onChange={(e) => setRoadInfo(e.target.value)}
-                      placeholder="e.g. 60FT Highway | 100m"
-                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-base font-bold w-full transition shadow-sm"
-                    />
-                  </div>
-
-                  {/* Visual Effects */}
-                  <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-4 mt-2">
-                    <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-lg">✨</span> 3D Visual Effects
-                    </p>
-                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enableFarmhouse}
-                          onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">🏡 Farmhouse</span>
-                      </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enableFountain}
-                          onChange={(e) => setEnableFountain(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">🚰 Fountain</span>
-                      </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={enablePetrolPump}
-                          onChange={(e) => setEnablePetrolPump(e.target.checked)}
-                          className="w-5 h-5 accent-[#0D473B]"
-                        />
-                        <span className="font-bold text-base">⛽ Petrol Pump</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Instructions Box to fill space perfectly */}
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center mt-auto">
-                  <h4 className="text-base font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-4">
-                    💡 Expert Tips for Best Results
-                  </h4>
-                  <ul className="text-sm text-amber-900/80 space-y-3 font-medium">
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> AI will automatically track these boundary points throughout the entire drone video!
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="text-amber-500 text-lg">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
-              <div className="w-full lg:w-[65%] xl:w-[70%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[600px]">
-                <BoundaryMarker
-                  objectName={activeMarkingClip}
-                  onSaveAndAddAnother={(points, frameTime) => {
-                    const clipName = activeMarkingClip;
-                    const label = activeMarkingLabel;
-                    const pr = plotPrice;
-                    const sz = plotSize;
-                    const rd = roadInfo;
-                    const clr = highlightColor;
-                    const fh = enableFarmhouse;
-                    const ft = enableFountain;
-                    const pp = enablePetrolPump;
-                    const tp = textPosition || "middle";
-
-                    if (!clipName) return;
-                    handleAddAnotherHighlight(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
-                  }}
-                  onSaveAndFinish={async (points, frameTime) => {
-                    const clipName = activeMarkingClip;
-                    const label = activeMarkingLabel;
-                    const pr = plotPrice;
-                    const sz = plotSize;
-                    const rd = roadInfo;
-                    const clr = highlightColor;
-                    const fh = enableFarmhouse;
-                    const ft = enableFountain;
-                    const pp = enablePetrolPump;
-                    const tp = textPosition || "middle";
-
-                    if (!clipName) return;
-                    setActiveMarkingClip(null);
-                    await handleMultiClipBoundaryConfirmed(clipName, points, label, fh, ft, pp, tp, pr, sz, rd, clr, frameTime);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
