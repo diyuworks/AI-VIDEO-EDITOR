@@ -365,8 +365,9 @@ def render_overlay(request: OverlayRequest):
                         enable_pp = getattr(region, 'enable_petrol_pump_overlay', False)
                         enable_ft = getattr(region, 'enable_fountain_overlay', False)
 
-                        # Auto-enable 3D Farmhouse & Petrol Pump models on long plot clips (>= 10.0s)
-                        if total_clip_sec >= 10.0 and not enable_fh and not enable_pp and not enable_ft:
+                        # Strict User Selection Respect:
+                        # Auto-enable both ONLY if the user did NOT select any model explicitly
+                        if not enable_fh and not enable_pp and not enable_ft and total_clip_sec >= 12.0:
                             enable_fh = True
                             enable_pp = True
 
@@ -380,19 +381,17 @@ def render_overlay(request: OverlayRequest):
                             
                         if len(active_models) > 0 and M >= 4:
                             num_models = len(active_models)
-                            active_label_override = None
+                            active_label_name = None
                             img = None
 
                             if num_models == 1:
-                                active_label_override, img = active_models[0]
+                                active_label_name, img = active_models[0]
                             else:
                                 current_time_sec = frame_idx / float(fps if fps > 0 else 25.0)
-                                # Display Farmhouse for first 3.0s, Petrol Pump for next 3.0s (0.0s to 6.0s in clip)
-                                model_idx = int(current_time_sec / 3.0)
-                                if model_idx < num_models:
-                                    active_label_override, img = active_models[model_idx]
-                                elif current_time_sec < 6.0:
-                                    active_label_override, img = active_models[-1]
+                                # Time-split equally across selected models
+                                half_time = total_clip_sec / float(num_models)
+                                model_idx = min(num_models - 1, int(current_time_sec / max(1.0, half_time)))
+                                active_label_name, img = active_models[model_idx]
 
                             if img is not None:
                                 try:
@@ -426,12 +425,13 @@ def render_overlay(request: OverlayRequest):
                                         alpha_mask = poly_alpha[:, :, np.newaxis] * 0.85
                                         frame = (warped_img[:, :, :3] * alpha_mask + frame * (1.0 - alpha_mask)).astype(np.uint8)
                                 except Exception as ex_model:
-                                    print(f"[overlay] warp error for {active_label_override}: {ex_model}")
+                                    print(f"[overlay] warp error for {active_label_name}: {ex_model}")
 
-                        # (Removed duplicate static border drawing that was overwriting animation)
-                        
                         # 7. Draw plot name label (Bold Arial Black with slide-up entrance animation)
-                        eff_label = active_label_override if ('active_label_override' in locals() and len(active_models) > 1) else request_label
+                        eff_label = request_label
+                        if ('active_label_name' in locals() and active_label_name) and (len(active_models) > 1 or not request_label or request_label.strip() == ""):
+                            eff_label = active_label_name
+
                         if eff_label and pil_font:
                             min_y_idx = np.argmin(polygon_points[:, 1])
                             top_pt = polygon_points[min_y_idx]
