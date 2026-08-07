@@ -30,5 +30,4 @@ def get_backend_base_url(request=None) -> str:
             return str(request.base_url).rstrip("/")
         except Exception:
             pass
-    return "http://localhost:4005"
-
+    return "https://reel-backend.jamin24.com"
