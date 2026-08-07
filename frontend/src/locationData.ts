@@ -58,6 +58,7 @@ export const locationData = [
       "Kada",
       "Kherva",
       "Jotana",
+      "Malav",
       "Vijapur",
       "Mehsana"
     ]

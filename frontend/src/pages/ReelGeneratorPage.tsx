@@ -91,6 +91,20 @@ interface UploadedClip {
   url: string;
 }
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3, delay = 1000): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+      if (i === retries - 1) return response;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+    }
+    await new Promise((res) => setTimeout(res, delay));
+  }
+  return fetch(url, options);
+}
+
 const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   rawVideoObjectName = "clip_1.mp4",
   referenceObjectName = null,
@@ -648,7 +662,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       }));
 
       // Step 1: Track the boundaries using /track-boundary
-      const trackingRes = await fetch(`${API_BASE_URL}/track-boundary-multi`, {
+      const trackingRes = await fetchWithRetry(`${API_BASE_URL}/track-boundary-multi`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -687,7 +701,7 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       });
 
       // Step 2: Render overlay using /render-overlay
-      const renderRes = await fetch(`${API_BASE_URL}/render-overlay`, {
+      const renderRes = await fetchWithRetry(`${API_BASE_URL}/render-overlay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

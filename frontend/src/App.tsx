@@ -104,23 +104,21 @@ function App() {
           </div>
         )}
 
-        {screen === 'reel' && (
-          <div className="w-full flex justify-center py-4">
-            <ReelGeneratorPage
-              rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
-              referenceObjectName={referenceResults?.[0]?.object_name || undefined}
-              prompt={promptData?.prompt}
-              onOpenTimeline={(vUrl, objName, items, audioFile, segments) => {
-                if (vUrl) setVideoUrl(vUrl)
-                if (objName) setRawObjectName(objName)
-                if (items && items.length > 0) setClipItems(items)
-                if (audioFile) setTimelineAudioFile(audioFile)
-                if (segments) setTimelineAudioSegments(segments)
-                setScreen('timeline')
-              }}
-            />
-          </div>
-        )}
+        <div className={`w-full flex justify-center py-4 ${screen === 'reel' ? '' : 'hidden'}`}>
+          <ReelGeneratorPage
+            rawVideoObjectName={rawObjectName || 'clip_1.mp4'}
+            referenceObjectName={referenceResults?.[0]?.object_name || undefined}
+            prompt={promptData?.prompt}
+            onOpenTimeline={(vUrl, objName, items, audioFile, segments) => {
+              if (vUrl) setVideoUrl(vUrl)
+              if (objName) setRawObjectName(objName)
+              if (items && items.length > 0) setClipItems(items)
+              if (audioFile) setTimelineAudioFile(audioFile)
+              if (segments) setTimelineAudioSegments(segments)
+              setScreen('timeline')
+            }}
+          />
+        </div>
       </main>
     </div>
   )
