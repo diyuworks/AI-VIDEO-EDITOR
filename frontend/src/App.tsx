@@ -15,7 +15,15 @@ export interface PromptData {
 import { API_BASE_URL } from './config'
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('reel')
+  const [screen, setScreenState] = useState<Screen>(() => {
+    const hash = window.location.hash.replace('#', '') as Screen;
+    return ['upload', 'prompt', 'timeline', 'reel'].includes(hash) ? hash : 'reel';
+  });
+
+  const setScreen = (newScreen: Screen) => {
+    window.location.hash = newScreen;
+  };
+
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [referenceResults, setReferenceResults] = useState<any[]>([])
   const [rawObjectName, setRawObjectName] = useState<string | null>(null)
@@ -24,6 +32,21 @@ function App() {
   const [clipItems, setClipItems] = useState<any[]>([])
 
   useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as Screen;
+      if (['upload', 'prompt', 'timeline', 'reel'].includes(hash)) {
+        setScreenState(hash);
+      } else {
+        setScreenState('reel');
+      }
+    };
+    
+    if (!window.location.hash) {
+      window.location.replace('#reel');
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+
     // Silent website visit notification to the backend
     fetch(`${API_BASE_URL}/visit`, {
       method: 'POST',
@@ -33,6 +56,8 @@ function App() {
     }).catch((err) => {
       console.warn('Failed to send silent visit notification:', err);
     });
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, [])
 
   return (

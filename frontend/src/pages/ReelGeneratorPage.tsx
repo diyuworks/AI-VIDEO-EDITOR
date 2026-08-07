@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import BoundaryMarker from "../components/BoundaryMarker";
 import { API_BASE_URL } from "../config";
+import { locationData } from "../locationData";
 
 const TypewriterText = ({ text }: { text: string }) => {
   const [typedText, setTypedText] = useState("");
@@ -62,6 +63,7 @@ export interface ClipState {
   highlights: ClipHighlightItem[];
   isDone: boolean;
   isTracking?: boolean;
+  trackingProgress?: number;
   highlightedObjectName?: string;
 }
 
@@ -98,6 +100,11 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   // Shared prompt input
   const [prompt, setPrompt] = useState<string>(initialPrompt || "");
   const [customAudioObjectName, setCustomAudioObjectName] = useState<string | null>(null);
+
+  // Location Selection State
+  const [selectedDistrict, setSelectedDistrict] = useState<string>("");
+  const [selectedTaluka, setSelectedTaluka] = useState<string>("");
+  const [selectedVillage, setSelectedVillage] = useState<string>("");
   const [useExactScript, setUseExactScript] = useState<boolean>(false);
   const [maxClipDuration, setMaxClipDuration] = useState<number | null>(null); // Default null = Full duration for all merged clips
 
@@ -133,6 +140,29 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
   const [enableFountain, setEnableFountain] = useState<boolean>(false);
   const [enablePetrolPump, setEnablePetrolPump] = useState<boolean>(false);
   const [textPosition, setTextPosition] = useState<string>("middle");
+
+  // Simulated progress for clip tracking (Smart Smoother)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setClipHighlights(prev => {
+        let changed = false;
+        const next = { ...prev };
+        for (const clip in next) {
+          if (next[clip].isTracking) {
+            const currentProg = next[clip].trackingProgress || 0;
+            if (currentProg < 99) {
+              // Slow down progress after 80% to make it feel realistic
+              const increment = currentProg > 80 ? (Math.random() > 0.5 ? 1 : 0) : 1;
+              next[clip] = { ...next[clip], trackingProgress: currentProg + increment };
+              changed = true;
+            }
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 600);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch past reels on mount
   useEffect(() => {
@@ -391,6 +421,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       });
 
       isPolling = true;
+      let lastBackendProgress = 0;
+      
       const pollProgress = async () => {
         if (!isPolling) return;
         try {
@@ -398,7 +430,25 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
           if (res.ok) {
             const data = await res.json();
             if (data.progress !== undefined) {
-              setProgressPercent(data.progress);
+              lastBackendProgress = data.progress;
+              
+              setProgressPercent((prev) => {
+                // If backend actually moved ahead of our simulated progress, use it
+                if (data.progress > prev) return data.progress;
+                
+                // Smart Progress Smoother (Zeno's Paradox): 
+                // Always move forward slowly towards 99% while backend is busy
+                if (prev < 99) {
+                   if (Math.random() > 0.3) {
+                     const remaining = 99 - prev;
+                     // Step is larger when far from 99, and slows down to 1% as it gets closer
+                     const step = Math.max(1, Math.floor(remaining * 0.05));
+                     return prev + step;
+                   }
+                }
+                return prev;
+              });
+              
               if (data.message) setProgressMessage(data.message);
               if (data.stage) setProgressStage(data.stage);
             }
@@ -499,7 +549,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         [clipName]: {
           highlights: updatedHighlights,
           isDone: false,
-          isTracking: true
+          isTracking: true,
+          trackingProgress: 0
         }
       };
     });
@@ -529,7 +580,8 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
         [clipName]: {
           ...prev[clipName],
           highlights: [...existing, newItem],
-          isDone: false
+          isDone: false,
+          trackingProgress: 0
         }
       };
     });
@@ -621,29 +673,100 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4 space-y-10 font-sans">
-      <div className="border-4 sm:border-[6px] border-[#0D473B] rounded-[28px] sm:rounded-[40px] p-4 sm:p-8 md:p-10 bg-[#f8fcfb] shadow-2xl relative space-y-6 sm:space-y-8 w-full overflow-hidden">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6 sm:p-8 md:p-10 border border-emerald-50 mb-8 group">
+      <div className="border-[3px] sm:border-[4px] border-[#0D473B] rounded-[24px] sm:rounded-[32px] p-4 sm:p-6 md:p-8 bg-[#f8fcfb] shadow-2xl relative space-y-5 sm:space-y-6 w-full overflow-hidden">
+        <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-5 sm:p-6 md:p-8 border border-emerald-50 mb-6 group">
           <div className="absolute top-[-50%] left-[-10%] w-96 h-96 bg-gradient-to-br from-emerald-100/50 to-transparent rounded-full blur-3xl group-hover:translate-x-8 transition-transform duration-1000 ease-in-out"></div>
           <div className="absolute bottom-[-50%] right-[-10%] w-96 h-96 bg-gradient-to-tl from-amber-100/40 to-transparent rounded-full blur-3xl group-hover:-translate-x-8 transition-transform duration-1000 ease-in-out"></div>
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-center md:justify-start gap-8 md:gap-12">
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-center gap-6 md:gap-10">
             <div className="relative group/logo animate-float">
               <div className="absolute -inset-4 bg-gradient-to-r from-emerald-200/40 to-amber-200/40 rounded-full blur-xl opacity-0 group-hover/logo:opacity-100 transition duration-700"></div>
-              <img src="/logo.jpg" alt="Jamin24 Logo" className="relative w-32 sm:w-40 md:w-48 object-contain shrink-0 mix-blend-multiply transform transition-all duration-500 group-hover/logo:scale-105" />
+              <img src="/logo.jpg" alt="Jamin24 Logo" className="relative w-24 sm:w-28 md:w-32 object-contain shrink-0 mix-blend-multiply transform transition-all duration-500 group-hover/logo:scale-105" />
             </div>
-            <div className="text-center md:text-left space-y-3">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-100/80 rounded-full text-emerald-800 text-[10px] sm:text-xs font-black tracking-widest uppercase mb-1 shadow-sm">
-                <span className="relative flex h-2.5 w-2.5">
+            <div className="text-center md:text-left space-y-2 flex flex-col items-center md:items-start">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-100/80 rounded-full text-emerald-800 text-[10px] sm:text-xs font-black tracking-widest uppercase mb-1 shadow-sm">
+                <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 Next-Gen Video AI
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0D473B] tracking-tight leading-tight animate-pop-in">
+              <h1 className="text-3xl sm:text-4xl md:text-[42px] font-black text-[#0D473B] tracking-tight leading-tight animate-pop-in">
                 Jamin <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 animate-gradient-x drop-shadow-sm">24</span> AI Hub
               </h1>
-              <p className="text-slate-500 text-sm sm:text-base font-bold tracking-wide max-w-md min-h-[48px]">
+              <p className="text-slate-500 text-sm md:text-base font-semibold tracking-wide max-w-lg min-h-[24px]">
                 <TypewriterText text="Automated Plot Highlighting & Professional Reel Generation" />
               </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-emerald-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-8">
+          <h2 className="text-lg sm:text-xl font-black text-[#0D473B] mb-4 flex items-center gap-2">
+            📍 Location Details
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">District</label>
+              <div className="relative">
+                <select 
+                  value={selectedDistrict} 
+                  onChange={(e) => {
+                    setSelectedDistrict(e.target.value);
+                    setSelectedTaluka("");
+                    setSelectedVillage("");
+                  }}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none"
+                >
+                  <option value="" disabled>Select District</option>
+                  {locationData.map(loc => (
+                    <option key={loc.district} value={loc.district}>{loc.district}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+            </div>
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Taluka</label>
+              <div className="relative">
+                <select 
+                  value={selectedTaluka} 
+                  onChange={(e) => {
+                    setSelectedTaluka(e.target.value);
+                    setSelectedVillage("");
+                  }}
+                  disabled={!selectedDistrict}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none disabled:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="" disabled>Select Taluka</option>
+                  {locationData.find(l => l.district === selectedDistrict)?.talukas.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+            </div>
+            <div className="relative group">
+              <label className="block text-xs sm:text-sm font-bold text-emerald-800 mb-1.5 ml-1">Village</label>
+              <div className="relative">
+                <select 
+                  value={selectedVillage} 
+                  onChange={(e) => setSelectedVillage(e.target.value)}
+                  disabled={!selectedTaluka}
+                  className="w-full bg-white border border-emerald-200 hover:border-emerald-300 rounded-xl pl-4 pr-10 py-3 text-[15px] font-medium text-slate-800 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all shadow-sm cursor-pointer appearance-none disabled:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="" disabled>Select Village</option>
+                  {locationData.find(l => l.district === selectedDistrict)?.villages.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-emerald-500 group-hover:text-emerald-700 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -716,8 +839,13 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
                             {clipHighlights[clipName] && (
                               <div className="w-full mt-2 space-y-1 text-left bg-emerald-50/90 p-2 rounded-xl border border-emerald-200/80 text-[11px]">
                                 {clipHighlights[clipName]?.isTracking && (
-                                  <div className="text-[#0D473B] font-bold flex items-center justify-center gap-1 animate-pulse py-0.5">
-                                    <span className="animate-spin">⏳</span> AI Tracking & Rendering...
+                                  <div className="text-[#0D473B] font-bold flex flex-col items-center justify-center gap-1 py-1">
+                                    <div className="flex items-center gap-1 animate-pulse">
+                                      <span className="animate-spin">⏳</span> AI Tracking & Rendering... {clipHighlights[clipName]?.trackingProgress || 0}%
+                                    </div>
+                                    <div className="w-full bg-emerald-200/50 rounded-full h-1.5 mt-1 overflow-hidden">
+                                      <div className="bg-[#0D473B] h-1.5 rounded-full transition-all duration-500 ease-out" style={{ width: `${clipHighlights[clipName]?.trackingProgress || 0}%` }}></div>
+                                    </div>
                                   </div>
                                 )}
                                 {clipHighlights[clipName]?.isDone && (
@@ -905,120 +1033,120 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
 
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
               {/* LEFT COLUMN: Form Details */}
-              <div className="w-full lg:w-[45%] flex flex-col gap-6 lg:gap-8">
+              <div className="w-full lg:w-[35%] xl:w-[30%] flex flex-col gap-6 lg:gap-8">
 
-                <div className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-base">🏷️</span> Plot Label / Name
+                <div className="flex flex-col gap-7 flex-1">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">🏷️</span> Plot Label / Name
                     </label>
                     <textarea
                       value={activeMarkingLabel}
                       onChange={(e) => setActiveMarkingLabel(e.target.value)}
                       placeholder="e.g. Premium Corner Plot\n(Shift+Enter for new line)"
                       rows={2}
-                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-sm font-bold w-full transition shadow-sm resize-none"
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0D473B] focus:ring-2 focus:ring-[#0D473B]/20 text-base font-bold w-full transition shadow-sm resize-none"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-base">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-lg">💰</span> Price <span className="text-slate-400 font-medium normal-case">(Opt)</span>
                       </label>
                       <input
                         type="text"
                         value={plotPrice}
                         onChange={(e) => setPlotPrice(e.target.value)}
                         placeholder="e.g. ₹25 Lakhs"
-                        className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm font-bold w-full transition shadow-sm"
+                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-amber-700 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-base font-bold w-full transition shadow-sm"
                       />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="text-base">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="text-lg">📐</span> Area <span className="text-slate-400 font-medium normal-case">(Opt)</span>
                       </label>
                       <input
                         type="text"
                         value={plotSize}
                         onChange={(e) => setPlotSize(e.target.value)}
                         placeholder="e.g. 1.5 Vigha"
-                        className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold w-full transition shadow-sm"
+                        className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-emerald-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-base font-bold w-full transition shadow-sm"
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-base">🛣️</span> Road / Highway Distance
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">🛣️</span> Road / Highway Distance
                     </label>
                     <input
                       type="text"
                       value={roadInfo}
                       onChange={(e) => setRoadInfo(e.target.value)}
                       placeholder="e.g. 60FT Highway | 100m"
-                      className="bg-white border border-slate-300 rounded-xl px-4 py-3 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-sm font-bold w-full transition shadow-sm"
+                      className="bg-white border border-slate-300 rounded-xl px-5 py-3.5 text-cyan-700 placeholder-slate-400 focus:outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 text-base font-bold w-full transition shadow-sm"
                     />
                   </div>
 
                   {/* Visual Effects */}
-                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-3 mt-2">
-                    <p className="text-xs font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="text-base">✨</span> 3D Visual Effects
+                  <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-4 mt-2">
+                    <p className="text-sm font-black text-[#0D473B] uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="text-lg">✨</span> 3D Visual Effects
                     </p>
-                    <div className="flex flex-wrap gap-3 w-full">
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFarmhouse ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
                         <input
                           type="checkbox"
                           checked={enableFarmhouse}
                           onChange={(e) => setEnableFarmhouse(e.target.checked)}
-                          className="w-4 h-4 accent-[#0D473B]"
+                          className="w-5 h-5 accent-[#0D473B]"
                         />
-                        <span className="font-bold text-sm">🏡 Farmhouse</span>
+                        <span className="font-bold text-base">🏡 Farmhouse</span>
                       </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enableFountain ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
                         <input
                           type="checkbox"
                           checked={enableFountain}
                           onChange={(e) => setEnableFountain(e.target.checked)}
-                          className="w-4 h-4 accent-[#0D473B]"
+                          className="w-5 h-5 accent-[#0D473B]"
                         />
-                        <span className="font-bold text-sm">🚰 Fountain</span>
+                        <span className="font-bold text-base">🚰 Fountain</span>
                       </label>
-                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-3 py-3 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
+                      <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-xl px-4 py-4 border transition shadow-sm select-none ${enablePetrolPump ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-[#0D473B]'}`}>
                         <input
                           type="checkbox"
                           checked={enablePetrolPump}
                           onChange={(e) => setEnablePetrolPump(e.target.checked)}
-                          className="w-4 h-4 accent-[#0D473B]"
+                          className="w-5 h-5 accent-[#0D473B]"
                         />
-                        <span className="font-bold text-sm">⛽ Petrol Pump</span>
+                        <span className="font-bold text-base">⛽ Petrol Pump</span>
                       </label>
                     </div>
                   </div>
                 </div>
 
                 {/* Instructions Box to fill space perfectly */}
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center">
-                  <h4 className="text-sm font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-3">
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border border-amber-200/50 shadow-inner flex flex-col justify-center mt-auto">
+                  <h4 className="text-base font-black text-amber-800 uppercase tracking-widest flex items-center gap-2 mb-4">
                     💡 Expert Tips for Best Results
                   </h4>
-                  <ul className="text-xs text-amber-900/80 space-y-2.5 font-medium">
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
+                  <ul className="text-sm text-amber-900/80 space-y-3 font-medium">
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> Mark 4-8 corner points by clicking exactly on the plot edges on the video frame.
                     </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500">✅</span> AI will automatically track these boundary points throughout the entire drone video!
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> AI will automatically track these boundary points throughout the entire drone video!
                     </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-amber-500 text-lg">✅</span> 3D Models (Farmhouse/Fountain/Petrol Pump) will be perspectively locked to your custom marked boundary.
                     </li>
                   </ul>
                 </div>
               </div>
 
               {/* RIGHT COLUMN: BoundaryMarker Canvas Component */}
-              <div className="w-full lg:w-[55%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[500px]">
+              <div className="w-full lg:w-[65%] xl:w-[70%] flex flex-col bg-slate-50 rounded-2xl p-2 border border-slate-200 shadow-inner min-h-[600px]">
                 <BoundaryMarker
                   objectName={activeMarkingClip}
                   onSaveAndAddAnother={(points, frameTime) => {
