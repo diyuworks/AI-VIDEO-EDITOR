@@ -91,7 +91,7 @@ interface UploadedClip {
   url: string;
 }
 
-async function fetchWithRetry(url: string, options: RequestInit, retries = 3, delay = 1000): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2, delay = 200): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url, options);

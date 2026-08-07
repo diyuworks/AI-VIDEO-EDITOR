@@ -49,9 +49,9 @@ async def upload_video(req: Request = None, file: UploadFile = File(...), sessio
         pass
 
     try:
+        content = await file.read()
         with open(local_path, "wb") as f:
-            while chunk := await file.read(1024 * 1024):
-                f.write(chunk)
+            f.write(content)
     except Exception as e:
         if os.path.exists(local_path):
             os.remove(local_path)
