@@ -1008,16 +1008,28 @@ const ReelGeneratorPage: React.FC<ReelGeneratorPageProps> = ({
       {activeMarkingClip && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
           <div className="w-full max-w-6xl bg-white p-6 md:p-8 rounded-3xl border border-emerald-100 shadow-2xl relative text-slate-800 my-auto animate-in fade-in zoom-in duration-200">
-            {/* Close Button */}
-            <button
-              onClick={() => setActiveMarkingClip(null)}
-              className="absolute top-6 right-6 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm z-10"
-              title="Close modal"
-            >
-              ✕
-            </button>
+            
+            {/* Modal Header Bar with Back Button */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <button
+                onClick={() => setActiveMarkingClip(null)}
+                className="inline-flex items-center gap-2.5 px-5 py-2.5 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-[#0D473B] border border-slate-200 hover:border-emerald-300 rounded-full font-bold text-sm transition-all shadow-sm cursor-pointer group active:scale-95"
+                title="Back to main page"
+              >
+                <span className="text-lg group-hover:-translate-x-1 transition-transform">⬅️</span>
+                <span>Back to Main Page</span>
+              </button>
 
-            {/* Header Section */}
+              <button
+                onClick={() => setActiveMarkingClip(null)}
+                className="text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg transition shadow-sm"
+                title="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Header Title Section */}
             <div className="mb-6">
               <h3 className="text-2xl sm:text-3xl font-black text-[#0D473B] mb-2 flex flex-wrap items-center gap-3">
                 <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-md">🎯</span>
